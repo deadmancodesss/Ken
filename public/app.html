@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Talk · Total Recall</title>
+    <script>
+      /* Wallets announce themselves before any module can load, so this captures
+         the announcement into a global that public/wallet.js reads later. */
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+      #log { overflow-y: auto; padding: 0 var(--pad) 10px; }
+
+      /* The balance sits above the conversation like the header of any payments app,
+         because the first thing a person wants is the number, not a chat window. */
+      #log > .sheet { max-width: var(--measure); margin: 0 auto; padding-top: 22px; position: sticky; top: 0; z-index: 3; background: var(--paper); }
+      .money { display: flex; align-items: flex-end; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
+      .money .amt { font: 400 clamp(34px, 6vw, 46px)/1 var(--serif); letter-spacing: -0.02em; }
+      .money .amt small { font: var(--step-0)/1 var(--mono); color: var(--ink-3); margin-left: 6px; letter-spacing: 0.06em; }
+      .money .side { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: 5px; font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
+      .money .side b { color: var(--ink-2); font-weight: 400; }
+      .money .side .gas.low { color: var(--brick); }
+
+      .faces { display: flex; gap: 9px; overflow-x: auto; padding: 14px 0 2px; scrollbar-width: thin; }
+      .face { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 7px 13px 7px 7px; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); cursor: pointer; font: var(--step-0)/1 var(--sans); color: var(--ink); transition: border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
+      .face:hover { border-color: var(--ink-2); }
+      .face:active { transform: translateY(1px); }
+      .face .av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--clay-wash); color: var(--clay); font: var(--step--1)/1 var(--mono); }
+      .face.unk { border-style: dashed; }
+      .face.unk .av { background: var(--paper-sunk); color: var(--brick); border: 1px dashed var(--rule-strong); border-radius: 6px; }
+      .face em { font-style: normal; color: var(--ink-3); font: var(--step--1)/1 var(--mono); }
+
+      /* Everything in the left column shares one axis: the sheet, the transcript and
+         the composer are each centred inside the space the rail leaves, so a question
+         you type lands under the question you read rather than under the page. */
+      .stream { padding: 22px 0; display: flex; flex-direction: column; gap: 22px; max-width: var(--measure); margin: 0 auto; }
+      /* The opening drawing shares the transcript's own measure instead of the page's
+         plate width, so an empty page and a page full of answers break on the same edge
+         and the invitation stays above the fold on a tool people are about to type into. */
+      .open { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 24px; align-items: center; }
+      .open img { width: 100%; height: auto; mix-blend-mode: multiply; }
+      .turn { display: flex; flex-direction: column; gap: 6px; }
+      .said { padding: 10px 14px; border-radius: 8px; max-width: 92%; }
+      .turn.you { align-items: flex-end; }
+      .turn.you .said { background: var(--paper-sunk); border: 1px solid var(--rule); }
+      .turn.agent .said {
+        font: 400 var(--step-2)/1.5 var(--serif);
+        letter-spacing: -0.005em;
+        padding-left: 15px;
+        border-left: 2px solid var(--clay);
+        max-width: 100%;
+      }
+      .turn.error .said { color: var(--brick); font: var(--step-0)/1.5 var(--mono); }
+      .who { font: var(--step--1)/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+      .trace { font: var(--step--1)/1.7 var(--mono); color: var(--ink-3); padding-left: 16px; }
+      .trace .t { color: var(--ink-2); }
+      .trace .t::after { content: " ·"; }
+      .trace .t:last-child::after { content: ""; }
+      .trace .bad { color: var(--brick); }
+
+      aside { border-left: 1px solid var(--rule); background: var(--paper-sunk); overflow-y: auto; padding: 26px 20px; }
+      /* The explanation lives in the rail so a curious person can open it without
+         leaving the transcript they are watching. */
+      .reads { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+      .reads > div { border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); padding: 9px 10px; display: flex; flex-direction: column; gap: 4px; transition: border-color var(--t-2) var(--ease), background var(--t-2) var(--ease); }
+      .reads b { font: var(--step--1)/1.2 var(--mono); color: var(--ink-3); transition: color var(--t-2) var(--ease); }
+      .reads span { font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-3); }
+      .reads div.on { border-color: var(--clay); background: var(--clay-wash); }
+      .reads div.on b { color: var(--clay); }
+
+      .howto { margin-top: 26px; border-top: 1px solid var(--rule); padding-top: 14px; }
+      .howto summary { font: var(--step--1)/1.6 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; list-style: none; display: flex; }
+      .howto summary::-webkit-details-marker { display: none; }
+      .howto summary::after { content: "+"; margin-left: auto; color: var(--clay); }
+      .howto[open] summary::after { content: "−"; }
+      .howto .steps { background: transparent; border: 0; border-radius: 0; }
+      .howto .steps > div { background: transparent; padding: 11px 0; border-bottom: 1px solid var(--rule); grid-template-columns: 22px 1fr; gap: 10px; }
+      .howto .steps > div:last-child { border-bottom: 0; }
+      .howto .steps p { font-size: var(--step--1); line-height: 1.55; color: var(--ink-2); }
+      .howto .steps b { color: var(--ink); font-weight: 400; }
+      .person { padding: 14px 0; border-bottom: 1px solid var(--rule); }
+      .person:last-child { border-bottom: 0; }
+      .person h3 { margin: 0; font: 400 var(--step-1)/1.3 var(--serif); }
+      .person h3 .tag { color: var(--ink-3); font: var(--step--1)/1 var(--mono); }
+      .person p { margin: 4px 0 0; color: var(--ink-2); font-size: var(--step-0); }
+      .person dl { margin: 9px 0 0; display: flex; gap: 14px; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
+      .person dl div { display: flex; flex-direction: column; gap: 4px; }
+      .person dt { color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.07em; font-size: 10px; }
+      .person.unknown { border-left: 2px solid var(--brick); padding-left: 12px; margin-left: -14px; }
+      .person.unknown h3 { color: var(--ink-2); font-family: var(--mono); font-size: var(--step-0); }
+      .person.two-way dl div:first-child dd { color: var(--moss); }
+      .rail-empty { color: var(--ink-3); font-size: var(--step-0); }
+
+      /* A rhythm is a claim about money, so it is one line with a date rather than a
+         gauge. Colour carries only whether that date has already passed. */
+      .due { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--rule); padding: 9px 0; font: var(--step-0)/1.5 var(--sans); color: var(--ink-2); cursor: pointer; }
+      .due b { display: block; font-weight: 600; color: var(--ink); }
+      .due.soon b { color: var(--clay); }
+      .due.late b { color: var(--brick); }
+      .due:hover b { text-decoration: underline; }
+
+      footer { border-top: 1px solid var(--rule); padding: 14px var(--pad) 18px; display: grid; grid-template-columns: minmax(0, 1fr) 321px; }
+      /* 321px is the rail plus its hairline, which is the only way the composer ends up
+         centred over the transcript rather than over the whole window. */
+      .footcol { min-width: 0; }
+      .suggests { max-width: var(--measure); margin: 0 auto 12px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+      .suggests::-webkit-scrollbar { display: none; }
+      .suggests button { flex: 0 0 auto; border: 1px solid var(--rule); background: var(--paper); color: var(--ink-2); border-radius: 999px; padding: 7px 13px; font: var(--step--1)/1 var(--sans); cursor: pointer; transition: border-color var(--t-1) var(--ease), color var(--t-1) var(--ease); }
+      .suggests button:hover { border-color: var(--ink); color: var(--ink); }
+      .suggests button.buy { border-color: var(--brick); color: var(--brick); }
+      .bar { max-width: var(--measure); margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      /* Talk, a box and Refresh fit on one line on a laptop and do not on a phone, and a
+         nowrap row simply carried Refresh off the edge of the screen. The box takes the
+         whole line when it has to, because typing a question is the thing being saved. */
+      #text { flex: 1 1 200px; min-width: 0; }
+      /* The ribbon only takes room while it has something to say, so a page that is
+         being typed into stays a page that is being typed into. */
+      .voicebar { max-width: var(--measure); margin: 0 auto; height: 0; overflow: hidden; transition: height var(--t-2) var(--ease); }
+      .voicebar.on { height: 58px; }
+      /* Hidden means unmeasured, so the ribbon stops drawing instead of painting
+         frames nobody can see. */
+      .voicebar canvas { display: none; width: 100%; height: 58px; }
+      .voicebar.on canvas { display: block; }
+      #mic { min-width: 108px; }
+      #mic.listening { background: var(--ink); border-color: var(--ink); }
+      .quiet { max-width: var(--measure); margin: 10px auto 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+      /* Each note is one idea, so the row breaks between them rather than inside the
+         words "/ to write", which is what made this line look like it had been knocked over. */
+      .quiet > * { white-space: nowrap; }
+      .quiet a { color: var(--ink-3); border-bottom-color: var(--rule); }
+      /* This one link names the voice engine and the language as well as where it goes,
+         so it is the single note allowed to break onto a second line instead of pushing
+         the page sideways on a narrow handset. */
+      #langLink { white-space: normal; min-width: 0; }
+      .quiet a:hover { color: var(--clay); border-bottom-color: var(--clay); }
+
+      @media (max-width: 900px) {
+        .open { grid-template-columns: 1fr; }
+        .open img { width: 240px; margin: 0 auto; }
+      }
+
+      @media (max-width: 860px) {
+        main { grid-template-columns: 1fr; }
+        footer { grid-template-columns: 1fr; }
+        aside { border-left: 0; border-top: 1px solid var(--rule); }
+        #log > .sheet { position: static; }
+      }
+
+      /* Same breakpoint the masthead folds at. A phone gets the two buttons on one line
+         and the box on the next, because a squeezed typing field is worse than a taller
+         console, and the question you type is the reason the page exists. */
+      @media (max-width: 719px) {
+        #text { flex: 1 1 100%; order: 3; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">it learns your people, then it stops asking</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app" aria-current="page">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div id="log">
+        <div class="sheet">
+          <div class="money">
+            <div class="amt" id="bal">·<small>USDC</small></div>
+            <div class="side">
+              <div class="gas" id="gas">gas ·</div>
+              <div>names bought <b id="bought">·</b></div>
+              <div id="netName">·</div>
+            </div>
+          </div>
+          <div class="faces" id="faces"><span class="rail-empty">reading your people…</span></div>
+        </div>
+
+        <div class="stream">
+          <div class="open" data-empty>
+            <div class="lede">
+              Ask about your money the way you would ask a friend.
+              <span>Tap a face above, tap a question below, or press Talk and say it out loud.
+                <a href="/life">See what people actually ask.</a></span>
+            </div>
+            <img src="/assets/app-desk.webp" width="1100" height="733" loading="lazy" decoding="async" alt="The man and the woman sitting opposite each other at a wooden table, he writing in an open ledger and she pointing at a small stack of cards between them, with a shelf of glass jars full of folded papers above them" />
+          </div>
+        </div>
+      </div>
+
+      <aside>
+        <div class="label">What your last question read</div>
+        <div class="reads" id="reads">
+          <div data-src="memory"><b>memory</b><span>Walrus</span></div>
+          <div data-src="chain"><b>the chain</b><span>Tatum</span></div>
+          <div data-src="index"><b>a paid name</b><span>the index</span></div>
+          <div data-src="sign"><b>your sign</b><span>wallet</span></div>
+        </div>
+        <p class="rail-empty" id="readNote">Nothing asked yet. When you do, these four light in the order the answer needed them, and that order is the whole product.</p>
+
+        <div class="label" style="margin-top:26px">What the rhythm says is due</div>
+        <div id="due" class="rows"><div class="rail-empty">reading the dates…</div></div>
+
+        <div class="label" style="margin-top:26px">People the agent can name</div>
+        <div id="people" class="rows"><div class="rail-empty">reading Walrus…</div></div>
+
+        <details class="howto">
+          <summary>How this page works</summary>
+          <div class="steps reveal" style="margin-top:16px">
+            <div><span class="num">1</span><div><p><b>Memory is read first.</b> A person you already named is answered from Walrus, and nothing on the chain or the index is contacted.</p></div></div>
+            <div><span class="num">2</span><div><p><b>Then the chain.</b> Tatum reads your transfers and the other side of each one, because inbound money does not appear in your own list.</p></div></div>
+            <div><span class="num">3</span><div><p><b>Money waits for you.</b> A payment you ask for becomes a ticket on the Pay page, and it leaves only when your wallet signs.</p></div></div>
+            <div><span class="num">4</span><div><p><b>An unknown address is offered, not bought.</b> Naming one costs <span data-stat="price">0.01</span> USDC once at the paid index, and every later mention of it is free.</p></div></div>
+          </div>
+          <p class="rail-empty">the model chooses from a fixed set of tools over this one transcript. <a href="/how">What each one does</a></p>
+        </details>
+      </aside>
+    </main>
+
+    <footer>
+      <div class="footcol">
+      <div class="suggests" id="suggests">
+        <button data-q="who do I pay most?">who do I pay most?</button>
+        <button data-q="how much have I sent this month?">this month</button>
+        <button data-q="who do I know?">who do I know?</button>
+        <button data-q="what do you remember about me?">what do you remember?</button>
+        <button class="buy" hidden>who is an unknown address?</button>
+      </div>
+      <div class="voicebar" id="voicebar"><canvas id="wave" aria-hidden="true"></canvas></div>
+      <div class="bar">
+        <button id="mic" class="primary">Talk</button>
+        <input id="text" type="text" placeholder="Ask about your money" autocomplete="off" spellcheck="false" />
+        <button id="reload" title="Re-read the chain, memory and balances">Refresh</button>
+      </div>
+      <div class="quiet">
+        <button class="switch" id="voiceSwitch" type="button" role="switch" aria-checked="true"><span class="dot"></span><span id="voiceLabel">voice out on</span></button>
+        <a href="/call" id="langLink">voice and language</a>
+        <span><kbd>/</kbd> to write</span>
+        <span><kbd>esc</kbd> to clear</span>
+      </div>
+      </div>
+    </footer>
+
+    <script type="module">
+      import { $, spoken, when, plain, shortAddr, mountWallet, loadMeta, buildSpeech, langSetting, langName, startMic, reveal, fillStats, remoteSpeech, gvoiceSetting, speakRemote } from "./shared.js";
+      import { createWave } from "./wave.js";
+      reveal();
+
+      const stream = () => $("log").querySelector(".stream");
+      let speakOn = true;
+
+      function row(kind, text) {
+        const wrap = document.createElement("div");
+        wrap.className = "turn " + kind;
+        wrap.innerHTML = `<div class="who">${kind === "you" ? "you" : kind === "agent" ? "total recall" : "stuck"}</div>`;
+        const said = document.createElement("div");
+        said.className = "said";
+        said.textContent = text;
+        wrap.appendChild(said);
+        stream().appendChild(wrap);
+        $("log").scrollTop = $("log").scrollHeight;
+        return said;
+      }
+
+      // The trace is the one place the machinery shows through, so it stays short
+      // and in plain words rather than snake_case internals.
+      const LABELS = {
+        people_you_know: "who you have named",
+        who_is_this: "looking up an address",
+        money_history: "reading the chain",
+        monthly_summary: "month by month",
+        name_a_person: "writing a name to Walrus",
+        find_person: "finding a name",
+        remember_this: "writing to Walrus",
+        what_do_i_remember: "searching memory",
+        memory_stats: "counting memories",
+        pay_usdc: "holding it for your sign",
+        paid_lookup: "buying a name",
+      };
+
+      // Which service each tool touches. The strip in the rail draws the whole
+      // claim of the product: memory first, chain second, money only under a sign.
+      const SOURCES = {
+        people_you_know: ["memory"],
+        find_person: ["memory"],
+        what_do_i_remember: ["memory"],
+        memory_stats: ["memory"],
+        remember_this: ["memory"],
+        name_a_person: ["memory"],
+        money_history: ["chain"],
+        monthly_summary: ["chain"],
+        who_is_this: ["chain", "index"],
+        paid_lookup: ["index"],
+        pay_usdc: ["sign"],
+      };
+
+      function markReads(steps) {
+        const order = [];
+        for (const s of steps) {
+          for (const src of SOURCES[s.name] || []) {
+            if (!order.includes(src)) order.push(src);
+          }
+        }
+        $("readNote").hidden = order.length > 0;
+        order.forEach((src, i) => {
+          const el = $("reads").querySelector(`[data-src="${src}"]`);
+          setTimeout(() => el.classList.add("on"), i * 240);
+        });
+      }
+
+      function trace(steps) {
+        if (!steps.length) return;
+        const div = document.createElement("div");
+        div.className = "trace";
+        for (const s of steps) {
+          const span = document.createElement("span");
+          span.className = s.ok ? "t" : "t bad";
+          span.textContent = s.ok ? LABELS[s.name] || s.name : LABELS[s.name] || s.name + ": " + s.error;
+          div.appendChild(span);
+        }
+        stream().appendChild(div);
+        $("log").scrollTop = $("log").scrollHeight;
+      }
+
+      /*
+       * Two mouths, one ribbon. Model audio moves the ribbon from the sound itself.
+       * Browser speech cannot be tapped, so each spoken word pushes a swell instead.
+       */
+      let stopAudio = null;
+      let said = 0;
+      /*
+       * Whether the speaker is busy is not the same as whether audio is playing right
+       * now. A sentence fetched from a model voice is on its way long before the first
+       * byte moves, and an ear opened in that gap hears the answer as a new question.
+       */
+      let mouthBusy = false;
+      function speak(text) {
+        if (!speakOn) return;
+        const mine = ++said;
+        stopAudio?.();
+        stopAudio = null;
+        mouthBusy = true;
+        speechSynthesis?.cancel();
+        const done = () => {
+          if (mine !== said) return;
+          mouthBusy = false;
+          if (!listening) showWave(false);
+        };
+        const local = () => {
+          const u = buildSpeech(text);
+          if (!u) {
+            done();
+            return;
+          }
+          u.onstart = () => showWave(true);
+          u.onboundary = () => wave.pulse(0.7);
+          u.onend = done;
+          speechSynthesis.speak(u);
+        };
+        if (!remoteSpeech().enabled) {
+          local();
+          return;
+        }
+        showWave(true);
+        speakRemote(text, {
+          onLevel: (level) => {
+            if (mine === said) wave.push(level);
+          },
+          // Silence is the usual case. A line only appears when a different vendor
+          // answered than the one was picked, which is when the page would otherwise
+          // be reporting a voice that never spoke.
+          onVoice: (v) => {
+            if (mine !== said) return;
+            const asked = (gvoiceSetting() || "").split(":")[0];
+            const who = (v.id || "").split(":")[0];
+            if (who && asked && who !== asked) row("error", `this sentence came from ${who}, because ${asked} did not answer`);
+          },
+          onEnd: done,
+        })
+          .then((stop) => {
+            if (mine === said) stopAudio = stop;
+            else stop();
+          })
+          .catch((err) => {
+            if (mine !== said) return;
+            row("error", "model voice failed, so this browser spoke it instead. " + err.message);
+            local();
+          });
+      }
+
+      async function send(text) {
+        text = text.trim();
+        if (!text) return;
+        row("you", text);
+        document.querySelectorAll("[data-empty]").forEach((el) => el.remove());
+        $("text").value = "";
+        [...$("reads").children].forEach((el) => el.classList.remove("on"));
+        const waiting = row("agent", "");
+        waiting.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+        try {
+          const res = await fetch("/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || "http " + res.status);
+          waiting.textContent = body.text;
+          trace(body.steps || []);
+          markReads(body.steps || []);
+          speak(body.text);
+          const names = (body.steps || []).map((s) => s.name);
+          if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup"].includes(n))) {
+            loadState();
+            loadBalance();
+          }
+          // Anything that ends up unsigned belongs on the review page, whether it
+          // was a payment or the fee for a lookup.
+          if ((body.steps || []).some((s) => s.result?.awaiting_signature)) location.href = "/pay";
+        } catch (err) {
+          waiting.parentNode.className = "turn error";
+          waiting.parentNode.querySelector(".who").textContent = "stuck";
+          waiting.textContent = err.message;
+        }
+      }
+
+      function card(p) {
+        const el = document.createElement("div");
+        const unnamed = !p.name;
+        // "mixed" and "flows" are chain words. The claim of the product is that
+        // you never have to learn them.
+        const dir = { sent: "you have sent", received: "you have received", mixed: "both ways" }[p.direction];
+        el.className = "person" + (unnamed ? " unknown" : "") + (p.direction === "mixed" ? " two-way" : "");
+        el.innerHTML =
+          `<h3>${unnamed ? shortAddr(p.address) : p.name}${p.flows > 1 ? ` <span class="tag">${p.flows} payments</span>` : ""}</h3>` +
+          `<p>${unnamed ? "the agent has never been told who this is" : plain(p.note) || "named, no note yet"}</p>` +
+          `<dl>
+             <div><dt>${dir || p.direction}</dt><dd>${spoken(p.net + " " + p.asset.replace(/ \(.*/, ""))}</dd></div>
+             <div><dt>${p.gapDays ? "cadence" : "last seen"}</dt><dd>${
+               p.gapDays ? "every " + p.gapDays + (p.gapDays === 1 ? " day" : " days") : when(p.lastSeen)
+             }</dd></div>
+           </dl>`;
+        if (unnamed) {
+          const hint = document.createElement("span");
+          hint.style.color = "var(--ink-3)";
+          hint.textContent = ", or tap the red question under the transcript";
+          el.querySelector("p").appendChild(hint);
+        }
+        return el;
+      }
+
+      // A face is a shortcut into the agent, not a profile page. The question it
+      // asks depends on which way the money has actually moved.
+      function face(p) {
+        const el = document.createElement("button");
+        const unnamed = !p.name;
+        el.className = "face" + (unnamed ? " unk" : "");
+        const label = unnamed ? shortAddr(p.address) : p.name;
+        el.innerHTML = `<span class="av">${unnamed ? "?" : label.slice(0, 1).toUpperCase()}</span>${label}<em>${
+          p.direction === "received" ? "in" : p.direction === "mixed" ? "both" : "out"
+        }</em>`;
+        el.onclick = () => {
+          if (unnamed) return send("who is " + p.address + "?");
+          if (p.direction === "received") return send("what have I received from " + p.name + "?");
+          if (p.direction === "mixed") return send("has " + p.name + " paid me back?");
+          send("how much have I sent to " + p.name + "?");
+        };
+        return el;
+      }
+
+      /*
+       * The rail says what is due before it says who you know, because a date is the
+       * one thing a list of people cannot give you. Tapping a line asks the agent about
+       * it, so the sentence on the right and the answer above are one measurement.
+       */
+      function renderDue(rows) {
+        const wrap = $("due");
+        wrap.innerHTML = "";
+        const soon = (rows ?? []).filter((r) => r.state === "late" || r.state === "due");
+        if (!soon.length) {
+          const measured = (rows ?? []).filter((r) => r.every_days).length;
+          wrap.innerHTML = `<div class="rail-empty">${
+            measured
+              ? `Nothing overdue. ${measured} rhythm${measured === 1 ? "" : "s"} measured so far.`
+              : "No rhythm measured yet. Two payments to the same person is when a cadence becomes a fact."
+          }</div>`;
+          return;
+        }
+        soon.forEach((r) => {
+          const el = document.createElement("button");
+          el.type = "button";
+          el.className = "due " + (r.state === "late" ? "late" : "soon");
+          el.dataset.q = r.state === "late" ? `is ${r.name} overdue?` : `what do I usually pay ${r.name}, and when is it due`;
+          el.innerHTML = `<b>${plain(r.name)}</b><span>${plain(r.line)}</span>`;
+          wrap.appendChild(el);
+        });
+      }
+
+      async function loadState(force) {
+        try {
+          const body = await fetch(force ? "/state?refresh=1" : "/state").then((r) => r.json());
+          if (!body.parties) throw new Error(body.error || "could not read");
+          renderDue(body.due);
+          $("bought").textContent = body.spend?.lookups ?? 0;
+          const parties = [...body.parties].sort(
+            (a, b) => (b.name ? 1 : 0) - (a.name ? 1 : 0) || Math.abs(b.net) - Math.abs(a.net),
+          );
+          const wrap = $("people");
+          wrap.innerHTML = "";
+          if (!parties.length) {
+            wrap.innerHTML = '<div class="rail-empty">Nobody yet. Pay someone, or name an address, and it appears here.</div>';
+            $("faces").innerHTML = '<span class="rail-empty">Nothing has moved through this wallet yet. <a href="/pay">Make the first payment</a>.</span>';
+            return;
+          }
+          parties.forEach((p) => wrap.appendChild(card(p)));
+          $("faces").innerHTML = "";
+          parties.slice(0, 8).forEach((p) => $("faces").appendChild(face(p)));
+
+          // A stranger inside your own history is the one question worth paying
+          // for, so it becomes a chip rather than a paragraph of advice.
+          const stranger = parties.find((p) => !p.name);
+          const buy = $("suggests").querySelector(".buy");
+          if (stranger) {
+            buy.hidden = false;
+            buy.dataset.q = "who is " + stranger.address + "?";
+            buy.textContent = "who is " + shortAddr(stranger.address) + "?";
+          } else {
+            buy.hidden = true;
+          }
+        } catch (err) {
+          $("people").innerHTML = '<div class="rail-empty">could not read: ' + err.message + "</div>";
+          $("due").innerHTML = '<div class="rail-empty">the dates could not be read either</div>';
+        }
+      }
+
+      async function loadBalance() {
+        try {
+          const body = await fetch("/balance").then((r) => r.json());
+          if (body.error) throw new Error(body.error);
+          const usdc = (body.holdings || []).find((h) => h.symbol === "USDC");
+          const sui = (body.holdings || []).find((h) => h.symbol === "SUI");
+          $("bal").innerHTML = (usdc ? usdc.amount.toFixed(2) : "0.00") + "<small>USDC</small>";
+          $("gas").innerHTML = "gas <b>" + (sui ? sui.amount.toFixed(3) : "0") + " SUI</b>";
+          $("gas").classList.toggle("low", !!sui && sui.amount < 0.5);
+          $("netName").textContent = body.network;
+        } catch {
+          $("gas").textContent = "gas not read";
+        }
+      }
+
+      $("suggests").addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (btn && btn.dataset.q) send(btn.dataset.q);
+      });
+
+      $("due").addEventListener("click", (e) => {
+        const btn = e.target.closest("button");
+        if (btn?.dataset.q) send(btn.dataset.q);
+      });
+
+      // Connecting a wallet changes the masthead, the rail and the balance, so all
+      // three are re-read together instead of one at a time.
+      const refresh = () => {
+        loadMeta(true).then((body) => {
+          fillStats(body);
+          mouthLabel();
+        });
+        loadState(true);
+        loadBalance();
+      };
+      mountWallet(refresh);
+      // The masthead counts, the people rail and the voice label are all facts about the
+      // server, and none of them arrive until the first read is asked for. Opening the
+      // page and being told "this browser's voice" while the server is holding a Fish key
+      // is the page lying about itself, so the read happens on load rather than on click.
+      refresh();
+      $("reload").onclick = refresh;
+      $("voiceSwitch").onclick = () => {
+        speakOn = !speakOn;
+        // Muting mid sentence has to actually stop it, not just promise silence
+        // for the next one.
+        if (!speakOn) {
+          speechSynthesis?.cancel();
+          stopAudio?.();
+          stopAudio = null;
+          if (!listening) showWave(false);
+        }
+        $("voiceSwitch").classList.toggle("off", !speakOn);
+        $("voiceSwitch").setAttribute("aria-checked", String(speakOn));
+        $("voiceLabel").textContent = "voice out " + (speakOn ? "on" : "off");
+      };
+      // Which voice is actually running is a fact about the server, not the page, so
+      // the quiet row reads it from the state the masthead already fetches. The ear is
+      // named too, because this page turns the microphone around once per sentence and
+      // the Call page holds it open, which is a different engine wearing the same face.
+      const mouthLabel = () => {
+        const r = remoteSpeech();
+        if (!r.known) return;
+        $("langLink").textContent = `this page listens with ${langName(langSetting())} and speaks with ${r.enabled ? r.model : "this browser"} · a two-way call is on Call`;
+      };
+      mouthLabel();
+      $("text").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") send($("text").value);
+        if (e.key === "Escape") $("text").value = "";
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "/" && document.activeElement !== $("text")) {
+          e.preventDefault();
+          $("text").focus();
+        }
+      });
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const wave = createWave($("wave"));
+      const showWave = (on) => $("voicebar").classList.toggle("on", on);
+      let stopMic = null;
+      let listening = false;
+      if (!SpeechRecognition) {
+        $("mic").textContent = "No mic here";
+        $("mic").disabled = true;
+      } else {
+        const rec = new SpeechRecognition();
+        rec.lang = langSetting();
+        rec.interimResults = false;
+        rec.onresult = (e) => send(e.results[0][0].transcript);
+        rec.onerror = (e) => {
+          if (e.error !== "no-speech") row("error", "microphone: " + e.error);
+        };
+        // One result ends the recognition, not the session. The ear opens again so a
+        // conversation does not need a button press per sentence.
+        rec.onend = () => {
+          if (!listening) return;
+          // Opening the ear while the agent's own answer is still coming out of the
+          // speaker is how it hears itself, and then answers its own sentence one turn
+          // late. So the restart waits for the room to go quiet, and keeps waiting.
+          const wait = () => {
+            if (!listening) return;
+            if (mouthBusy || stopAudio || (speechSynthesis?.speaking ?? false)) return setTimeout(wait, 300);
+            try {
+              rec.start();
+            } catch {
+              /* already running */
+            }
+          };
+          setTimeout(wait, 700);
+        };
+        const off = () => {
+          listening = false;
+          stopMic?.();
+          stopMic = null;
+          showWave(false);
+          $("mic").classList.remove("listening");
+          $("mic").textContent = "Talk";
+        };
+        $("mic").onclick = async () => {
+          if (listening) {
+            try {
+              rec.stop();
+            } catch { /* not running */ }
+            off();
+            return;
+          }
+          listening = true;
+          // Opening the ear while the agent is still talking makes it hear its own
+          // voice back, so the answer is cut off first.
+          speechSynthesis?.cancel();
+          stopAudio?.();
+          stopAudio = null;
+          // The sentence being thrown away must not keep the ear shut after it is gone.
+          said++;
+          mouthBusy = false;
+          showWave(true);
+          wave.idle();
+          $("mic").classList.add("listening");
+          $("mic").textContent = "Listening";
+          try {
+            rec.start();
+          } catch { /* already running */ }
+          stopMic = await startMic((level) => wave.push(level)).catch((err) => {
+            row("error", err.message);
+            off();
+            return null;
+          });
+        };
+      }
+
+      refresh();
+    </script>
+  </body>
+</html>

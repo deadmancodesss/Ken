@@ -1,0 +1,18 @@
+{
+  "_note": "A stand-in for a commercial address tagging API. Every identity below is invented for this recording and belongs to no real business.",
+  "0xcb8443096332cb1c89faf2b4dd397e77a0749c8ed18ddb1a74bd4ba86ab53535": {
+    "name": "Harbor Print Studio",
+    "kind": "Business",
+    "note": "print and signage shop, takes an invoice every couple of weeks"
+  },
+  "0xaaf0777636bb3c77d7a5dcd9dc1fc6b895525939700ab4891780821dab3c20a5": {
+    "name": "Nightlight Taxi Co",
+    "kind": "Business",
+    "note": "airport transfers, charges by the ride and never sends a bill"
+  },
+  "0x79d3bc017cef1e768e3dadebabd2561e23871e720bd089365377c099533e96c3": {
+    "name": "Meridian Lock and Key",
+    "kind": "Business",
+    "note": "locksmith, called out once for a stuck door and paid on the spot"
+  }
+}

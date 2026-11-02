@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Total Recall in an ordinary week · five moments it takes over</title>
+    <meta name="description" content="What a voice agent that remembers your people changes about a week of money: the split bill, the quiet subscription, the late plumber, the mystery debit and the hands-free question." />
+    <link rel="stylesheet" href="/theme.css" />
+    <script>
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <noscript><style>.reveal { opacity: 1; transform: none }</style></noscript>
+    <style>
+      .wrap { max-width: 880px; margin: 0 auto; padding: 0 var(--pad); }
+      section { padding: 60px 0; border-bottom: 1px solid var(--rule); }
+      section:last-of-type { border-bottom: 0; }
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px; }
+      h2 { font-size: var(--step-3); margin-bottom: 10px; }
+      .lead { color: var(--ink-2); max-width: 62ch; margin-bottom: 30px; }
+      .cap { margin-top: 14px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+
+      /* One scene is one card: when, what you said, what came back, and the ledger
+         line at the bottom that says what it actually read. */
+      .scene { border: 1px solid var(--rule); border-radius: 8px; padding: 24px 26px 0; margin-bottom: 22px; overflow: hidden; }
+      .scene .when { display: flex; gap: 14px; align-items: baseline; margin-bottom: 18px; }
+      .scene .when b { font: 400 var(--step-2)/1.3 var(--serif); }
+      .scene .when span { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); margin-left: auto; white-space: nowrap; }
+      /* The drawing runs edge to edge inside the card, so it reads as a panel of the
+         scene rather than as an illustration parked above it. */
+      .scene figure { margin: 0 -26px 18px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+      .scene figure img { display: block; width: 100%; height: auto; mix-blend-mode: multiply; }
+      .line { display: flex; gap: 16px; align-items: baseline; padding: 13px 0; border-top: 1px solid var(--rule); }
+      .line .from { flex: 0 0 76px; font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .line .said { color: var(--ink); font-size: var(--step-0); max-width: 60ch; }
+      .line.it .said { font: 400 var(--step-1)/1.5 var(--serif); }
+      .meter { display: flex; flex-wrap: wrap; gap: 22px; margin: 16px -26px 0; padding: 13px 26px; background: var(--paper-sunk); border-top: 1px solid var(--rule); font: var(--step--1)/1.6 var(--mono); color: var(--ink-2); }
+      .meter b { font-weight: 400; color: var(--ink); }
+      .meter .free { color: var(--moss); }
+      .meter .paid { color: var(--brick); }
+
+      .before { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+      .before > div { background: var(--paper); padding: 20px 22px; }
+      .before h4 { font: 400 var(--step-0)/1.4 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 12px; }
+      .before p { color: var(--ink-2); font-size: var(--step-0); margin-bottom: 9px; }
+      .before .after h4 { color: var(--clay); }
+
+      .noes { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 26px; }
+      .noes > div { border-top: 2px solid var(--rule-strong); padding-top: 12px; }
+      .noes h3 { font: 400 var(--step-1)/1.4 var(--serif); margin-bottom: 6px; }
+      .noes p { color: var(--ink-2); font-size: var(--step-0); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">five moments in an ordinary week</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life" aria-current="page">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <section>
+          <div class="kicker reveal">Who these people are</div>
+          <h2 class="reveal">Five invented wallets doing ordinary things to each other</h2>
+          <p class="lead reveal">
+            Sana, Dev, Tara, Imran and Ravi are not real. They are testnet wallets that have been sending each other
+            small amounts on a schedule so the agent has a genuine history to notice. Everything below is the agent
+            answering from that real history, with the same addresses and the same totals you would see on
+            <a href="/memory">the memory page</a>.
+          </p>
+          <div class="before reveal">
+            <div>
+              <h4>what a wallet shows you</h4>
+              <p>A list of transfers, newest first, with hex addresses you have to recognise yourself.</p>
+              <p>A balance that tells you the total and nothing about why.</p>
+            </div>
+            <div class="after">
+              <h4>what this shows you</h4>
+              <p>The person attached to the address, the rhythm you taught it once, and the one thing that is off.</p>
+              <p>A sentence you can argue with, and a running total of what each answer cost.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="kicker reveal">Five moments</div>
+          <h2 class="reveal">The chore it takes over</h2>
+
+          <div class="scene reveal">
+            <div class="when"><b>Tuesday, over a message thread</b><span>Dev, the split bill</span></div>
+            <figure>
+              <img src="/assets/life-thread.webp" width="1100" height="733" loading="lazy" decoding="async" alt="Two people at opposite ends of a garden talking through a tin can telephone on a long taut string, with one coin hanging from the string on a clothes peg" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">has Dev paid me back for dinner</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">Two transfers between you, and the money that came back is under a cent, so the bill you split is still mostly outstanding. You told me Dev returns money after splitting a bill.</span></div>
+            <div class="meter">
+              <div>read <b>Tatum, then your note</b></div>
+              <div>bought <b>nothing</b></div>
+              <div class="free">cost 0.00 USDC</div>
+            </div>
+          </div>
+
+          <div class="scene reveal">
+            <div class="when"><b>Friday, standing at the kettle</b><span>Tara, the subscription</span></div>
+            <figure>
+              <img src="/assets/life-kettle.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man pouring from a stovetop kettle at a kitchen counter while a woman beside him holds out a plain mug, with a coin and a closed notebook between them" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">what do I usually pay Tara</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">0.95 USDC each time, and you have paid it twice for a total of 1.9. That one is your cloud storage subscription, and you taught me it renews about half monthly.</span></div>
+            <div class="meter">
+              <div>read <b>two transfers from the chain, plus your note</b></div>
+              <div>bought <b>nothing</b></div>
+              <div class="free">cost 0.00 USDC</div>
+            </div>
+          </div>
+
+          <div class="scene reveal">
+            <div class="when"><b>The 4th of the month, in the car</b><span>Ravi, a name with no money behind it</span></div>
+            <figure>
+              <img src="/assets/life-plumber.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man in the passenger seat of a small car pointing at a dripping tap and a wrench, while far away a woman at her desk pulls a card from a wooden index cabinet" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">did the plumber get paid this month</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">There has been no money at all between you and Ravi in the range I can read, so I cannot say. Imran is the one I have a flat maintenance note for, and you paid Imran 1.5 USDC once.</span></div>
+            <div class="meter">
+              <div>read <b>memory, then the chain</b></div>
+              <div>answered <b>the thing it could not support</b></div>
+              <div class="free">cost 0.00 USDC</div>
+            </div>
+          </div>
+
+          <div class="scene reveal">
+            <div class="when"><b>Sunday, one debit you cannot place</b><span>an unknown address, bought once</span></div>
+            <figure>
+              <img src="/assets/life-taxi.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man at an airport kerb handing a coin through the open window of a small taxicab while a very long blank paper receipt trails out and pools on the ground" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">who did I send 0.45 to</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">I have never seen that address and memory has nothing, so naming it costs 0.01 USDC at the paid index. It is on the Pay page for you to sign.</span></div>
+            <div class="line"><span class="from">you sign</span><span class="said">your wallet, not ours</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">Nightlight Taxi Co. Airport transfers, they charge by the ride and never send a bill. I have written that down, and asking me again will cost nothing.</span></div>
+            <div class="meter">
+              <div>read <b>memory, then a 402 quote, then the chain</b></div>
+              <div>bought <b>one lookup</b></div>
+              <div class="paid">cost 0.01 USDC, once, forever free after</div>
+            </div>
+          </div>
+
+          <div class="scene reveal">
+            <div class="when"><b>The next morning</b><span>the same address again</span></div>
+            <figure>
+              <img src="/assets/life-morning.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man at a breakfast table asking without looking up from his bowl while a woman at her desk slides an already written answer card out of a drawer" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">who was that taxi payment</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">The airport taxi company. They charge by the ride and never send you an invoice, which is the habit you told me about.</span></div>
+            <div class="meter">
+              <div>read <b>Walrus only</b></div>
+              <div>bought <b>nothing</b></div>
+              <div class="free">cost 0.00 USDC, and the chain was not touched</div>
+            </div>
+          </div>
+
+          <div class="scene reveal">
+            <div class="when"><b>Any of those, hands full</b><span>the same answers out loud</span></div>
+            <figure>
+              <img src="/assets/call-live.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man walking along a street carrying two full shopping bags and a bunch of greens, speaking aloud, with sound arcs crossing to a woman seated far away at her desk who answers him" />
+            </figure>
+            <div class="line"><span class="from">you say</span><span class="said">aloud, into a call, in a voice you picked and at a pace you set</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">the same sentences, spoken back, with the transcript on screen so you can check it before you act on it</span></div>
+            <div class="meter">
+              <div>read <b>identical tools</b></div>
+              <div>bought <b>nothing new</b></div>
+              <div class="free">language, voice and pace stored per browser</div>
+            </div>
+          </div>
+
+          <p class="cap reveal">the fifth scene is the point of the first four. Nothing here needs a dashboard open in front of you.</p>
+        </section>
+
+        <section>
+          <div class="kicker reveal">What changes across a week</div>
+          <div class="before reveal">
+            <div>
+              <h4>the week without it</h4>
+              <p>You scroll a transfer list trying to remember who 0x8f3a is.</p>
+              <p>You find the bill you split by opening the chat where it happened.</p>
+              <p>You notice the subscription renewal only after it lands early.</p>
+              <p>You let one small mystery debit go because looking it up is annoying.</p>
+            </div>
+            <div class="after">
+              <h4>the week with it</h4>
+              <p>You ask once, out loud, and the name is there for the rest of your life.</p>
+              <p>Each person carries a usual amount and a last seen date, so the question becomes a sentence instead of a scroll.</p>
+              <p>Every answer says what it read and what it cost, so you can tell a memory from a purchase.</p>
+              <p>Money leaves only when your own wallet signs, and you can see the running total from any page.</p>
+            </div>
+          </div>
+          <p class="cap reveal">
+            one honest limit on this page. The cadence numbers are computed from the dates money actually moved, and
+            the wallets behind these five people were funded today, so every_about_days is still blank for all of them.
+            The rhythm in the answers above comes from what you taught the agent in a note, and the arithmetic joins it
+            once the history spans more than a day.
+          </p>
+        </section>
+
+        <section>
+          <div class="kicker reveal">What it will not do</div>
+          <div class="noes reveal">
+            <div><h3>Pay on a sentence</h3><p>It prepares the transaction and stops. Your signature is the confirmation, and refusing leaves nothing written.</p></div>
+            <div><h3>Guess a name</h3><p>An unknown address is reported as unknown. A paid lookup is offered, not performed silently, and the price is shown before anything is signed.</p></div>
+            <div><h3>Share your people</h3><p>Notes live in a namespace derived from the wallet you speak for, so your Sana is not somebody else's Sana.</p></div>
+            <div><h3>Hold your key</h3><p>No secret of yours is stored on this server, and the demo wallet is a scripted stand-in with worthless testnet money in it.</p></div>
+          </div>
+          <p class="cap reveal">read the machinery behind all of this on <a href="/how">the how it works page</a>, or just <a href="/app">start talking to it</a>.</p>
+        </section>
+      </div>
+    </main>
+
+    <footer class="page" style="border-top:1px solid var(--rule);padding:26px var(--pad) 40px">
+      <div class="inner" style="max-width:880px;margin:0 auto;display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
+        <span class="quiet">every person on this page is an invented testnet wallet</span>
+        <span class="quiet" style="margin-left:auto">the history behind them is real</span>
+      </div>
+    </footer>
+
+    <script type="module">
+      import { reveal, loadMeta, fillStats, mountWallet } from "./shared.js";
+      reveal();
+      mountWallet(() => loadMeta().then(fillStats));
+      loadMeta().then(fillStats);
+    </script>
+  </body>
+</html>

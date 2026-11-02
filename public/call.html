@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Call · Total Recall</title>
+    <script>
+      /* Wallets announce themselves before any module can load, so this captures
+         the announcement into a global that public/wallet.js reads later. */
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      /* A fixed height column shrinks its children until they print on top of each
+         other, which is exactly what this page did on a phone. Nothing here is
+         allowed to shrink, and auto margins centre the group only while there is
+         spare room, so a tall page scrolls instead of collapsing. */
+      body { height: auto; min-height: 100%; }
+      main { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 34px var(--pad) 46px; min-height: 0; }
+      main > * { flex: 0 0 auto; }
+      main > :first-child { margin-top: auto; }
+      main > :last-child { margin-bottom: auto; }
+
+      .presence { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+      /* The ribbon is drawn from real microphone level, so it moves when you do. */
+      .wave { display: block; width: min(560px, 84vw); height: 148px; }
+      .who { font: 400 var(--step-2)/1.3 var(--serif); }
+      .status { font: var(--step--1)/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+      .status.speaking { color: var(--clay); }
+
+      .caps { width: 100%; max-width: 520px; min-height: 132px; display: flex; flex-direction: column; gap: 14px; justify-content: flex-end; }
+      .cap { font: 400 var(--step-1)/1.5 var(--serif); color: var(--ink); }
+      .cap.you { font: var(--step-0)/1.5 var(--sans); color: var(--ink-2); text-align: right; }
+      .cap.pending { color: var(--ink-3); }
+      .cap.tool { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+
+      .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+      .end { border-color: var(--brick); color: var(--brick); }
+      .end:hover { background: var(--brick); color: var(--paper); }
+      .onair { background: var(--clay); border-color: var(--clay); color: var(--paper); min-width: 132px; }
+      .onair.listening { background: var(--ink); border-color: var(--ink); }
+
+      /* The three choices that change how a call sounds read as one settings card,
+         not a wrapping row of loose pills that lands wherever the width allows. */
+      .voice { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; width: min(760px, 100%); }
+      .voice .set { background: var(--paper); padding: 13px 15px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; min-width: 0; }
+      .voice label { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .voice .paceRow { display: flex; align-items: center; gap: 10px; width: 100%; }
+      .voice #audition { align-self: center; }
+      .voice b { color: var(--ink-2); min-width: 34px; font: var(--step--1)/1 var(--mono); }
+      .fineprint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); max-width: 46ch; text-align: center; }
+
+      /* The call stays centred on screen and the explanation sits below it, because
+         the honest use of this page is a conversation with the page in front of you,
+         not a document you scroll while it talks. */
+      .explainer { border-top: 1px solid var(--rule); padding: 44px var(--pad) 54px; }
+      .explainer .inner { max-width: 780px; margin: 0 auto; }
+      .explainer h2 { font-size: var(--step-3); margin-bottom: 8px; }
+      .explainer .lead { color: var(--ink-2); max-width: 62ch; margin-bottom: 26px; }
+      .explainer .tail { margin-top: 22px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .beats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
+      .beats b { font-weight: 400; color: var(--ink); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 6px 13px; white-space: nowrap; }
+      .beats i { font-style: normal; color: var(--clay); animation: beat 2.8s steps(1) infinite; }
+      .beats i:nth-of-type(2) { animation-delay: 0.7s }
+      .beats i:nth-of-type(3) { animation-delay: 1.4s }
+      .beats i:nth-of-type(4) { animation-delay: 2.1s }
+      @keyframes beat { 0%, 40% { opacity: 0.2 } 41%, 100% { opacity: 1 } }
+      @media (prefers-reduced-motion: reduce) { .beats i { animation: none; opacity: 1 } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">hands free, the way you would actually use it</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call" aria-current="page">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="presence">
+        <canvas class="wave" id="wave" aria-hidden="true"></canvas>
+        <div class="who">Total Recall</div>
+        <div class="status" id="status">not connected</div>
+      </div>
+
+      <div class="caps" id="caps"></div>
+
+      <div class="controls">
+        <button class="onair" id="talk">Start call</button>
+        <button class="end" id="stop" disabled>Hang up</button>
+      </div>
+
+      <div class="voice">
+        <div class="set">
+          <label for="lang">speaks</label>
+          <select id="lang"></select>
+        </div>
+        <div class="set">
+          <label for="voices">voice</label>
+          <select id="voices"></select>
+        </div>
+        <div class="set">
+          <label for="pace">pace</label>
+          <div class="paceRow">
+            <input id="pace" type="range" min="0.85" max="1.3" step="0.01" />
+            <b id="paceLabel">1.03x</b>
+          </div>
+        </div>
+        <div class="set">
+          <label for="audition">hearing</label>
+          <button class="chip" id="audition">audition</button>
+        </div>
+        <div class="set">
+          <label for="barge">interrupt</label>
+          <button class="switch off" id="barge" type="button" role="switch" aria-checked="false"><span class="dot"></span><span id="bargeLabel">wait for it to finish</span></button>
+        </div>
+      </div>
+
+      <p class="fineprint" id="fineprint"></p>
+    </main>
+
+    <section class="explainer">
+      <div class="inner">
+        <div class="label">What a call actually does</div>
+        <h2 class="reveal">Same tools, different mouth</h2>
+        <p class="lead reveal">
+          Nothing on this page is a second agent. The microphone streams into one open call, that speech goes through
+          the same tools the Talk page uses, and the answer comes back as audio you can interrupt by talking over it.
+          The transcript stays on screen so you can check a number before you act on it.
+        </p>
+        <div class="beats reveal">
+          <b>you speak</b><i>&rarr;</i><b>the model closes the sentence</b><i>&rarr;</i><b>memory answers first</b><i>&rarr;</i><b>the answer is spoken</b>
+        </div>
+        <figure class="plate">
+          <img src="/assets/call-live.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man walking along a street carrying two full shopping bags and a bunch of greens, speaking aloud, with sound arcs crossing to a woman seated far away at her desk who answers him" />
+          <figcaption>What a call is on this build. Your hands stay full, you say the sentence into the air, and she answers from the page she already wrote on. The arcs are the only part that travels, and nothing you have to say twice.</figcaption>
+        </figure>
+        <div class="steps reveal" style="margin-top:30px">
+          <div><span class="num">1</span><div><h4>What the pickers do on a live call</h4><p>A live call hears whatever language you speak in and answers in it, so the three pickers below govern the turn by turn path that runs when the server has no live key. On that path the first sets the language the microphone listens for, the second lists the voices this browser has for it, the slider sets how fast it talks, and all three are remembered for next time. Audition says one sentence so you can hear it before a call.</p></div></div>
+          <div><span class="num">2</span><div><h4>The ribbon is your real voice</h4><p>Four curves drift against each other and their height comes from the microphone, so it swells when you do and settles when you stop. Nothing on it runs on a timer, and when the agent speaks each word pushes a swell through it.</p></div></div>
+          <div><span class="num">3</span><div><h4>A payment is never signed by voice</h4><p>If the answer needs money, the call stops and points you at the Pay page, where your own wallet has to approve it.</p></div></div>
+          <div><span class="num">4</span><div><h4>A misheard name is not the wrong person</h4><p>A microphone writes Sana as Sauna often enough to matter. Reading memory corrects the one letter and says the stored name back to you. Moving money refuses the correction and asks for an address, because a guess there spends real USDC on the wrong stranger.</p></div></div>
+        </div>
+        <figure class="plate" style="margin-top:34px">
+          <img src="/assets/call-path.webp" width="1100" height="733" loading="lazy" decoding="async" alt="The inside of a wooden machine with two turning reels, a row of round jacks and coiled leads, a brass horn on top pointed at a man speaking into a standing microphone, and a thread running up to an ink drawn cloud held by two operators at the side" />
+          <figcaption>What the call is wired as, drawn honestly. Your microphone is the only thing that goes upstream, a small box on this server holds the open line to the model, and the horn is the answer coming back down the same line. It is not a WebRTC call, so the box has to do the work a browser would normally do for free: decide when your sentence ends, and stop the horn the moment you start talking over it.</figcaption>
+        </figure>
+        <p class="tail reveal">the voice below is the model's own when a key is set, and this browser's when it is not. <a href="/how">What is finished and what is not</a></p>
+      </div>
+    </section>
+
+    <script type="module">
+      import { $, mountWallet, loadMeta, voicesWorthHearing, spokenLanguages, langSetting, setLang, tidyVoice, paceSetting, buildSpeech, startMic, reveal, remoteSpeech, noteSpeech, gvoiceSetting, setGvoice, speakRemote } from "./shared.js";
+      import { createWave } from "./wave.js";
+      import { captureMic, createPlayer, openLive, upstream, floorIsMine } from "./live.js";
+      reveal();
+
+      const wave = createWave($("wave"));
+      wave.idle();
+
+      const status = (text, speaking) => {
+        $("status").textContent = text;
+        $("status").classList.toggle("speaking", !!speaking);
+      };
+
+      function caption(kind, text) {
+        const div = document.createElement("div");
+        div.className = "cap " + kind;
+        div.textContent = text;
+        $("caps").appendChild(div);
+        while ($("caps").children.length > 4) $("caps").firstChild.remove();
+        return div;
+      }
+
+      /*
+       * Two transports, one tool layer. Live carries audio both ways through the
+       * server and needs no recognition of its own. The turn path is what runs when
+       * the server has no realtime key, and every page above works either way.
+       */
+      const transport = {
+        live: false,
+        async ask(text) {
+          const res = await fetch("/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || "http " + res.status);
+          return body.text;
+        },
+      };
+
+      let chosen = null;
+      /** Which vendor produced the last spoken sentence, read from the response header. */
+      let lastMouth = null;
+      /**
+       * The live gate. `barge` hands the microphone back while the agent speaks, which is
+       * only safe on headphones, so it starts shut. `tailUntil` is the moment the room is
+       * quiet enough to trust again, and `liveVoice` is the name the socket answered with.
+       */
+      let barge = false;
+      let tailUntil = 0;
+      let liveVoice = "";
+      function fillLangs() {
+        const langs = spokenLanguages();
+        const sel = $("lang");
+        if (!langs.length) {
+          sel.innerHTML = '<option value="en-US">english</option>';
+          sel.disabled = true;
+          return;
+        }
+        const want = langSetting();
+        sel.disabled = false;
+        sel.innerHTML = langs.map((l) => `<option value="${l.code}">${l.name}</option>`).join("");
+        sel.value = langs.some((l) => l.code === want) ? want : langs[0].code;
+        setLang(sel.value);
+      }
+      function fillVoices() {
+        const sel = $("voices");
+        const remote = remoteSpeech();
+        // Three vendors answer for the agent's voice and their names are not the same
+        // kind of thing, so the picker groups them and labels what each one is and where
+        // it sits in the order they get asked.
+        const GROUP = { fish: "Fish Audio, asked first", openrouter: "HeyGen, asked second", gemini: "Google Gemini, asked last" };
+        if (remote.enabled) {
+          const saved = gvoiceSetting();
+          // A vendor can hold a key and still be out of sentences, and listing its
+          // voices as if they worked is the difference between a picker and a promise.
+          const resting = new Map((remote.providers ?? []).map((p) => [p.id, p.resting || ""]));
+          const groups = new Map();
+          for (const v of remote.voices) {
+            if (!groups.has(v.provider)) groups.set(v.provider, []);
+            groups.get(v.provider).push(v);
+          }
+          sel.innerHTML = [...groups]
+            .map(([p, list]) => {
+              const why = resting.get(p) ?? "";
+              return (
+                `<optgroup label="${GROUP[p] ?? p}${why ? ", resting" : ""}">` +
+                list.map((v) => `<option value="${v.id}" title="${v.note}${why ? `, ${why}` : ""}">${v.label}</option>`).join("") +
+                "</optgroup>"
+              );
+            })
+            .join("");
+          sel.value = remote.voices.some((v) => v.id === saved) ? saved : remote.voice;
+          setGvoice(sel.value);
+          return;
+        }
+        const list = voicesWorthHearing();
+        sel.innerHTML = list.length
+          ? list.map((v, i) => `<option value="${i}">${tidyVoice(v)}</option>`).join("")
+          : '<option value="0">no voice for this language</option>';
+        const savedLocal = localStorage.getItem("tr.voice");
+        chosen = list.find((v) => tidyVoice(v) === savedLocal) ?? list[0] ?? null;
+        if (chosen) sel.value = String(list.indexOf(chosen));
+      }
+      function fillBoth() {
+        fillLangs();
+        fillVoices();
+      }
+      if (window.speechSynthesis) {
+        fillBoth();
+        speechSynthesis.onvoiceschanged = fillBoth;
+        $("lang").onchange = (e) => {
+          setLang(e.target.value);
+          // A saved English name is meaningless in another language, so start from the best voice there.
+          localStorage.removeItem("tr.voice");
+          fillVoices();
+          restartRec();
+          fineprint();
+        };
+      }
+      $("voices").onchange = (e) => {
+        if (remoteSpeech().enabled) {
+          setGvoice(e.target.value);
+          fineprint();
+          return;
+        }
+        chosen = voicesWorthHearing()[Number(e.target.value)] ?? null;
+        if (chosen) localStorage.setItem("tr.voice", tidyVoice(chosen));
+      };
+      $("pace").value = String(paceSetting());
+      $("paceLabel").textContent = paceSetting().toFixed(2) + "x";
+      $("pace").oninput = (e) => {
+        const pace = Number(e.target.value);
+        $("paceLabel").textContent = pace.toFixed(2) + "x";
+        localStorage.setItem("tr.pace", String(pace));
+      };
+      /*
+       * Two mouths, one promise. The model's audio drives the ribbon from the sound
+       * itself; the browser's speech has no tap on its output, so each spoken word
+       * pushes the swell instead. Whichever runs, the ribbon is reporting something real.
+       */
+      let stopAudio = null;
+      let said = 0;
+      function say(text) {
+        const mine = ++said;
+        stopAudio?.();
+        stopAudio = null;
+        speechSynthesis?.cancel();
+        const done = () => {
+          if (mine !== said) return;
+          status(open ? "listening" : "not connected", open);
+          wave.idle();
+        };
+        const local = () => {
+          const u = buildSpeech(text);
+          if (!u) {
+            status("this browser has no speech", false);
+            wave.idle();
+            return;
+          }
+          u.onstart = () => status("speaking", true);
+          u.onboundary = () => wave.pulse(0.72);
+          u.onend = done;
+          speechSynthesis.speak(u);
+        };
+        if (!remoteSpeech().enabled) {
+          local();
+          return;
+        }
+        status("speaking", true);
+        speakRemote(text, {
+          onLevel: (level) => {
+            if (mine === said) wave.push(level);
+          },
+          // The server names the vendor that produced these bytes, which is the only
+          // honest way to say who spoke when one of them is out of quota.
+          onVoice: (v) => {
+            lastMouth = v;
+            fineprint();
+          },
+          onEnd: done,
+        })
+          .then((stop) => {
+            if (mine === said) stopAudio = stop;
+            else stop();
+          })
+          .catch((err) => {
+            if (mine !== said) return;
+            fineprint(`model voice failed, so this browser spoke it instead. ${err.message}`);
+            local();
+          });
+      }
+      $("audition").onclick = () => say("Sana, one point three three USDC over four payments, most recently today.");
+
+      // The one control on this page that decides who the model gets to hear.
+      $("barge").onclick = () => {
+        barge = !barge;
+        $("barge").classList.toggle("off", !barge);
+        $("barge").setAttribute("aria-checked", String(barge));
+        $("bargeLabel").textContent = barge ? "talk over it, headphones on" : "wait for it to finish";
+        fineprint();
+      };
+
+      function hush() {
+        speechSynthesis?.cancel();
+        stopAudio?.();
+        stopAudio = null;
+      }
+
+      let stopMic = null;
+      async function meter() {
+        stopMic = await startMic((level) => wave.push(level));
+      }
+      function stopMeter() {
+        stopMic?.();
+        stopMic = null;
+        wave.idle();
+      }
+
+      /*
+       * A live call has no record button and no per-turn round trip. The microphone
+       * streams continuously, the model decides when a sentence has ended, and its
+       * answer arrives as audio you can talk over. The turn-based path below is what
+       * runs when the server has no realtime key.
+       */
+      let call = null;
+      let player = null;
+      let stopLiveMic = null;
+      let lineYou = null;
+      let lineIt = null;
+
+      /*
+       * Transcripts arrive in pieces, so each side of the conversation keeps one line
+       * on screen that grows rather than one line per packet.
+       */
+      function liveLine(kind, text) {
+        const fresh = !($("caps").contains(kind === "you" ? lineYou : lineIt));
+        const el = fresh ? caption(kind, text) : (kind === "you" ? lineYou : lineIt);
+        if (fresh) el.textContent = text;
+        else el.textContent += text;
+        if (kind === "you") lineYou = el;
+        else lineIt = el;
+        return el;
+      }
+      function resetLines() {
+        lineYou = null;
+        lineIt = null;
+      }
+
+      async function liveCall() {
+        // The microphone is asked for first, because a browser that refuses it should
+        // not cost a live socket that was never going to hear anything.
+        player = createPlayer((level) => wave.push(level));
+        stopLiveMic = await captureMic(
+          (frame) => {
+            const floor = floorIsMine({ barge, speaking: player?.speaking, now: Date.now(), tailUntil });
+            tailUntil = floor.tailUntil;
+            call?.push(upstream(frame, floor.open));
+          },
+          (level) => {
+            if (!player?.speaking) wave.push(level);
+          },
+        );
+        call = openLive({
+          voice: $("voices").value,
+          onOpen: (model, voice) => {
+            status("on a live call", true);
+            $("talk").textContent = "On the line";
+            $("talk").classList.add("listening");
+            // Named out loud because the picker above lists three vendors and this socket
+            // can only ever speak as one of Google's names. Saying which one is in charge
+            // is the difference between a labelled product and a mystery.
+            liveVoice = voice || "its own";
+            fineprint(`the call runs on ${model}, speaking as ${liveVoice}`);
+          },
+          onHeard: (piece) => {
+            liveLine("you", piece);
+            status("hearing you", true);
+          },
+          onSaid: (piece) => liveLine("it", piece),
+          onTool: (t) => {
+            caption("tool", `${t.name} ${t.ok ? "answered" : `failed, ${t.error}`}`);
+            status(t.ok ? `reading ${t.name}` : "a tool failed", false);
+          },
+          onActivity: (type) => {
+            if (type !== "ACTIVITY_START") return;
+            if (!barge) return;
+            // Only a caller who is actually upstream can have started this. With the gate
+            // shut the model is being handed silence, so an activity event here would be
+            // its own voice coming back through the room, and cutting the answer off for
+            // that is how the call ended up arguing with itself.
+            player?.interrupt();
+            call?.hold();
+            lineIt = null;
+            status("you have the floor", true);
+          },
+          onTurn: () => {
+            resetLines();
+            status("listening", true);
+          },
+          onError: (message) => {
+            status("the call had a problem", false);
+            fineprint(message);
+          },
+          onClose: (reason) => {
+            status("the call ended", false);
+            fineprint(`the live socket closed, ${reason}`);
+          },
+        });
+      }
+
+      function endLive() {
+        stopLiveMic?.();
+        stopLiveMic = null;
+        call?.hangup();
+        call = null;
+        player?.close();
+        player = null;
+        resetLines();
+      }
+
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      let rec = null;
+      let open = false;
+
+      function listen() {
+        if (!rec) return;
+        try {
+          rec.start();
+        } catch {
+          /* already running */
+        }
+      }
+
+      function buildRec() {
+        rec = new SR();
+        rec.lang = langSetting();
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.onresult = async (e) => {
+          const heard = e.results[0][0].transcript;
+          caption("you", heard);
+          status("thinking", false);
+          const pending = caption("it pending", "…");
+          try {
+            const answer = await transport.ask(heard);
+            pending.textContent = answer;
+            pending.classList.remove("pending");
+            say(answer);
+          } catch (err) {
+            pending.className = "cap";
+            pending.textContent = err.message;
+            status("stuck", false);
+          }
+          if (open) setTimeout(listen, 900);
+        };
+        rec.onerror = (e) => {
+          if (e.error !== "no-speech") status("microphone: " + e.error, false);
+        };
+        rec.onend = () => {
+          if (open) status("listening", true);
+        };
+      }
+
+      // Picking a language during a call has to reach the microphone now, not the next one.
+      function restartRec() {
+        if (!open || !SR || transport.live) return;
+        try {
+          rec?.abort();
+        } catch {
+          /* not running */
+        }
+        buildRec();
+        listen();
+      }
+
+      $("talk").onclick = async () => {
+        if (transport.live) {
+          if (!call) {
+            open = true;
+            $("stop").disabled = false;
+            status("connecting", true);
+            try {
+              await liveCall();
+            } catch (err) {
+              endLive();
+              transport.live = false;
+              open = false;
+              $("stop").disabled = true;
+              status("no live call", false);
+              const why = err?.name === "NotAllowedError" ? "the microphone was declined" : err.message;
+              fineprint(`${why}, so this page fell back to one turn at a time`);
+            }
+            return;
+          }
+          // Tapping the button on a live call is the manual version of talking over it.
+          player?.interrupt();
+          return;
+        }
+        if (!SR) {
+          status("this browser has no speech recognition");
+          return;
+        }
+        if (!open) {
+          open = true;
+          $("stop").disabled = false;
+          $("talk").textContent = "Listening";
+          $("talk").classList.add("listening");
+          status("connected", true);
+          await meter().catch(() => status("microphone blocked", false));
+          buildRec();
+          listen();
+        } else {
+          const barge = $("talk").classList.contains("listening");
+          if (barge) {
+            rec.stop();
+            $("talk").textContent = "Tap to speak";
+          } else {
+            // Talking over the agent has to silence it now, or the microphone hears
+            // its own answer and the turn comes back garbled.
+            hush();
+            wave.idle();
+            listen();
+            $("talk").textContent = "Listening";
+          }
+          $("talk").classList.toggle("listening", !barge);
+        }
+      };
+
+      $("stop").onclick = () => {
+        open = false;
+        if (transport.live) endLive();
+        else {
+          rec?.abort?.();
+          hush();
+          stopMeter();
+        }
+        $("talk").textContent = "Start call";
+        $("talk").classList.remove("listening");
+        $("stop").disabled = true;
+        status("not connected", false);
+      };
+
+      mountWallet(loadMeta);
+      async function boot() {
+        // The server answers whether it has a model voice and whether it can hold a
+        // live socket, and both decide what the call button actually starts.
+        const body = await loadMeta();
+        transport.live = !!body?.live?.enabled;
+        // Named before the call even opens, so the page states the voice it is going to
+        // pin rather than leaving it as a surprise the first time it speaks.
+        liveVoice = body?.live?.voice || "";
+        fillVoices();
+        fineprint(transport.live || !body?.live?.why ? "" : `${body.live.why}, so this call runs one turn at a time`);
+      }
+      boot();
+      function fineprint(note) {
+        const name = $("lang").selectedOptions[0]?.textContent ?? "English";
+        const r = remoteSpeech();
+        const picked = r.voices.find((v) => v.id === gvoiceSetting());
+        const said = lastMouth?.id ? r.voices.find((v) => v.id === lastMouth.id) : null;
+        const out = (r.providers ?? []).find((p) => p.id === picked?.provider && p.resting);
+        const mouth = transport.live
+          ? `on a live call it speaks as ${liveVoice || "one pinned voice"}, and ${
+              barge
+                ? "you can talk over it. That only works on headphones, because on a speaker its own sentence comes back as your voice"
+                : "it is deaf while it talks, on purpose, so its own voice cannot come back to it as yours"
+            }. These pickers govern the turn by turn path`
+          : r.enabled
+            ? lastMouth?.id
+              ? `last sentence spoken by ${lastMouth.id.split(":")[0]}${said ? ` (${said.label})` : ""} in ${lastMouth.ms} ms`
+              : out
+                ? `voice set to ${picked.label}, but ${out.id} is resting, ${out.resting}, so the next sentence comes from whoever answers`
+                : `voice set to ${picked?.label ?? gvoiceSetting()} on ${r.model}, waiting for a sentence`
+            : "the voice is this browser's own, because no model voice key is set";
+        const mode = transport.live
+          ? barge
+            ? "live audio, talk over it whenever you want"
+            : "live audio, and it waits for you to finish"
+          : "one turn at a time, because this server has no live call key";
+        $("fineprint").textContent = note
+          ? `${note}. ${mouth}. listening in ${name.toLowerCase()}`
+          : `${mode}. ${mouth}. listening in ${name.toLowerCase()}, and the sentences it says back are written in english until the model writes otherwise`;
+      }
+      fineprint();
+    </script>
+  </body>
+</html>

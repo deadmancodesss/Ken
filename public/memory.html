@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory · Total Recall</title>
+    <script>
+      /* Wallets announce themselves before any module can load, so this captures
+         the announcement into a global that public/wallet.js reads later. */
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      main { flex: 1; overflow-y: auto; padding: 40px var(--pad) 70px; }
+      .wrap { max-width: 780px; margin: 0 auto; }
+      h1 { font-size: var(--step-4); margin-bottom: 10px; }
+      .intro { color: var(--ink-2); max-width: 58ch; margin-bottom: 28px; }
+
+      .find { display: flex; gap: 10px; margin-bottom: 8px; }
+      .hint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); margin-bottom: 34px; }
+      .hint b { color: var(--ink-2); font-weight: 400; }
+
+      .band { border-top: 1px solid var(--rule); padding: 26px 0; }
+      .row { display: flex; gap: 16px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+      .row:last-child { border-bottom: 0; }
+      .row .text { flex: 1; font: 400 var(--step-1)/1.5 var(--serif); }
+      .row .meta { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); text-align: right; white-space: nowrap; }
+      .row .meta b { color: var(--ink-2); font-weight: 400; }
+      /* Closeness drawn as hairline ticks, because a filled bar would read as a score. */
+      .ticks { display: inline-flex; gap: 2px; margin-left: 8px; vertical-align: 1px; }
+      .ticks i { width: 3px; height: 9px; background: var(--rule); }
+      .ticks i.on { background: var(--clay); }
+      .who { font: 400 var(--step-1)/1.3 var(--serif); }
+      .who span { color: var(--ink-3); font: var(--step--1)/1 var(--mono); }
+      .addr { font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
+      .from { display: inline-block; margin-top: 5px; font: var(--step--1)/1.5 var(--mono); color: var(--moss); }
+      .empty { color: var(--ink-3); font-size: var(--step-0); }
+      .counts { display: flex; gap: 26px; flex-wrap: wrap; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
+      .counts b { color: var(--ink); font-weight: 400; }
+
+      /* Measured in the browser on the way past, so the number cannot drift from the truth. */
+      .took { margin-left: 6px; }
+      .cycle .frame .quote { font: 400 var(--step-2)/1.4 var(--serif); color: var(--ink); margin-bottom: 8px; }
+      .cycle .frame p { color: var(--ink-2); font-size: var(--step-0); max-width: 62ch; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">everything the agent has decided to keep</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory" aria-current="page">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <h1>On Walrus, not in a database</h1>
+        <p class="intro">
+          This is the whole claim of the product, so it gets its own page. Everything here was written by the
+          agent or told to it out loud, and it survives a restart because it lives on Mainnet. No address on this
+          page is shown in full and no date is shown as a number, because a wallet showing you those is the thing
+          being replaced.
+        </p>
+
+        <form class="find" id="form">
+          <input id="q" type="text" placeholder="Search it, for example: groceries" autocomplete="off" spellcheck="false" />
+          <button class="primary" type="submit">Search</button>
+        </form>
+        <p class="hint">
+          recall is semantic, so a wrong word still finds the right memory.
+          <span class="took">this one took <b id="took">·</b></span>
+        </p>
+
+        <div class="band">
+          <div class="counts" id="counts"></div>
+        </div>
+
+        <figure class="plate">
+          <img src="/assets/memory-vault.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A small round steel vault door with a spoked dial set into a wall of wooden filing drawers, a brass key left in the dial, neat stacks of paper visible through the open door" />
+          <figcaption>What is on this page is the inside of that vault. Each wallet has its own drawer, the dial only opens for the wallet you are speaking for, and the stacks inside are notes you taught it once.</figcaption>
+        </figure>
+
+        <figure class="plate">
+          <img src="/assets/memory-versus-chain.webp" width="1100" height="734" loading="lazy" decoding="async" alt="The same walker twice. On the left he reads a book on an empty path with a lit bulb above him. On the right he is stuck in traffic handing a coin to a toll booth" />
+          <figcaption>This is the page that decides which half you get. Ask about a person whose name is here and you are on the empty path. Ask about an address nobody has named and the toll booth is real, and it is opened on the <a href="/pay">Pay page</a>.</figcaption>
+        </figure>
+
+        <div class="band reveal">
+          <div class="label">What a search does before it answers</div>
+          <div class="cycle">
+            <div class="frames">
+              <div class="frame on">
+                <div class="label">One</div>
+                <div class="quote">groceries</div>
+                <p>You type a word, or say one into a call. It is not compared against the text of anything, which
+                is why the agent still finds the line when no memory contains the word you searched for.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Two</div>
+                <div class="quote">The question becomes a position</div>
+                <p>Walrus turns the sentence into a place in a space where meanings that belong together sit close.
+                Groceries, shopping, and a note about somebody's weekly shop all land in roughly the same region.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Three</div>
+                <div class="quote">Every line you own is measured against it</div>
+                <p>That happens inside your own namespace, derived from the wallet in the masthead. The chain is not
+                read, Tatum is not asked and nothing costs money. Recall is the slow part of this product, and it is
+                still the free part.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Four</div>
+                <div class="quote">The closest lines arrive with a distance</div>
+                <p>The ticks below are how near each memory sat to your question. They are drawn instead of a
+                percentage so nobody reads them as a grade.</p>
+              </div>
+            </div>
+            <div class="bars"><i></i><i></i><i></i><i></i></div>
+          </div>
+        </div>
+
+        <div class="band">
+          <div class="label">Names it was given</div>
+          <div id="roster" class="rows"><div class="empty">reading Walrus…</div></div>
+        </div>
+
+        <div class="band">
+          <div class="label" id="hitsLabel">What it remembers</div>
+          <div id="hits" class="rows"><div class="empty">search something above</div></div>
+        </div>
+
+        <div class="band">
+          <div class="label">How a line gets here</div>
+          <div class="steps reveal" style="margin-bottom:18px">
+            <div><span class="num">1</span><div><h4>You say it, or the agent finds it</h4><p>A name you give out loud, or a fact the agent bought and verified on chain.</p></div></div>
+            <div><span class="num">2</span><div><h4>It is written under your wallet</h4><p>The namespace comes from the address in the masthead, so your people stay yours and the demo story keeps its own notes.</p></div></div>
+            <div><span class="num">3</span><div><h4>Later questions read it before anything else</h4><p>Search is semantic, so groceries finds the person you described as buying groceries.</p></div></div>
+          </div>
+          <div class="traffic"><i></i><i></i></div>
+          <div class="ends"><div><b>the agent</b><span>writes and reads</span></div><div style="text-align:right"><b>Walrus, Mainnet</b><span>keeps it</span></div></div>
+          <p class="hint" style="margin:18px 0 0">a written line is never deleted by the product, because Walrus memory has no delete. Correcting a fact means writing a better line. <a href="/how">The whole path, with timings</a></p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module">
+      import { $, mountWallet, loadMeta, reveal, cycles, plain, shortAddr } from "./shared.js";
+      reveal();
+      cycles();
+
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      // distance is how far a hit sat from the question. Five ticks, closer fills more.
+      function ticks(d) {
+        const lit = Math.max(1, 5 - Math.floor(d * 5));
+        return `<span class="ticks">${Array.from({ length: 5 }, (_, i) => `<i class="${i < lit ? "on" : ""}"></i>`).join("")}</span>`;
+      }
+
+      // The paid index appends its own provenance to a note. Worth showing, but not as
+      // a receipt in the middle of a description of a person.
+      function splitNote(note) {
+        const i = (note || "").search(/\.\s*Bought for\b/i);
+        if (i < 0) return { note: note || "", from: "" };
+        return { note: note.slice(0, i).replace(/\.+$/, ""), from: "named from a paid lookup" };
+      }
+
+      async function load() {
+        const q = $("q").value.trim();
+        const t0 = performance.now();
+        const res = await fetch("/memories?q=" + encodeURIComponent(q)).catch(() => null);
+        const secs = ((performance.now() - t0) / 1000).toFixed(1);
+        $("took").textContent = secs + " s";
+        if (!res || !res.ok) {
+          $("roster").innerHTML = '<div class="empty">could not reach the server</div>';
+          return;
+        }
+        const body = await res.json();
+
+        const roster = body.roster ?? [];
+        $("roster").innerHTML = roster.length
+          ? roster
+              .map((p) => {
+                const n = splitNote(p.note);
+                return (
+                  `<div class="row"><div><div class="who">${esc(p.alias)} <span>${esc(plain(n.note) || "no note")}</span></div>` +
+                  `<div class="addr">${esc(shortAddr(p.address))}</div>${n.from ? `<div class="from">${esc(n.from)}</div>` : ""}</div></div>`
+                );
+              })
+              .join("")
+          : '<div class="empty">nothing yet. Say "that\'s Ravi, my plumber, 0x…" on the Talk page.</div>';
+
+        // Walrus has no update, so correcting a fact writes a second line. The page
+        // shows one row per distinct sentence and keeps the nearest copy of it.
+        const seen = new Map();
+        for (const h of body.hits ?? []) {
+          const text = plain(h.text);
+          const prev = seen.get(text);
+          if (!prev || h.distance < prev.distance) seen.set(text, { ...h, text });
+        }
+        const hits = [...seen.values()].sort((a, b) => a.distance - b.distance);
+        $("hitsLabel").textContent = q ? `Closest memories to “${q}”` : "What it remembers";
+        $("hits").innerHTML = hits.length
+          ? hits
+              .map(
+                (h) =>
+                  `<div class="row"><div class="text">${esc(h.text)}</div>` +
+                  `<div class="meta">closer<b>${(1 - h.distance).toFixed(2)}</b>${ticks(h.distance)}</div></div>`,
+              )
+              .join("")
+          : '<div class="empty">no memory came back for that</div>';
+      }
+
+      $("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        load();
+      });
+      $("q").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") load();
+      });
+
+      async function meta() {
+        const body = await loadMeta();
+        if (!body) return;
+        // people-testnet-80713a48331f reads as a database key. The wallet tail is
+        // already in the masthead, so the chip only needs the kind and the network.
+        const ns = (body.stats.namespaces ?? [])
+          .map((n) => `<span>${esc(n.name.split("-").slice(0, 2).join(" · "))} <b>${n.memories}</b></span>`)
+          .join("");
+        $("counts").innerHTML = `<span>total <b>${body.stats.total}</b></span>${ns}`;
+      }
+
+      mountWallet(() => {
+        meta();
+        load();
+      });
+      meta();
+      load();
+    </script>
+  </body>
+</html>

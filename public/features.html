@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Features · Total Recall</title>
+    <script>
+      /* Wallets announce themselves before any module can load, so this captures
+         the announcement into a global that public/wallet.js reads later. */
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      main { padding: 38px var(--pad) 74px; }
+      .wrap { max-width: 1060px; margin: 0 auto; }
+      h1 { font-size: var(--step-5); margin-bottom: 12px; }
+      .intro { color: var(--ink-2); max-width: 64ch; margin-bottom: 26px; }
+
+      .sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; margin-bottom: 22px; }
+      .sum > div { background: var(--paper); padding: 16px 18px; }
+      .sum .v { font: 400 var(--step-4)/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+      .sum .k { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
+
+      /* The filter is a real constraint, not decoration. It exists because a wall of
+         forty tiles is how a project hides what it has not finished. */
+      .filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 34px; }
+      .filter button { font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; color: var(--ink-3); background: transparent; border: 1px solid var(--rule-strong); border-radius: 999px; padding: 9px 14px; cursor: pointer; transition: color var(--t-1) var(--ease), border-color var(--t-1) var(--ease), background var(--t-1) var(--ease); }
+      .filter button:hover { color: var(--ink); border-color: var(--ink-2); }
+      .filter button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+      .filter button b { font-weight: 400; opacity: 0.6; margin-left: 6px; }
+
+      .band { border-top: 1px solid var(--rule); padding: 30px 0 6px; }
+      .band > h2 { font: 400 var(--step-3)/1.2 var(--serif); margin: 0 0 6px; }
+      .band > p { color: var(--ink-2); font-size: var(--step-0); max-width: 64ch; margin: 0 0 20px; }
+
+      .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(244px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; margin-bottom: 8px; }
+      .cell { background: var(--paper); display: flex; flex-direction: column; }
+      .cell.hide { display: none; }
+      .cell .head { display: flex; flex-direction: column; gap: 11px; align-items: flex-start; width: 100%; border: 0; background: transparent; padding: 16px; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background var(--t-1) var(--ease); }
+      .cell .head:hover { background: var(--paper-sunk); }
+      .cell .top { display: flex; align-items: center; gap: 11px; width: 100%; }
+      .gl { flex: 0 0 auto; width: 34px; height: 34px; border: 1px solid var(--rule-strong); border-radius: 9px; display: grid; place-items: center; font: 400 var(--step--1)/1 var(--mono); letter-spacing: 0.03em; }
+      .gl.clay { color: var(--clay); border-color: var(--clay); }
+      .gl.moss { color: var(--moss); border-color: var(--moss); }
+      .gl.brick { color: var(--brick); border-color: var(--brick); }
+      .cell h3 { flex: 1; font: 400 var(--step-0)/1.3 var(--serif); margin: 0; min-width: 0; }
+      .cell .blurb { font: var(--step--1)/1.6 var(--sans); color: var(--ink-2); margin: 0; }
+      .st { flex: 0 0 auto; font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; border: 1px solid var(--rule-strong); border-radius: 999px; padding: 5px 9px; color: var(--ink-3); }
+      .st.live { color: var(--moss); border-color: var(--moss); }
+      .st.you { color: var(--clay); border-color: var(--clay); }
+      .st.key { color: var(--brick); border-color: var(--brick); }
+      .st.off { color: var(--ink-3); }
+
+      .more { display: grid; gap: 12px; padding: 0 16px 16px; margin: 0; font: var(--step--1)/1.7 var(--mono); color: var(--ink-3); }
+      .more[hidden] { display: none; }
+      .more a { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--ink); border-radius: 999px; padding: 8px 14px; color: var(--ink); text-decoration: none; font: var(--step--1)/1 var(--mono); width: max-content; max-width: 100%; }
+      .more a:hover { background: var(--ink); color: var(--paper); }
+      .tail { font: var(--step--1)/1.7 var(--mono); color: var(--ink-3); max-width: 74ch; margin-top: 26px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">every feature, and whether it is actually live</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features" aria-current="page">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <h1>The whole thing, on one sheet</h1>
+        <p class="intro">
+          Every capability this build has, grouped by the job it does. Each tile tells you the truth about its
+          state, so nothing here needs a promise. Tap a tile to read what actually happens under it and go
+          straight to the page where it runs.
+        </p>
+        <figure class="plate mid">
+          <img src="/assets/features-board.webp" width="1100" height="629" loading="lazy" decoding="async" alt="A very large wall of small wooden drawers like a card index cabinet, several pulled open, others shut with small brass handles, with the man and the woman standing in front of it comparing notes" />
+          <figcaption>Every tile below is one of these drawers. Some are open and running, some are shut because they are waiting on your wallet, and none of them are pretending to be something they are not.</figcaption>
+        </figure>
+
+        <div class="sum">
+          <div><div class="v" id="cAll">·</div><div class="k">features</div></div>
+          <div><div class="v" id="cLive">·</div><div class="k">live on this build</div></div>
+          <div><div class="v" id="cYou">·</div><div class="k">need your wallet</div></div>
+          <div><div class="v" id="cKey">·</div><div class="k">wait on a key</div></div>
+        </div>
+
+        <div class="filter" id="filter" role="group" aria-label="Filter the list by state"></div>
+
+        <div id="bands"></div>
+
+        <p class="tail">
+          A tile marked wait on a key is written, wired and tested against a scripted stand-in, not against a live
+          model. Say so out loud rather than let it read as finished. The header on every page prints the same
+          truth, so a recording cannot claim a brain or a voice this build does not have.
+        </p>
+      </div>
+    </main>
+
+    <script type="module">
+      import { $, loadMeta, mountWallet } from "./shared.js";
+
+      /* One list, both the page and the count. The numbers at the top are measured from
+         these rows after the server says what it is running, so a tile cannot be marked
+         live here and dead on the demo. */
+      const GROUPS = [
+        {
+          name: "Your wallet",
+          gl: "",
+          blurb: "The extension is the product's front door. Nothing below works without it, and nothing below can work around it.",
+          items: [
+            ["WA", "Connect a browser wallet", "Sui Wallets, Sui Client and anything that announces itself through Wallet Standard.", "The page asks the wallet to introduce itself, then keeps only the address. It never receives a key, so there is nothing here to leak. If two wallets are installed you pick which one speaks.", "you", "/app", "Talk to it"],
+            ["ME", "Memory scoped to this wallet", "Swap wallets and the agent swaps people, because the namespace is derived from the address.", "Walrus gives every address its own namespace. Ask the agent about Ravi from a different wallet and Ravi does not exist there, which is the property a hosted database cannot offer.", "live", "/memory", "See the memory"],
+            ["US", "Balance in plain language", "How much USDC you can actually spend, in the unit you think in.", "No hex string, no token contract address, no decimals to divide by hand. The number on the page is the number a person would say.", "you", "/app", "Talk to it"],
+            ["CH", "Testnet and mainnet reads", "The same agent reads worthless money and real money through one path.", "Chain reads go through Tatum GraphQL, so the build does not run its own node and the demo does not need one. The network you are on is printed in the header.", "live", "/how", "How it works"],
+          ],
+        },
+        {
+          name: "Talking to it",
+          gl: "clay",
+          blurb: "A call, not a voice-controlled text box. Your ears and mouth are the interface and the keyboard stays put.",
+          items: [
+            ["CA", "Start a call and just talk", "One press, then a continuous conversation with no button between turns.", "The microphone stays open, the browser transcribes what it hears, the answer comes back out loud and the transcript stays on screen so you can check a number before acting on it.", "live", "/call", "Open the call"],
+            ["LV", "Live ribbon from real audio", "The drawing moves because it is measured from the microphone, not animated.", "Several detuned sine curves whose height is the actual input level. It is alive without being a loop, which is the difference between a product and a mockup.", "live", "/call", "Open the call"],
+            ["LA", "Forty-odd languages", "Pick the language the agent speaks and it changes voice and ear in the browser.", "Built from the voices this machine already has and labelled with Intl.DisplayNames. The honest limit is printed on the page: the script it reads is written in English, so another language changes the mouth, not the words.", "live", "/call", "Open the call"],
+            ["VO", "Voice and pace you choose", "Pick the voice you want to hear and how fast it talks.", "The picker lists only voices worth hearing for the chosen language, and audition plays a real sample before you commit to it for a whole demo. A vendor that has run out of sentences is marked resting instead of offered as if it worked.", "live", "/call", "Open the call"],
+            ["GV", "The model's own voice", "Fish, HeyGen or Gemini reads the answer, and the audio that comes back drives the ribbon.", "The server asks for a waveform, wraps the PCM, decodes it in the page and plays it through an analyser, so the visual is the voice rather than a guess at it. The page names whichever vendor actually spoke instead of the one you picked, and needs a key to switch on.", "key", "/call", "Open the call"],
+            ["LI", "A continuous call, not turns", "Full duplex speech, the kind where you can cut it off mid-sentence.", "It runs. One spoken question went in at 16 kHz, the model closed the sentence itself, the tool found Sana on Walrus, and a spoken answer came back at 24 kHz with the memory quoted correctly. What is still unproven is a real microphone, because every test so far fed it audio resampled from a script.", "live", "/call", "Call page"],
+          ],
+        },
+        {
+          name: "Money out",
+          gl: "brick",
+          blurb: "The part every other agent gets wrong. It can prepare a payment and then it must stop and wait for you.",
+          items: [
+            ["PY", "Say the payment out loud", "Send Tara nine dollars and fifty cent builds a real transaction.", "Speech becomes a tool call, deterministic code builds the transaction bytes, and the model is never given the ability to sign. What you hear is a confirmation of what is about to be offered, not of what was done.", "live", "/pay", "See the ticket"],
+            ["SG", "Your extension is the yes", "The popup, not this page, decides whether money moves.", "The prepared bytes are handed to your wallet and you sign them there. This server holds the bytes and cannot complete the payment without you.", "you", "/pay", "See the ticket"],
+            ["NO", "Refusing is a normal ending", "Cancel does nothing, writes nothing, and the agent does not ask twice in the same breath.", "A refusal is a first class result. It is reported back to the model as plainly as a settlement, so it stops offering instead of retrying your own no.", "live", "/pay", "See the ticket"],
+            ["VD", "The chain gets the last word", "A payment is not kept until the digest is read back and matched.", "After the signature the transaction is looked up through Tatum and checked for the expected amount arriving. Only then does it become a memory, so a memory is evidence rather than intent.", "live", "/pay", "See the ticket"],
+            ["CP", "Capped and off by default", "Payments stay switched off unless the environment says otherwise.", "One ticket at a time, a spend cap, and a flag that has to be set deliberately. A demo that cannot move money by accident is a demo you can run in front of anyone.", "off", "/how", "How it works"],
+            ["SP", "Split a dinner by voice", "Split what I owed Tara last month four ways works as one sentence.", "It stays a command inside the agent and is never the headline. Bill splitting is an app that already exists, so putting it at the front would waste the only interesting part of this build.", "live", "/app", "Talk to it"],
+          ],
+        },
+        {
+          name: "Paying for facts",
+          gl: "moss",
+          blurb: "x402, both sides, used for the one thing it is actually for. The agent buys a fact it does not already have.",
+          items: [
+            ["SE", "The seller side", "A charging index that answers 402 with a price and a quote.", "It advertises what an unknown address costs, holds a quote with a lifetime, and releases the fact only once a receipt is presented. Nothing about it is specific to this demo, which is the point.", "live", "/how", "How it works"],
+            ["AG", "The buyer side", "The agent pays about one cent on Sui and retries with the receipt.", "It does not decide to spend. It receives a 402, the deterministic layer pays it under the cap, and the same call is made again with proof attached.", "live", "/pay", "See the ticket"],
+            ["VF", "The seller checks the money itself", "Verification goes to the chain, not to the agent's word for it.", "The seller looks the payment up through Tatum before handing over the fact, so a buyer cannot bluff its way into an answer.", "live", "/how", "How it works"],
+            ["CA", "Memory is the cache", "Buy a name once and the next forty questions about it cost nothing.", "A paid fact is written to Walrus. The next time the address comes up the agent already knows it and never reaches the index, which is the whole product claim in one mechanism.", "live", "/memory", "See the memory"],
+            ["CU", "Spend falls as memory grows", "Three measured curves, and you can watch them reset.", "Paid lookups per session, questions per payment, and how often it predicts the right amount. Wipe the namespace live and all three jump back to the starting line.", "live", "/memory", "See the memory"],
+          ],
+        },
+        {
+          name: "What it remembers",
+          gl: "moss",
+          blurb: "Not a chat history. A model of the people your money keeps touching, built from transactions.",
+          items: [
+            ["NA", "Name a stranger", "Call this address Ravi, and it is Ravi from now on.", "The alias is attached to the counterparty and written to Mainnet under your namespace, so a name you gave out loud survives a restart and a different machine.", "live", "/app", "Talk to it"],
+            ["CD", "Who you pay and how often", "Cadence comes out of the transaction dates, not out of a summary.", "It knows the gap between payments, whether the rhythm is regular, and when the last one landed. A visible gap needs a few days of real history, which is why the demo cast is seeded once a day.", "live", "/memory", "See the memory"],
+            ["DI", "Money in is not money out", "The direction of every flow, read from both sides.", "A chain only links the account that signed, so inbound money is found by reading the other party's history. That is the difference between a transaction list and an understanding.", "live", "/how", "How it works"],
+            ["AM", "The usual amount", "It knows what a payment to this person normally is before you say it.", "Usual amount and the spread around it come from your own history, so the agent can ask whether the odd one was a mistake instead of building a ticket for it.", "live", "/app", "Talk to it"],
+            ["MO", "A month in one sentence", "What went out, to whom, and what changed since last month.", "An aggregate the model reads rather than computes, so the arithmetic is done by code that cannot round it into something agreeable.", "live", "/app", "Talk to it"],
+            ["SE", "Search everything it kept", "Find the note, the name or the payment behind a half remembered word.", "One recall across the namespace. It is slow, two to four seconds, and that latency is documented instead of hidden behind a spinner.", "live", "/memory", "See the memory"],
+            ["RS", "Wipe it in front of them", "Reset the namespace and watch the agent become a stranger again.", "The delete demo is the proof that the memory is doing work. Without it, the claim that spend falls as memory grows is just a sentence.", "live", "/memory", "See the memory"],
+          ],
+        },
+        {
+          name: "The agent",
+          gl: "clay",
+          blurb: "One brain, twelve tools, and a hard rule about what the brain is not allowed to hold.",
+          items: [
+            ["T1", "Twelve tools, fixed schemas", "The model chooses from a closed set and cannot invent a thirteenth.", "Schemas are declared once and used for the live model, the scripted stand-in and the self test, so a pass without a key means something about the real path.", "live", "/how", "How it works"],
+            ["FC", "Function calling over the tool layer", "Speech in, tool call out, deterministic code does the rest.", "Eleven assertions run against the real tool layer with no provider. Nine more run the same loop against the live model, and they check the numbers it speaks against the numbers the chain returned, so an answer that drifts off the ledger fails the build.", "key", "/how", "How it works"],
+            ["TH", "It keeps what it paid to learn", "A tool result stays visible in the next turn of the same conversation.", "An address it spent money on has to still be there when you ask the follow up, or the product's one claim is false. This was a real bug and it is now tested for.", "live", "/app", "Talk to it"],
+            ["KEY", "The model never holds a key", "It cannot sign, cannot spend and cannot reach your memory on its own.", "One OpenAI compatible path for Gemini, OpenRouter or OpenAI, with the credentials on the server and the authority in your wallet. Trust is not part of the design.", "live", "/how", "How it works"],
+            ["CO", "A cost meter on every answer", "You see which lines were free and which one was bought.", "Each step of an answer is priced as it happens, so the difference between reading a chain and paying an index is visible rather than explained afterwards.", "live", "/app", "Talk to it"],
+            ["ST", "Self test with no key at all", "Eleven brain assertions and twelve speech assertions pass offline.", "So a reviewer without a key can prove the tool layer and the voice path hold together, and nobody has to take a screenshot on trust.", "live", "/how", "How it works"],
+          ],
+        },
+      ];
+
+      const STATE_LABEL = { live: "live", you: "needs your wallet", key: "waits on a key", off: "off by default" };
+
+      const bands = $("bands");
+      for (const g of GROUPS) {
+        const band = document.createElement("section");
+        band.className = "band";
+        const h = document.createElement("h2");
+        h.textContent = g.name;
+        const p = document.createElement("p");
+        p.textContent = g.blurb;
+        const sheet = document.createElement("div");
+        sheet.className = "sheet";
+        for (const [glyph, title, blurb, more, st, href, cta] of g.items) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.st = st;
+
+          const head = document.createElement("button");
+          head.className = "head";
+          head.type = "button";
+          head.setAttribute("aria-expanded", "false");
+          const top = document.createElement("span");
+          top.className = "top";
+          const gl = document.createElement("span");
+          gl.className = "gl " + g.gl;
+          gl.textContent = glyph;
+          gl.setAttribute("aria-hidden", "true");
+          const h3 = document.createElement("h3");
+          h3.textContent = title;
+          const chip = document.createElement("span");
+          chip.className = "st " + st;
+          chip.textContent = STATE_LABEL[st];
+          top.append(gl, h3, chip);
+          const b = document.createElement("span");
+          b.className = "blurb";
+          b.textContent = blurb;
+          head.append(top, b);
+
+          const panel = document.createElement("div");
+          panel.className = "more";
+          panel.hidden = true;
+          const t = document.createElement("span");
+          t.textContent = more;
+          const a = document.createElement("a");
+          a.href = href;
+          a.textContent = cta + " →";
+          panel.append(t, a);
+
+          head.addEventListener("click", () => {
+            const open = !panel.hidden;
+            panel.hidden = open;
+            head.setAttribute("aria-expanded", String(!open));
+          });
+          cell.append(head, panel);
+          sheet.append(cell);
+        }
+        band.append(h, p, sheet);
+        bands.append(band);
+      }
+
+      const cells = [...document.querySelectorAll(".cell")];
+      const counts = { live: 0, you: 0, key: 0, off: 0 };
+      for (const c of cells) counts[c.dataset.st]++;
+      $("cAll").textContent = cells.length;
+      $("cLive").textContent = counts.live;
+      $("cYou").textContent = counts.you + counts.off;
+      $("cKey").textContent = counts.key;
+
+      const FILTERS = [
+        ["all", "everything", cells.length],
+        ["live", "live now", counts.live],
+        ["you", "needs you", counts.you + counts.off],
+        ["key", "waits on a key", counts.key],
+      ];
+      const filter = $("filter");
+      for (const [k, label, n] of FILTERS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.k = k;
+        btn.className = k === "all" ? "on" : "";
+        btn.append(document.createTextNode(label));
+        const c = document.createElement("b");
+        c.textContent = n;
+        btn.append(c);
+        btn.addEventListener("click", () => {
+          for (const f of filter.children) f.classList.toggle("on", f === btn);
+          for (const cell of cells) cell.classList.toggle("hide", k !== "all" && cell.dataset.st !== k);
+          for (const band of document.querySelectorAll(".band")) {
+            const shown = [...band.querySelectorAll(".cell")].some((c2) => !c2.classList.contains("hide"));
+            band.style.display = shown ? "" : "none";
+          }
+        });
+        filter.append(btn);
+      }
+
+      /* Once the server says what it is running, a tile waiting on a key flips to live by
+         itself. The sheet then cannot overclaim on camera while the header tells the truth. */
+      function applyReality(body) {
+        if (!body) return;
+        const realBrain = !!(body.model || "").trim() && !/stub|no model key/i.test(body.model);
+        const realVoice = body.tts?.enabled === true;
+        for (const cell of cells) {
+          if (cell.dataset.st !== "key") continue;
+          const title = cell.querySelector("h3").textContent;
+          const onModel = realBrain && (title.includes("Function calling") || title.includes("keeps what it paid"));
+          const onVoice = (realVoice && title.includes("model's own voice")) || (realBrain && title.includes("continuous call"));
+          if (onModel || onVoice) {
+            cell.dataset.st = "live";
+            const chip = cell.querySelector(".st");
+            chip.className = "st live";
+            chip.textContent = STATE_LABEL.live;
+          }
+        }
+        const live = cells.filter((c) => c.dataset.st === "live").length;
+        const key = cells.filter((c) => c.dataset.st === "key").length;
+        $("cLive").textContent = live;
+        $("cKey").textContent = key;
+        for (const f of filter.children) {
+          if (f.dataset.k === "live") f.querySelector("b").textContent = live;
+          if (f.dataset.k === "key") f.querySelector("b").textContent = key;
+        }
+      }
+
+      mountWallet(() => loadMeta().then(applyReality).catch(() => {}));
+      loadMeta().then(applyReality).catch(() => {});
+    </script>
+  </body>
+</html>

@@ -1,0 +1,48 @@
+{
+  "name": "c0f65a38",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run typecheck && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/due-test.ts && tsx src/note-test.ts && tsx src/brain-test.ts",
+    "plumb": "tsx src/plumbing.ts",
+    "plate": "node tools/plate.mjs",
+    "agent": "tsx src/agent.ts",
+    "tools": "tsx src/tools.ts",
+    "chat": "tsx src/chat.ts",
+    "serve": "tsx src/server.ts",
+    "stub": "tsx src/stub-model.ts",
+    "demo": "npm run stub & MODEL_BASE_URL=http://127.0.0.1:8899 MODEL_API_KEY=stub PAY_ENABLED=1 npm run serve",
+    "selftest": "tsx src/brain-test.ts",
+    "selftest:live": "tsx src/brain-live-test.ts",
+    "voicetest": "tsx src/speech-test.ts",
+    "seed": "PAY_ENABLED=1 tsx src/seed.ts",
+    "count": "tsx src/count.ts",
+    "faucet": "tsx src/faucet.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "pay": "tsx src/pay.ts",
+    "walletsim": "tsx src/wallet-sim.ts",
+    "live": "PAY_ENABLED=1 tsx src/server.ts",
+    "textbench": "tsx src/text-bench.ts",
+    "textbenchfull": "tsx src/text-bench.ts --full --yes",
+    "echotest": "tsx src/echo-test.ts",
+    "x402test": "tsx src/x402-test.ts",
+    "duetest": "tsx src/due-test.ts",
+    "notetest": "tsx src/note-test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@mysten-incubation/memwal": "^0.1.9",
+    "@mysten/sui": "^2.37.0",
+    "dotenv": "^18.0.9",
+    "hash-wasm": "^4.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

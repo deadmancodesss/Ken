@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pay · Total Recall</title>
+    <script>
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
+      .wrap { max-width: 520px; margin: 0 auto; }
+      h1 { font-size: var(--step-3); margin-bottom: 8px; }
+      .intro { color: var(--ink-2); margin-bottom: 30px; }
+
+      .amount { font: 400 var(--step-6)/1.05 var(--serif); letter-spacing: -0.02em; }
+      .amount small { font-size: var(--step-2); color: var(--ink-2); }
+      .ticket { border: 1px solid var(--rule-strong); border-radius: 10px; padding: 26px; }
+      .ticket .to { margin-top: 14px; }
+      .ticket .to b { font-weight: 400; }
+      .terms { margin: 22px 0 0; padding: 18px 0 0; border-top: 1px solid var(--rule); display: grid; gap: 12px; }
+      .terms div { display: flex; gap: 14px; align-items: baseline; }
+      .terms dt { flex: 0 0 108px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .terms dd { font: var(--step-0)/1.5 var(--mono); color: var(--ink); word-break: break-all; }
+      .warn { margin-top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--brick); }
+      .actions { display: flex; gap: 12px; margin-top: 26px; }
+      .actions button { flex: 1; }
+      .done { color: var(--moss); }
+      .none { border: 1px dashed var(--rule-strong); border-radius: 10px; padding: 30px; text-align: center; color: var(--ink-3); }
+      .none h2 { font-size: var(--step-2); color: var(--ink); margin-bottom: 10px; }
+      .none p { color: var(--ink-2); max-width: 44ch; margin: 0 auto 20px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">nothing leaves until you sign it</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay" aria-current="page">Pay</a>
+        <a href="/ask">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap" id="root"><div class="none">reading…</div></div>
+
+      <div class="wrap" style="padding-bottom:60px">
+        <figure class="plate narrow">
+          <img src="/assets/wallet-seal.webp" width="900" height="900" loading="lazy" decoding="async" alt="A woman pressing a wax seal onto a document while a small robot stands back with both hands raised and a purse hangs out of reach" />
+          <figcaption>The robot has both hands where she can see them and the purse is out of reach, which is the whole security model of this page drawn once instead of explained four times.</figcaption>
+        </figure>
+        <div class="band" style="border-top:1px solid var(--rule);padding-top:30px">
+          <div class="label">Where this payment actually is</div>
+          <div class="cycle" data-manual id="flow">
+            <div class="frames">
+              <div class="frame on">
+                <div class="label">Nothing has been asked</div>
+                <p>Ask for a payment on the Talk page and the agent builds the transaction here, then stops. There is
+                no queue and no retry. If you never sign, nothing left your wallet and nothing was written down.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Held on this page</div>
+                <p>A complete Sui transaction, waiting in one slot. Asking for a second payment replaces this one
+                rather than leaving two unsigned tickets stacked up for you to sign by accident.</p>
+              </div>
+              <div class="frame">
+                <div class="label">In your wallet now</div>
+                <p>The extension, not this page, is showing the amount and the address. This server holds the bytes
+                and never your key, so cancelling there is the same as cancelling here.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Being read off the chain</div>
+                <p>The digest your wallet reports is re-read from the network and checked for exactly that amount
+                leaving your address and arriving at that one. This page does not get to decide that it worked.</p>
+              </div>
+              <div class="frame">
+                <div class="label">Written to memory</div>
+                <p>Only after the chain agrees does the payment become a line on the Memory page. From then on the
+                agent answers about it from Walrus, and the chain is not read again for the same question.</p>
+              </div>
+            </div>
+            <div class="bars"><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <p class="quiet" style="margin:14px 0 0">this panel moves with the real ticket on this page, and nothing else.</p>
+        </div>
+
+        <div class="band" style="border-top:1px solid var(--rule);padding-top:30px">
+          <div class="label">What this page does and does not do</div>
+          <div class="steps reveal" style="margin-bottom:20px">
+            <div><span class="num">1</span><div><h4>The agent prepares, it does not send</h4><p>The bytes on this ticket are a complete transaction. Nothing has left your wallet until you sign.</p></div></div>
+            <div><span class="num">2</span><div><h4>Your extension signs, or nothing happens</h4><p>Cancel and the ticket empties. No memory is written, no money moves, and the agent is told you refused.</p></div></div>
+            <div><span class="num">3</span><div><h4>The chain decides whether it counts</h4><p>The digest you report is re-read from the network. If the amount did not arrive at that address, the page says so rather than pretending.</p></div></div>
+            <div><span class="num">4</span><div><h4>A payment that bought a name is journalled</h4><p>If money moves and the index does not hand the fact over, the next ask retries that same receipt instead of sending you after a second payment.</p></div></div>
+          </div>
+          <div class="traffic"><i></i><i></i></div>
+          <div class="ends"><div><b>this page</b><span>holds the bytes</span></div><div style="text-align:right"><b>your wallet</b><span>holds the key</span></div></div>
+          <p class="quiet" style="margin-top:20px">no secret of yours is stored on this server, and the demo wallet is a scripted stand-in. <a href="/how">The safety rules in full</a></p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module">
+      import { $, mountWallet, loadMeta, shortAddr, spoken, plain, reveal, pinCycle } from "./shared.js";
+      reveal();
+      import { signAndExecute } from "./wallet.js";
+
+      const flow = () => document.getElementById("flow");
+
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      async function state() {
+        const [pend, st] = await Promise.all([
+          fetch("/pending").then((r) => r.json()),
+          fetch("/state").then((r) => r.json()),
+        ]);
+        return { p: pend.pending, st };
+      }
+
+      function render(p, st) {
+        const root = $("root");
+        pinCycle(flow(), p ? (p.digest ? 4 : 1) : 0);
+        if (!p) {
+          const demo = st.session?.source !== "wallet";
+          root.innerHTML =
+            `<div class="none"><h2>Nothing waiting for a signature</h2>` +
+            `<p>${demo
+              ? "Right now the agent is narrating its own demo wallet, which spends without asking because the money is worthless testnet dust. Connect a wallet above and every payment starts here instead."
+              : "Ask the agent for a payment on the Talk page and it lands here for you to sign."}</p>` +
+            `<a href="/app"><button class="primary">Go to Talk</button></a></div>`;
+          return;
+        }
+
+        const person = st.roster?.find((r) => r.address.toLowerCase() === p.to.toLowerCase());
+        const party = st.parties?.find((x) => x.address.toLowerCase() === p.to.toLowerCase());
+        root.innerHTML =
+          `<div class="ticket">
+             <div class="label">Waiting for your signature</div>
+             <div class="amount">${esc(spoken(String(p.usdc)))} <small>USDC</small></div>
+             <div class="to">to <b>${esc(person?.alias ?? shortAddr(p.to))}</b>${person?.note ? ` <span class="quiet">${esc(plain(person.note))}</span>` : ""}</div>
+             <dl class="terms">
+               <div><dt>address</dt><dd>${esc(p.to)}</dd></div>
+               <div><dt>from</dt><dd>${esc(shortAddr(p.sender))}</dd></div>
+               <div><dt>paid before</dt><dd>${party ? esc(spoken(party.net + " " + party.asset) + " over " + party.flows + " payments") : "never, this is the first"}</dd></div>
+             </dl>
+             ${p.digest ? `<div class="warn done">settled ${esc(p.digest.slice(0, 14))}…</div>` : ""}
+             ${!person ? '<div class="warn">you have never named this address. If you do not recognise it, cancel.</div>' : ""}
+           </div>
+           <div class="actions">
+             <button id="cancel">Cancel</button>
+             <button id="sign" class="primary" ${p.digest ? "disabled" : ""}>${p.digest ? "Settled" : "Sign in wallet"}</button>
+           </div>`;
+
+        // Cancelling only empties this ticket, and render() already has the state it
+        // needs, so it redraws from what is in hand. Re-reading /state made the page
+        // sit unchanged for seconds over a button press.
+        $("cancel").onclick = async () => {
+          $("cancel").disabled = true;
+          await fetch("/pending/cancel", { method: "POST" });
+          render(null, st);
+          loadMeta();
+        };
+        $("sign").onclick = async () => {
+          const btn = $("sign");
+          btn.disabled = true;
+          btn.textContent = "check your wallet…";
+          pinCycle(flow(), 2);
+          try {
+            const res = await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
+            if (!res.digest) throw new Error("the wallet returned no transaction digest");
+            pinCycle(flow(), 3);
+            const settled = await fetch("/pending/settle", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ digest: res.digest }),
+            }).then((r) => r.json());
+            // The answer already says whether the chain agreed, so show that at once
+            // instead of waiting on a full re-read to notice the ticket changed.
+            if (settled.error) throw new Error(settled.error);
+            render(settled.pending ?? p, st);
+            loadMeta();
+          } catch (err) {
+            pinCycle(flow(), 1);
+            btn.disabled = false;
+            btn.textContent = "Sign in wallet";
+            root.insertAdjacentHTML(
+              "beforeend",
+              `<div class="warn" style="margin-top:16px">${esc(err.message)}</div>`,
+            );
+          }
+        };
+      }
+
+      async function show() {
+        try {
+          const { p, st } = await state();
+          render(p, st);
+        } catch (err) {
+          $("root").innerHTML = `<div class="none"><h2>Could not read</h2><p>${esc(err.message)}</p></div>`;
+        }
+      }
+
+      mountWallet(() => {
+        loadMeta();
+        show();
+      });
+      loadMeta();
+      show();
+    </script>
+  </body>
+</html>

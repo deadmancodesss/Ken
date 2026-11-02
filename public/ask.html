@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ask to pay · Total Recall</title>
+    <meta
+      name="description"
+      content="Write something, put a price on it in USDC and send one link. The words come out of the same 402 paywall the agent buys through, and they stay open for whoever paid once."
+    />
+    <link rel="stylesheet" href="/theme.css" />
+    <script>
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <style>
+      main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
+      .wrap { max-width: 560px; margin: 0 auto; }
+      h1 { font-size: var(--step-4); margin-bottom: 10px; }
+      .intro { color: var(--ink-2); margin-bottom: 28px; max-width: 58ch; }
+
+      form { border: 1px solid var(--rule-strong); border-radius: 10px; padding: 24px; display: grid; gap: 16px; }
+      .field { display: grid; gap: 7px; }
+      .field span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      textarea {
+        font: var(--step-0)/1.6 var(--sans);
+        color: var(--ink);
+        background: var(--paper);
+        border: 1px solid var(--rule-strong);
+        border-radius: 7px;
+        padding: 11px 12px;
+        resize: vertical;
+        min-height: 130px;
+      }
+      textarea:hover { border-color: var(--ink-3); }
+      .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+      .money { display: flex; align-items: baseline; gap: 8px; }
+      .money input { flex: 1; min-width: 0; }
+      .money b { font: var(--step-0)/1 var(--mono); color: var(--ink-2); font-weight: 400; }
+      .hint { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .hint.bad { color: var(--brick); }
+      form button { justify-self: start; }
+
+      .made { border: 1px solid var(--moss); border-radius: 10px; padding: 20px; margin-top: 22px; }
+      .made .label { color: var(--moss); margin-bottom: 10px; }
+      .link { display: flex; gap: 10px; align-items: center; }
+      .link code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--step-0)/1.5 var(--mono); color: var(--ink); }
+
+      .band { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 26px; }
+      .list { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+      .list:empty { display: none; }
+      .one { background: var(--paper); padding: 14px 16px; display: flex; gap: 14px; align-items: baseline; justify-content: space-between; }
+      .one h3 { font: 400 var(--step-0)/1.4 var(--serif); margin: 0; }
+      .one .price { font: var(--step--1)/1 var(--mono); color: var(--clay); white-space: nowrap; }
+      .one a { font: var(--step--1)/1 var(--mono); }
+      .none { color: var(--ink-3); font-size: var(--step-0); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">you write it, you price it</div>
+      </div>
+      <div class="meta">
+        <div>names kept <b id="memCount">·</b></div>
+        <div>spent on names <b id="spend">·</b></div>
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask" aria-current="page">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap">
+        <h1>Sell something you wrote</h1>
+        <p class="intro">
+          The agent has been the buyer so far. This is the same door from the inside: you write the words, you set the
+          price, and the money goes to your wallet. Whoever pays opens it once and never pays for it again.
+        </p>
+
+        <form id="form">
+          <label class="field">
+            <span>What the link is about</span>
+            <input type="text" id="title" maxlength="90" placeholder="The deal for the two landing pages" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>The words behind the wall</span>
+            <textarea id="body" maxlength="6000" placeholder="Half now, half on delivery, and the source files go in a shared folder rather than the mail."></textarea>
+          </label>
+          <div class="row">
+            <label class="field">
+              <span>Price</span>
+              <div class="money">
+                <input type="text" id="usdc" inputmode="decimal" value="0.02" autocomplete="off" />
+                <b>USDC</b>
+              </div>
+            </label>
+            <label class="field">
+              <span>Money arrives at</span>
+              <input type="text" id="payTo" autocomplete="off" spellcheck="false" />
+            </label>
+          </div>
+          <p class="hint" id="hint">
+            Testnet only. The box holds the wallet this page is narrating, and you can replace it with any testnet address
+            you own.
+          </p>
+          <button type="submit" class="primary" id="go">Make the link</button>
+        </form>
+
+        <div id="made"></div>
+
+        <div class="band">
+          <div class="label">Links you have made</div>
+          <div class="list" id="list"><div class="none">none yet</div></div>
+          <p class="hint" style="margin-top:14px">
+            This list cannot show you your own words. They leave the server through the paywall and nowhere else, which is
+            the whole claim of the page.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <script type="module">
+      import { $, mountWallet, loadMeta, shortAddr, spoken } from "./shared.js";
+
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      const list = async () => {
+        const rows = await fetch("/notes").then((r) => r.json());
+        const box = $("list");
+        if (!rows.notes?.length) {
+          box.innerHTML = '<div class="none">none yet</div>';
+          return;
+        }
+        box.innerHTML = rows.notes
+          .map(
+            (n) =>
+              `<div class="one"><div><h3>${esc(n.title)}</h3><span class="quiet">${
+                n.opened === 0 ? "nobody has paid to open it" : `opened ${n.opened} time${n.opened === 1 ? "" : "s"}`
+              } · ${esc(shortAddr(n.pay_to))}</span></div><div style="text-align:right"><div class="price">${esc(
+                spoken(String(n.usdc) + " USDC"),
+              )}</div><a href="${esc(n.link)}">open</a></div></div>`,
+          )
+          .join("");
+      };
+
+      const fill = (st) => {
+        if (!$("payTo").value.trim() && st?.session?.wallet) $("payTo").value = st.session.wallet;
+      };
+
+      $("form").onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = $("go");
+        const hint = $("hint");
+        btn.disabled = true;
+        btn.textContent = "writing…";
+        hint.className = "hint";
+        try {
+          const res = await fetch("/ask", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              title: $("title").value,
+              body: $("body").value,
+              usdc: Number($("usdc").value),
+              pay_to: $("payTo").value.trim(),
+            }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          const url = `${location.origin}${body.link}`;
+          $("made").innerHTML =
+            `<div class="made"><div class="label">Your link</div><div class="link"><code>${esc(url)}</code>` +
+            `<button id="copy" class="chip">copy</button></div>` +
+            `<p class="hint" style="margin:12px 0 0">Send that link to whoever owes you the read. Nothing about the words is in it.</p></div>`;
+          $("copy").onclick = async () => {
+            await navigator.clipboard.writeText(url).catch(() => {});
+            $("copy").textContent = "copied";
+          };
+          $("form").reset();
+          $("usdc").value = "0.02";
+          fill(await loadMeta());
+          await list();
+        } catch (err) {
+          hint.className = "hint bad";
+          hint.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Make the link";
+        }
+      };
+
+      mountWallet(async () => {
+        const st = await loadMeta();
+        fill(st);
+      });
+
+      const st = await loadMeta();
+      fill(st);
+      await list();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A link · Total Recall</title>
+    <meta name="description" content="One priced note. The words are held behind a 402 paywall and only come out after the chain says the money arrived." />
+    <link rel="stylesheet" href="/theme.css" />
+    <script>
+      window.__walletStandardEarly = [];
+      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+    </script>
+    <style>
+      main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
+      .wrap { max-width: 540px; margin: 0 auto; }
+
+      .offer { border: 1px solid var(--rule-strong); border-radius: 10px; padding: 26px; }
+      .offer .label { margin-bottom: 14px; }
+      h1 { font: 400 var(--step-3)/1.25 var(--serif); margin: 0 0 14px; letter-spacing: -0.01em; }
+      .price { font: 400 var(--step-5)/1.05 var(--serif); letter-spacing: -0.02em; }
+      .price small { font-size: var(--step-1); color: var(--ink-2); }
+      .who { margin-top: 12px; color: var(--ink-2); font-size: var(--step-0); }
+      dl.terms { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--rule); display: grid; gap: 10px; }
+      dl.terms > div { display: flex; gap: 14px; align-items: baseline; }
+      dl.terms dt { flex: 0 0 104px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      dl.terms dd { margin: 0; font: var(--step-0)/1.5 var(--mono); word-break: break-all; }
+
+      .actions { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+      .actions button { flex: 1 1 180px; }
+      .stage { margin-top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .stage b { color: var(--clay); font-weight: 400; }
+      .bad { color: var(--brick); }
+      .good { color: var(--moss); }
+
+      .note { margin-top: 6px; border: 1px solid var(--moss); border-radius: 10px; padding: 26px; }
+      .note .body { white-space: pre-wrap; font: var(--step-0)/1.7 var(--sans); color: var(--ink); }
+      .empty { border: 1px dashed var(--rule-strong); border-radius: 10px; padding: 34px; text-align: center; color: var(--ink-3); }
+      .empty h2 { font: 400 var(--step-2)/1.4 var(--serif); color: var(--ink); margin: 0 0 10px; }
+      .fine { margin-top: 26px; border-top: 1px solid var(--rule); padding-top: 16px; font: var(--step--1)/1.7 var(--mono); color: var(--ink-3); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/">Total <em>Recall</em></a>
+        <div class="tagline">nothing opens until the chain agrees</div>
+      </div>
+      <div class="meta">
+        <div>chain <b id="chainState">·</b></div>
+        <div>brain <b id="model">·</b></div>
+      </div>
+      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
+      <nav class="tabs" id="siteMenu">
+        <a href="/app">Talk</a>
+        <a href="/memory">Memory</a>
+        <a href="/call">Call</a>
+        <a href="/pay">Pay</a>
+        <a href="/ask" aria-current="page">Ask to pay</a>
+        <a href="/report">Statement</a>
+        <a href="/features">Features</a>
+        <a href="/how">How it works</a>
+        <a href="/life">In your life</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap" id="root"><div class="empty">reading the link…</div></div>
+    </main>
+
+    <script type="module">
+      /* Absolute paths, because this one page is served under /ask/<id> and a relative
+         import would look for the script inside the link rather than at the root. */
+      import { $, loadMeta, shortAddr, spoken } from "/shared.js";
+      import { connect, discover, signAndExecute } from "/wallet.js";
+
+      const id = location.pathname.split("/")[2] ?? "";
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      // Page state rather than server state, because a person opening a link must not
+      // change which wallet the rest of the product narrates.
+      let payer = null;
+      let terms = null;
+
+      const stage = (text, cls = "") => `<div class="stage ${cls}">${text}</div>`;
+
+      function offer(meta, paid) {
+        $("root").innerHTML =
+          `<div class="offer">
+             <div class="label">A note that costs money to read</div>
+             <h1>${esc(meta.title)}</h1>
+             <div class="price">${esc(spoken(String(meta.usdc)))} <small>USDC</small></div>
+             <div class="who">${meta.opened === 0 ? "Nobody has opened this yet" : `${meta.opened} wallet${meta.opened === 1 ? "" : "s"} paid to open it`}</div>
+             <dl class="terms">
+               <div><dt>writer</dt><dd>${esc(shortAddr(meta.pay_to))}</dd></div>
+               <div><dt>chain</dt><dd>sui:testnet</dd></div>
+               ${paid ? `<div><dt>you paid</dt><dd>${esc(paid)}</dd></div>` : ""}
+             </dl>
+           </div>
+           <div class="actions">
+             ${
+               payer
+                 ? `<button class="primary" id="pay">${paid ? "Ask for it again" : `Pay ${esc(spoken(String(meta.usdc)))} USDC`}</button>`
+                 : `<button class="primary" id="pick">Connect a wallet to open</button>`
+             }
+           </div>
+           <div class="fine">
+             This page has no key of yours. It builds a transaction, your wallet shows you the amount and the address, and
+             you approve it there or nothing happens. The words come out of the server only after the receipt has been read
+             off the chain, and paying twice is refused by the journal rather than by this page.
+           </div>`;
+
+        const pick = $("pick");
+        if (pick) {
+          pick.onclick = async () => {
+            pick.disabled = true;
+            try {
+              const found = discover();
+              if (!found.length) throw new Error("no Sui wallet in this browser. Suiet, Ethos, Martian and Suilend all work");
+              const picked = await connect(found[0].name);
+              if (picked.chain && !picked.chain.includes("testnet")) {
+                throw new Error(`that account is on ${picked.chain}, and this link is only paid and checked on testnet`);
+              }
+              payer = picked.address;
+              pick.disabled = false;
+              await open();
+            } catch (err) {
+              pick.disabled = false;
+              $("root").insertAdjacentHTML("beforeend", stage(`not connected · ${esc(err.message)}`, "bad"));
+            }
+          };
+        }
+        const pay = $("pay");
+        if (pay && payer) pay.onclick = () => open(true);
+      }
+
+      async function open(pay = false) {
+        const listed = await fetch(`/notes?id=${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : null));
+        const meta = listed?.note;
+        if (!meta) {
+          $("root").innerHTML =
+            `<div class="empty"><h2>Nothing is behind this link</h2><p>Either it was mistyped or the person who wrote it no longer offers it here.</p></div>`;
+          return;
+        }
+
+        // Nothing is asked of the index until a wallet is in the picture, because the
+        // price of a note depends on which wallet is asking.
+        if (!payer) {
+          offer(meta);
+          return;
+        }
+
+        let asked = null;
+        try {
+          const res = await fetch("/ask/sign", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id, payer }),
+          });
+          asked = await res.json();
+          if (!res.ok && !asked.quote) throw new Error(asked.error || `the index answered ${res.status}`);
+        } catch (err) {
+          offer(meta);
+          $("root").insertAdjacentHTML("beforeend", stage(esc(err.message), "bad"));
+          return;
+        }
+
+        if (asked.opened) {
+          reveal(meta, asked, asked.charged === 0 ? `paid ${esc(spoken(String(asked.paid_then)))} USDC on ${esc(asked.paid_on)}` : null);
+          return;
+        }
+
+        // The index priced the note but could not build a transaction for it, which in
+        // practice means a wallet with no testnet USDC in it. Saying that is better than
+        // offering a Pay button that fails again two seconds later.
+        if (asked.error && !asked.prepared) {
+          offer(meta, null);
+          $("root").insertAdjacentHTML("beforeend", stage(esc(asked.error), "bad"));
+          return;
+        }
+
+        terms = asked;
+        if (!pay) {
+          offer(meta, null);
+          $("root").insertAdjacentHTML(
+            "beforeend",
+            stage(`this wallet has never paid for it · <b>${esc(spoken(String(asked.quote.usdc)))} USDC</b> to open`),
+          );
+          return;
+        }
+
+        $("pay").disabled = true;
+        $("pay").textContent = "check your wallet…";
+        let digest = "";
+        try {
+          const signed = await signAndExecute({ address: payer, chain: asked.prepared.chain, bytesBase64: asked.prepared.bytes });
+          if (!signed.digest) throw new Error("the wallet sent no transaction digest back");
+          digest = signed.digest;
+          $("root").innerHTML = stage("the money moved. reading the receipt off the chain…");
+        } catch (err) {
+          $("pay").disabled = false;
+          $("pay").textContent = `Pay ${esc(spoken(String(asked.quote.usdc)))} USDC`;
+          $("root").insertAdjacentHTML("beforeend", stage(esc(err.message), "bad"));
+          return;
+        }
+
+        const res = await fetch("/paid", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ resource: `note:${id}`, payer, quote: asked.quote.id, receipt: digest }),
+        });
+        const back = await res.json();
+        if (!res.ok) {
+          // Money and words are separate facts, and the page has to say which one it
+          // has instead of showing an error that reads like nothing happened.
+          $("root").innerHTML =
+            stage(
+              `<b>${esc(spoken(String(asked.quote.usdc)))} USDC moved</b> as ${esc(digest.slice(0, 12))}… and the index refused to open the note: ${esc(
+                back.error || `it answered ${res.status}`,
+              )}. Ask again and it replays that receipt rather than paying twice.`,
+              "bad",
+            ) + `<div class="actions"><button id="again">Back to making links</button></div>`;
+          $("again").onclick = () => {
+            location.href = "/ask";
+          };
+          return;
+        }
+        reveal(meta, back, null);
+      }
+
+      function reveal(meta, released, paidBefore) {
+        $("root").innerHTML =
+          `<div class="note">
+             <div class="label good">${released.charged ? `Open, and it cost ${esc(spoken(String(released.charged)))} USDC` : "Open, and this wallet already paid for it"}</div>
+             <h1>${esc(meta.title)}</h1>
+             <div class="body">${esc(released.fact?.note ?? "(the index handed over nothing to show)")}</div>
+           </div>` +
+          (paidBefore ? stage(esc(paidBefore)) : "") +
+          `<div class="fine">
+             ${released.tx ? `Receipt <b>${esc(String(released.tx).slice(0, 14))}…</b> · ` : ""}${esc(shortAddr(meta.pay_to))} was paid.
+             Reopen this link from the same wallet as often as you like and it stays free, which is the same rule the agent
+             runs its memory on.
+           </div>`;
+      }
+
+      loadMeta();
+      if (!/^[A-Za-z0-9_-]{1,16}$/.test(id)) {
+        $("root").innerHTML = `<div class="empty"><h2>That is not a link</h2><p>Nothing after <b>/ask/</b> was a link id.</p></div>`;
+      } else {
+        await open();
+      }
+    </script>
+  </body>
+</html>
