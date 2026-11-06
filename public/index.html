@@ -318,21 +318,37 @@
 
       footer.page { border-top: 1px solid var(--rule); padding: 26px 0 40px; }
       footer.page .inner { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); display: flex; gap: 20px; flex-wrap: wrap; align-items: baseline; }
-      /* ---------- the feature grid, cut down ----------
-         The full grid lives on /features. This is the same cabinet with six doors on
-         it, so a reader sees the range from the landing page without a second wall
-         of prose. Each door opens the full grid on the tile it names. */
-      .fgTease { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 24px; }
-      .fgTease a { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 13px; align-items: start; padding: 16px; border: 1px solid var(--rule-strong); border-radius: 12px; background: var(--paper); color: inherit; text-decoration: none; border-bottom: 1px solid var(--rule-strong); transition: transform var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
-      .fgTease a:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--sheet); border-color: var(--ink-2); }
-      .fgTease .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--tone, var(--clay)); background: var(--paper-sunk); background: color-mix(in srgb, var(--tone, var(--clay)) 13%, var(--paper)); }
-      .fgTease .ico svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-      .fgTease .txt b { display: block; font: 400 var(--step-0)/1.25 var(--serif); letter-spacing: -0.01em; }
-      .fgTease .txt span { display: block; margin-top: 3px; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
-      .fgTease .more { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 15px 16px; border-style: dashed; background: var(--paper-sunk); }
-      .fgTease .more .arrow { font: 400 var(--step-1)/1 var(--mono); color: var(--clay); }
-      @media (max-width: 760px) { .fgTease { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-      @media (max-width: 470px) { .fgTease { grid-template-columns: minmax(0, 1fr); } }
+      /* ---------- the feature cabinet, second section ----------
+         The full eighteen-drawer grid lives on /features. Here, right beneath the hero,
+         nine drawers sit inside a framed index cabinet so a visitor sees the whole range
+         at a glance. Each drawer opens /features on the exact capability it names. */
+      .fgHead { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; margin-bottom: 26px; }
+      .fgHead .lead { margin-bottom: 0; max-width: 62ch; }
+      .fgMeta { display: inline-flex; align-items: center; gap: 10px; padding: 8px 13px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; background: var(--paper-sunk); font: 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .fgMeta i { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); display: inline-block; }
+      .fgCabinet { position: relative; padding: clamp(14px, 2vw, 22px); border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper-sunk); background-image: var(--dots); box-shadow: 7px 7px 0 var(--sheet); }
+      .fgTease { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .fgTease a.fgCard { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; padding: 18px 18px 15px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); color: inherit; text-decoration: none; transition: transform var(--t-2) var(--ease-spring), box-shadow var(--t-2) var(--ease), border-color var(--t-1) var(--ease), background var(--t-1) var(--ease); }
+      .fgTease a.fgCard:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 var(--sheet); border-color: var(--ink); }
+      .fgTease .fgTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .fgTease .ico { width: 40px; height: 40px; border-radius: 11px; border: 1px solid color-mix(in srgb, var(--tone, var(--clay)) 30%, var(--rule-strong)); display: grid; place-items: center; color: var(--tone, var(--clay)); background: var(--paper-sunk); background: color-mix(in srgb, var(--tone, var(--clay)) 12%, var(--paper)); transition: transform var(--t-2) var(--ease-spring); }
+      .fgTease a.fgCard:hover .ico { transform: scale(1.05) rotate(-2deg); }
+      .fgTease .ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+      .fgTease .fgTag { display: inline-flex; align-items: center; gap: 6px; font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper-sunk); }
+      .fgTease .fgTag b { font-weight: 400; color: var(--tone, var(--clay)); }
+      .fgTease .txt b { display: block; font: 400 var(--step-1)/1.22 var(--serif); letter-spacing: -0.012em; color: var(--ink); }
+      .fgTease .txt span { display: block; margin-top: 5px; font: var(--step--1)/1.55 var(--sans); color: var(--ink-2); }
+      .fgTease .fgFoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--rule); font: 11px/1 var(--mono); letter-spacing: 0.04em; color: var(--ink-3); }
+      .fgTease .fgFoot em { font-style: normal; color: var(--ink-2); }
+      .fgTease .fgFoot .arr { color: var(--tone, var(--clay)); transition: transform var(--t-1) var(--ease); }
+      .fgTease a.fgCard:hover .fgFoot .arr { transform: translateX(3px); }
+      .fgTease a.more { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px 20px; margin-top: 2px; padding: 16px 20px; border: var(--edge) solid var(--ink); border-radius: 12px; background: var(--paper); color: inherit; text-decoration: none; box-shadow: 4px 4px 0 var(--sheet); transition: transform var(--t-2) var(--ease-spring), box-shadow var(--t-2) var(--ease), background var(--t-1) var(--ease); }
+      .fgTease a.more:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--sheet); background: var(--clay-wash); }
+      .fgTease .more .txt b { font: 400 var(--step-1)/1.25 var(--serif); }
+      .fgTease .more .txt span { font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); margin-top: 3px; }
+      .fgTease .more .moreCta { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px; background: var(--ink); color: var(--paper); font: 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+      @media (max-width: 920px) { .fgTease { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 560px) { .fgTease { grid-template-columns: minmax(0, 1fr); } .fgCabinet { padding: 12px; } }
       @media (prefers-reduced-motion: reduce) { .ask .caret { animation: none } }
     </style>
   </head>
@@ -402,6 +418,140 @@
             <img src="/assets/hero-voice-cut.webp" width="1200" height="686" alt="A man talking to a clerk who is writing in a notebook, with one enormous cartoon ear" />
             <figcaption>You stand on the left and say a sentence. She sits on the right, has one ear far too big for her head, and writes the answer down so she never has to be told twice.</figcaption>
           </figure>
+        </section>
+
+        <section>
+          <div class="fgHead">
+            <div>
+              <div class="kicker reveal">The whole closet, one door</div>
+              <h2 class="reveal">Nine drawers of a larger cabinet</h2>
+              <p class="lead reveal">The full grid holds eighteen capabilities. These nine are the ones people reach for first, and every single one runs live on this build.</p>
+            </div>
+            <div class="fgMeta reveal" aria-label="Cabinet status">
+              <i></i>
+              <span>9 of 18 drawers · live on this build</span>
+            </div>
+          </div>
+
+          <div class="fgCabinet reveal">
+            <div class="fgTease">
+              <a class="fgCard" href="/features#talk" style="--tone: var(--clay)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
+                  <span class="fgTag"><b>01</b> · voice</span>
+                </span>
+                <span class="txt">
+                  <b>Talk to it</b>
+                  <span>Text or a live voice call on top of the same memory and transcript.</span>
+                </span>
+                <span class="fgFoot"><em>open call or chat</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#memory" style="--tone: var(--moss)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>
+                  <span class="fgTag"><b>02</b> · walrus</span>
+                </span>
+                <span class="txt">
+                  <b>Remembers by wallet</b>
+                  <span>Your people and notes live under your address on Walrus Mainnet.</span>
+                </span>
+                <span class="fgFoot"><em>scoped per wallet</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#pay" style="--tone: var(--brick)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 10 14"/><path d="M21 3 14 21l-4-7-7-4z"/></svg></span>
+                  <span class="fgTag"><b>03</b> · money</span>
+                </span>
+                <span class="txt">
+                  <b>Pay by saying it</b>
+                  <span>Say who and how much. Code builds an unsigned USDC ticket for your wallet.</span>
+                </span>
+                <span class="fgFoot"><em>you sign the bytes</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#x402" style="--tone: var(--moss)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
+                  <span class="fgTag"><b>04</b> · x402</span>
+                </span>
+                <span class="txt">
+                  <b>Buy a fact</b>
+                  <span>Pays a few cents once for an unknown address profile, then keeps it forever.</span>
+                </span>
+                <span class="fgFoot"><em>paid once, free after</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#spam" style="--tone: var(--brick)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M6.5 6.5l11 11"/></svg></span>
+                  <span class="fgTag"><b>05</b> · guard</span>
+                </span>
+                <span class="txt">
+                  <b>Spam marks</b>
+                  <span>Stops cold before building bytes to a flagged address and repeats your reason.</span>
+                </span>
+                <span class="fgFoot"><em>pre-flight warning</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#reminder" style="--tone: var(--clay)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                  <span class="fgTag"><b>06</b> · timer</span>
+                </span>
+                <span class="txt">
+                  <b>Reminders on time</b>
+                  <span>Deterministic time parsing that writes the reminder back into your active thread.</span>
+                </span>
+                <span class="fgFoot"><em>returns to the chat</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#request" style="--tone: var(--brick)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></span>
+                  <span class="fgTag"><b>07</b> · request</span>
+                </span>
+                <span class="txt">
+                  <b>Request money</b>
+                  <span>Mint a 30-minute payment link and QR code that closes on the first settlement.</span>
+                </span>
+                <span class="fgFoot"><em>single-use link &amp; qr</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#sell" style="--tone: var(--moss)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg></span>
+                  <span class="fgTag"><b>08</b> · x402</span>
+                </span>
+                <span class="txt">
+                  <b>Sell a memory</b>
+                  <span>Put an on-chain USDC price on any Walrus note and hand out the locked link.</span>
+                </span>
+                <span class="fgFoot"><em>paid note link</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="fgCard" href="/features#statement" style="--tone: var(--clay)">
+                <span class="fgTop">
+                  <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h4"/><path d="M10 13h5M10 17h5"/></svg></span>
+                  <span class="fgTag"><b>09</b> · proof</span>
+                </span>
+                <span class="txt">
+                  <b>One statement sheet</b>
+                  <span>Measured chain figures and monthly caps set in vector type as SVG, PDF or CSV.</span>
+                </span>
+                <span class="fgFoot"><em>zero model guesswork</em><span class="arr" aria-hidden="true">→</span></span>
+              </a>
+
+              <a class="more" href="/features">
+                <span class="txt">
+                  <b>See all eighteen drawers in the full cabinet</b>
+                  <span>Morning brief · Wallet-only signing · On-chain receipts · Monthly USDC limit · Five working voices · Semantic recall</span>
+                </span>
+                <span class="moreCta">Open full grid <span aria-hidden="true">→</span></span>
+              </a>
+            </div>
+          </div>
         </section>
 
         <section>
@@ -666,42 +816,6 @@
             <div><div class="v" id="livePeople">·</div><div class="k">people with history</div></div>
           </div>
           <p class="note reveal">the same numbers Ken reasons over. <a href="/memory">Every line Ken has written</a>, or <a href="/app">start talking to Ken</a>.</p>
-        </section>
-
-        <section>
-          <div class="kicker reveal">The whole closet, one door</div>
-          <h2 class="reveal">Six drawers of a larger cabinet</h2>
-          <p class="lead reveal" style="max-width: 64ch">The full grid holds eighteen capabilities. These six are the ones people ask about first, and every one of them runs on this build.</p>
-          <div class="fgTease reveal">
-            <a href="/features#talk" style="--tone: var(--clay)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
-              <span class="txt"><b>Talk to it</b><span>Text or a live call, one memory</span></span>
-            </a>
-            <a href="/features#memory" style="--tone: var(--moss)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>
-              <span class="txt"><b>Remembers by wallet</b><span>Your people, scoped to the address</span></span>
-            </a>
-            <a href="/features#pay" style="--tone: var(--brick)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 10 14"/><path d="M21 3 14 21l-4-7-7-4z"/></svg></span>
-              <span class="txt"><b>Pay by saying it</b><span>A ticket that waits for your signature</span></span>
-            </a>
-            <a href="/features#spam" style="--tone: var(--brick)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M6.5 6.5l11 11"/></svg></span>
-              <span class="txt"><b>Spam marks</b><span>It stops and repeats your reason</span></span>
-            </a>
-            <a href="/features#reminder" style="--tone: var(--clay)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-              <span class="txt"><b>Reminders on time</b><span>Written back into the chat, while the server runs</span></span>
-            </a>
-            <a href="/features#x402" style="--tone: var(--moss)">
-              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
-              <span class="txt"><b>Buy a fact</b><span>A few cents for what it has not learned</span></span>
-            </a>
-            <a class="more" href="/features">
-              <span class="txt"><b>See all eighteen</b><span>What each one does, in order, and where to run it</span></span>
-              <span class="arrow" aria-hidden="true">→</span>
-            </a>
-          </div>
         </section>
       </div>
     </main>
