@@ -1,4 +1,5 @@
 node_modules/
+tmp/
 .env
 .env.local
 *.log
@@ -6,5 +7,14 @@ node_modules/
 dist/
 .personas.json
 .paid.json
+.seller.json
+.facilitator.json
 vibe_images/
 data/notes.json
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+chat_docs/
+ken_project_chat_history.md
+ken_project_chat_history.md

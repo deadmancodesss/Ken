@@ -14,7 +14,7 @@ Voice over: "Every wallet tool answers a question by reading the chain. Ask it a
 
 On screen: scroll to the cost ledger. Click the struck through rows so the second run reads as free.
 
-Voice over: "Memory first, on Walrus. The chain only when memory is empty, through Tatum. And when an address still has no name after both, it buys one, for a cent, and stores the receipt. Seven seconds the first time. Four the next, and never a paid lookup twice."
+Voice over: "Memory first, on Walrus. The chain only when memory is empty, through Tatum. And when an address still has no name after both, it buys a measured profile from a separate seller, for a cent or three, and stores the receipt. Seven seconds the first time. Four the next, and never a paid lookup twice."
 
 Cut to: the annotated ticket. Click `held`, then `signed`, then `refused`, one second each.
 
@@ -22,11 +22,13 @@ Voice over: "Money only moves when a wallet signs it. Nothing is ever sent by vo
 
 ## 0:40 to 1:20, the call
 
-On screen: `/call`. Show the language picker open, pick English, then show the voice list, move the pace slider, click audition.
+On screen: `/app`, on a chat that already has a question in it. Click Voice. The sheet opens over the same thread and replays it.
 
-Voice over: "You choose the language, the voice and how fast it talks. All three are remembered."
+Voice over: "Voice is not a second app. It is this chat with a microphone. Same thread, same history, and the same transcript when the call ends."
 
-Then: click Start call, allow the microphone, and say "who do I pay most often".
+Open the voice picker and show the five working voices. Pick one, close the list, and start the call.
+
+Then: allow the microphone, and say "who do I pay most often".
 
 Let the whole answer play out on camera, ring moving, captions filling. Do not cut away while it is listening, because the point is that it hears you and answers out loud.
 
@@ -36,11 +38,11 @@ Voice over, after the answer finishes: "The ring is your real microphone level. 
 
 On screen: `/app`. Ask "who is" followed by an address that has never been named. Use the copy button on the memory page to get one.
 
-Voice over: "Memory has nothing. Tatum has the transfers but no name. So it asks to buy one."
+Voice over: "Memory has nothing. Tatum has the transfers but no name. So it asks to buy a profile."
 
-Show the quote appearing, then cut to `/pay`, connect the wallet, and sign.
+Show the standard 402 price appearing, then cut to `/pay`, connect the wallet, and sign.
 
-Voice over: "The quote expires in ten minutes, the signature comes from my own wallet, and the receipt goes back into memory."
+Voice over: "The price arrives in a standard 402 header. My wallet signs the exact transfer without sending it, and the seller's facilitator verifies those bytes and settles them. The seller holds no key."
 
 Then: ask the same question again.
 
@@ -56,7 +58,7 @@ Voice over: "Namespaces are scoped per wallet, so two people using the same agen
 
 On screen: `/how`. Scroll slowly through the finished and not finished columns.
 
-Voice over: "The demo brain is a rule based stub, because a model key never arrived. Gemini function calling, Gemini voice and Gemini Live all sit behind one function, and the header tells you which one is answering. Everything else is real. Real wallet, real chain reads, real storage, and a real price for knowledge."
+Voice over: "The demo can run on a rules stub with no model key, and the header says which brain is answering. The live build answers through Gemini, with NVIDIA behind it, and the header tells you which one answered. Everything else is real. Real wallet, real chain reads, real storage, and a real price for knowledge."
 
 Last frame: hold on the cost meter.
 

@@ -14,21 +14,11 @@ import "dotenv/config";
  * a probe that says "pay Sana 2 USDC" cannot move money, and no probe is retried, so a
  * model's score is its own and not its fallback's.
  *
- * Free tiers are metered by requests per day rather than by tokens, so the run prints how
- * many calls it is about to spend before it spends them, and paces between them.
+ * Free tiers are metered by a pace rather than a bill. NVIDIA counts requests per minute,
+ * Gemini counts per day, so the run prints how many calls it is about to spend and paces
+ * between them, and a model that answers 429 is recorded as skipped rather than scored.
  */
 if (process.env.PAY_ENABLED) delete process.env.PAY_ENABLED;
-
-const OR_KEY0 = (process.env.OPENROUTER_API_KEY ?? "").trim();
-let OR_KEY = OR_KEY0;
-if (/^apikey_/i.test(OR_KEY0)) {
-  // A web session token is not a key, and every route was measured refusing it. Dropping
-  // it here costs the OpenRouter half of the run and keeps the other half measurable,
-  // which beats refusing to measure anything at all.
-  console.error("note: OPENROUTER_API_KEY is a web session token, not an API key, so the OpenRouter models are skipped. Make one at openrouter.ai/settings/keys");
-  OR_KEY = "";
-  delete process.env.OPENROUTER_API_KEY;
-}
 
 const { probe, probeRoutes, systemPrompt } = await import("./brain.js");
 const { counterparties } = await import("./knowledge.js");
@@ -47,35 +37,15 @@ const arg = (name: string) => argv.find((a) => a.startsWith(`--${name}=`))?.spli
 
 const FULL = flag("full");
 const GAP = Number(arg("gap") || process.env.BENCH_GAP_MS || 1300);
-const HAS_OR = routes.some((r) => r.id === "openrouter");
 
 /*
- * With an OpenRouter key the five default names are the five arguments, not a survey.
- * Three of them are the chain the product would actually run, `openrouter/free` is what a
- * zero credit account gets when it wants a router to choose, and `typesafe/jev-router` is
- * the decision lane, which prices at whatever it decides to use and so has to be measured
- * before it is trusted with a microphone. Without that key the run measures the names the
- * product already ships with, because a harness that has never produced a number is not
- * one you would trust when the key does arrive.
+ * With no --models, the run measures the chain the product actually ships: every model
+ * on every route that has a key, in the order the brain would try them. That is how the
+ * NVIDIA lead gets ranked against the Gemini fallback on identical probes, and how a key
+ * that refuses inference is shown as skipped rather than quietly scored as zero.
  */
-const OR_MODELS = [
-  "nvidia/nemotron-3.5-lightning:free",
-  "google/gemma-4-31b-it:free",
-  "nvidia/nemotron-3-ultra-550b-a55b:free",
-  "openrouter/free",
-  "typesafe/jev-router",
-];
-const EXTRA_MODELS = [
-  "cohere/north-mini-code:free",
-  "liquid/lfm-2.5-2.6b:free",
-  "dots-studio/dots-3-note-preview:free",
-  "google/gemma-4-26b-a4b-it:free",
-  "nvidia/nemotron-3.5-super-vl:free",
-  "xingchen-agi/xing4.0-29b-a4b:free",
-  "recursive/flint-v1.0:free",
-];
 const requested = (arg("models") || process.env.BENCH_MODELS || "").split(",").map((s) => s.trim()).filter(Boolean);
-const MODELS = requested.length ? requested : (HAS_OR ? OR_MODELS : routes.flatMap((r) => r.models)).concat(FULL && HAS_OR ? EXTRA_MODELS : []);
+const MODELS = requested.length ? requested : routes.flatMap((r) => r.models);
 
 const truth = await counterparties(session().wallet, session().network);
 const sana = truth.find((p) => p.name === "Sana");
@@ -247,26 +217,11 @@ async function call(routeId: string, model: string, p: Probe) {
   return probe(routeId, model, messages, p.tools);
 }
 
-/** A vendor's own slug belongs to that vendor, and a bare name belongs to the other one. */
+/** A vendor's own slug belongs to that vendor, and a bare name belongs to the lead route. */
 function routeFor(model: string) {
   const named = routes.find((r) => r.models.includes(model));
   if (named) return named.id;
-  if (HAS_OR && model.includes("/")) return "openrouter";
   return routes[0].id;
-}
-
-/* The daily ceiling is what makes or breaks a demo, and OpenRouter will state it. */
-if (routes.some((r) => r.id === "openrouter") && OR_KEY) {
-  const res = await fetch("https://openrouter.ai/api/v1/key", { headers: { authorization: `Bearer ${OR_KEY}` } }).catch(() => null);
-  if (res?.ok) {
-    const k = (await res.json()).data ?? {};
-    console.log(
-      `openrouter account: limit ${k.limit ?? "none"} per ${k.limit_reset ?? "?"}, ${k.usage ?? "?"} spent, credit ${k.credit ?? 0}` +
-        (k.rate_limit ? `, ${k.rate_limit.requests}/${k.rate_limit.interval} s` : "")
-    );
-  } else {
-    console.log(`openrouter key check returned ${res?.status ?? "no response"}, so the daily ceiling is unknown`);
-  }
 }
 
 const plan = modelsSummary();

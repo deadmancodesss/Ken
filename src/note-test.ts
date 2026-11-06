@@ -1,22 +1,32 @@
 import "dotenv/config";
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { USDC_DECIMALS, USDC_TESTNET, paymentCap } from "./wallet.js";
-import type { Quote } from "./x402.js";
+import type { PaymentRequirements } from "./x402wire.js";
 
 /*
- * A note is somebody's writing and somebody's price, so the same paywall that was
- * audited against forged identity payments has to survive a forged note payment too.
- * Nothing here touches the links on this machine: the store is pointed at a scratch
- * file before the module that reads it is even loaded.
+ * A note is somebody's writing and somebody's price, so the same standard paywall that
+ * was checked against forged profile payments has to survive a forged note payment too.
+ * Nothing here touches the links on this machine: both stores are pointed at scratch
+ * files before the modules that read them are loaded.
  */
 
 const scratch = resolve("vibe_images/notes-test.json");
+const scratchLedger = resolve("vibe_images/notes-seller-test.json");
 mkdirSync(dirname(scratch), { recursive: true });
+
+const INDEX = `0x${"c".repeat(63)}3`;
 process.env.NOTES_FILE = scratch;
+process.env.SELLER_LEDGER = scratchLedger;
+process.env.SELLER_WALLET = INDEX;
+process.env.SELLER_PRICE_USDC = "0.01";
 
 const { createNote } = await import("./notes.js");
-const { addressOf, noteResourceId, parseResource, salesOf, sell, verdict } = await import("./x402.js");
+const { sell, salesOf } = await import("./catalog.js");
+const { addressOf, noteResourceId, parseResource } = await import("./resources.js");
+const { coversTerms } = await import("./facilitator.js");
+const { decodeHeader, requirementsFor } = await import("./x402wire.js");
+const { USDC_DECIMALS, USDC_ASSET, paymentCap } = await import("./wallet.js");
+const { PAY_CHAIN } = await import("./chain.js");
 
 let fails = 0;
 const expect = (what: string, ok: boolean) => {
@@ -35,7 +45,6 @@ const throws = (fn: () => unknown) => {
 
 const AUTHOR = `0x${"a".repeat(63)}1`;
 const BUYER = `0x${"b".repeat(63)}2`;
-const INDEX = `0x${"c".repeat(63)}3`;
 const UNSEEN = `0x${"1".repeat(64)}`;
 const WORDS = "half now and half on delivery, with the source files in the shared folder rather than the mail";
 const PRICE = 0.02;
@@ -44,29 +53,8 @@ const made = createNote({ title: "The deal for the two landing pages", body: WOR
 const resource = noteResourceId(made.id);
 const units = BigInt(Math.round(PRICE * 10 ** USDC_DECIMALS));
 
-const quote: Quote = {
-  id: "note0001",
-  resource,
-  payer: BUYER,
-  usdc: PRICE,
-  baseUnits: String(units),
-  asset: USDC_TESTNET,
-  payTo: AUTHOR,
-  network: "sui:testnet",
-  issued: Date.now(),
-  expires: Date.now() + 60_000,
-};
-
-const deal = (changes: { address: string; amount: bigint; coinType?: string }[], status = "SUCCESS") => ({
-  digest: "ANoteDigestNeverSent",
-  status,
-  timestamp: "2026-11-03T00:00:00Z",
-  changes: changes.map((c) => ({ address: c.address, amount: c.amount, coinType: c.coinType ?? USDC_TESTNET })),
-});
-const right = [{ address: AUTHOR, amount: units }, { address: BUYER, amount: -units }];
-
 expect("a link is written with an id nobody could guess", /^[a-z0-9]{12}$/.test(made.id));
-expect("the stored price is exactly the base units on the quote", BigInt(Math.round(made.usdc * 10 ** USDC_DECIMALS)) === units);
+expect("the stored price is exactly the base units on the terms", BigInt(Math.round(made.usdc * 10 ** USDC_DECIMALS)) === units);
 expect("a link with no title is refused", throws(() => createNote({ title: "", body: WORDS, usdc: PRICE, payTo: AUTHOR })));
 expect("a link with nothing behind the wall is refused", throws(() => createNote({ title: "x", body: "too short", usdc: PRICE, payTo: AUTHOR })));
 expect("a link that pays a malformed address is refused", throws(() => createNote({ title: "x", body: WORDS, usdc: PRICE, payTo: "0xabc" })));
@@ -74,9 +62,14 @@ expect("a link priced above the signing ceiling is refused", throws(() => create
 expect("a price too small to be a whole base unit is refused", throws(() => createNote({ title: "x", body: WORDS, usdc: 0.0000004, payTo: AUTHOR })));
 
 expect("a note id round trips through the resource name", parseResource(resource).kind === "note");
-expect("an address still parses as an address", parseResource(`identity:${BUYER}`).kind === "identity");
+expect("an old identity link still parses as a profile", parseResource(`identity:${BUYER}`).kind === "profile");
 expect("a note id that is too short is refused", throws(() => parseResource("note:abc")));
 expect("a note cannot be read as an address lookup", throws(() => addressOf(resource)));
+
+const right = [
+  { address: AUTHOR, amount: units, coinType: USDC_ASSET },
+  { address: BUYER, amount: -units, coinType: USDC_ASSET },
+];
 
 const run = async () => {
   const unknown = await sell({ resource: `note:${"z".repeat(12)}`, payer: BUYER });
@@ -93,18 +86,29 @@ const run = async () => {
   const acc = (ask.body as any).accepts?.[0];
   expect("the note is priced by its writer rather than by the index", String(acc?.amount) === String(units));
   expect("the money is pointed at the writer rather than at the index", String(acc?.payTo).toLowerCase() === AUTHOR);
-  expect("the wallet is told which note it is being asked to sign", String(acc?.memo).includes(made.title));
-  expect("the quote carries the asking wallet", String((ask.body as any).quote?.payer) === BUYER);
-  expect("the words are not in the answer that asks for money", !JSON.stringify(ask.body).includes("shared folder"));
-  expect("an unpaid link has been opened by nobody", salesOf(resource).length === 0);
+  expect("the wallet is told which note it is being asked to sign", String(acc?.description).includes(made.title));
+  expect("the answer does not contain the words being sold", !JSON.stringify(ask.body).includes("shared folder"));
+  expect("the unpaid link has been opened by nobody", salesOf(resource).length === 0);
 
-  expect("the note price travels with the quote, so a cheap payment cannot open it", !verdict(quote, deal([{ address: AUTHOR, amount: units - 1n }, { address: BUYER, amount: 1n - units }]), {}).ok);
-  expect("the right amount to the writer from the buyer opens the note", verdict(quote, deal(right), {}).ok);
-  expect("money sent to the index instead of the writer is refused", !verdict(quote, deal([{ address: INDEX, amount: units }, { address: BUYER, amount: -units }]), {}).ok);
-  expect("money that never left the buyer is refused", !verdict(quote, deal([{ address: AUTHOR, amount: units }]), {}).ok);
-  expect("a receipt already spent is refused on a note too", !verdict(quote, deal(right), { ANoteDigestNeverSent: { resource, payer: BUYER, digest: "ANoteDigestNeverSent", usdc: PRICE, at: "2026-11-03" } }).ok);
+  const header = decodeHeader<any>(ask.headers["payment-required"] ?? "");
+  expect("the note price is published in a PAYMENT-REQUIRED header", header.x402Version === 2 && header.accepts?.[0]?.resource === resource);
+  expect("the note terms use the standard exact scheme on the network this build settles", header.accepts?.[0]?.scheme === "exact" && header.accepts?.[0]?.network === PAY_CHAIN);
+  expect("the note is priced in the USDC this build settles", String(header.accepts?.[0]?.asset) === USDC_ASSET);
+
+  const terms: PaymentRequirements = requirementsFor({
+    resource,
+    description: `note "${made.title}"`,
+    payTo: AUTHOR,
+    baseUnits: units,
+  });
+  expect("the right amount to the writer from the buyer opens the note", coversTerms(terms, BUYER, right) === null);
+  expect("a note price one base unit short is refused", coversTerms(terms, BUYER, [{ address: AUTHOR, amount: units - 1n, coinType: USDC_ASSET }, { address: BUYER, amount: 1n - units, coinType: USDC_ASSET }]) !== null);
+  expect("money sent to the index instead of the writer is refused", coversTerms(terms, BUYER, [{ address: INDEX, amount: units, coinType: USDC_ASSET }, { address: BUYER, amount: -units, coinType: USDC_ASSET }]) !== null);
+  expect("money that never left the buyer is refused", coversTerms(terms, BUYER, [{ address: AUTHOR, amount: units, coinType: USDC_ASSET }]) !== null);
+  expect("a buyer with no money of their own is not a payer", coversTerms(terms, UNSEEN, right) !== null);
 
   rmSync(scratch, { force: true });
+  rmSync(scratchLedger, { force: true });
   console.log(fails ? `\n${fails} note check(s) failed` : `\nall note checks green, no money moved`);
   process.exit(fails ? 1 : 0);
 };

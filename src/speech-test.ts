@@ -14,8 +14,8 @@ const FISH_KEY = (process.env.FISH_API_KEY ?? "").trim();
 const OR_KEY = (process.env.OPENROUTER_API_KEY ?? "").trim();
 process.env.GEMINI_API_KEY = GEMINI_KEY || "test-voice-key";
 process.env.FISH_API_KEY = FISH_KEY || "test-fish-key";
-// Only OpenRouter's own key shape is believed, so a test key has to look like one.
-process.env.OPENROUTER_API_KEY = OR_KEY.startsWith("sk-or-v1-") ? OR_KEY : "sk-or-v1-test-key";
+// A scripted run needs a value even when .env has none, and no shape is judged by sight.
+process.env.OPENROUTER_API_KEY = OR_KEY || "sk-or-v1-test-key";
 delete process.env.FISH_VOICES;
 // A rested vendor would hide the very failure these checks are trying to read.
 process.env.VOICE_COOLDOWN_MS = "0";
@@ -29,6 +29,9 @@ let fishStatus = 200;
 let fishBody = new Uint8Array(0);
 let orStatus = 200;
 let orBody = new Uint8Array(0);
+// The content type this vendor really answers with, measured 2026-11-03. It sends a bare
+// stream at 44.1 kHz and refuses to wrap it, which is the whole reason the header exists.
+let orType = "audio/pcm;rate=44100;channels=1";
 
 globalThis.fetch = (async (url: any, init: any) => {
   const where = String(url);
@@ -43,7 +46,7 @@ globalThis.fetch = (async (url: any, init: any) => {
   if (where.includes("openrouter.ai")) {
     sent.push({ via: "openrouter", url: where, body: JSON.parse(String(init.body)), auth: (init as any).headers.authorization });
     return orBody.length
-      ? new Response(orBody, { status: orStatus, headers: { "content-type": "audio/wav" } })
+      ? new Response(orBody, { status: orStatus, headers: { "content-type": orType } })
       : Response.json(orStatus === 200 ? {} : { error: { message: "no credit on the account" } }, { status: orStatus });
   }
   return real(url as any, init as any);
@@ -158,21 +161,33 @@ expect("fish is asked for a container rather than bare pcm", fishCall?.body?.for
 expect("fish audio keeps its own 44.1 khz header", readWav(out.bytes).rate === 44100);
 
 /*
- * OpenRouter's speech route is OpenAI shaped, so the model and the voice travel in the
- * body rather than in a header, and the format has to be asked for because the answer is
- * a bare stream whose sample rate nobody has measured yet.
+ * OpenRouter's speech route is OpenAI shaped, so the model and the voice travel in the body
+ * rather than in a header. The one thing this block exists to pin down is the format, because
+ * the vendor answers 400 to wav, 400 to mp3, and 200 to pcm, and a request that asks for what
+ * it refuses is a voice that never speaks. The rate arrived as 44.1 kHz and is read back out
+ * of the content type rather than assumed, since everything else here runs at 24 kHz.
  */
 orStatus = 200;
-orBody = wavOf(Buffer.alloc(48000 * 2, 3), 24000);
+const orPcm = Buffer.alloc(44100 * 2, 3);
+orBody = orPcm;
 out = await synthesize("heygen speaks this instead", "openrouter:noelle");
 const orCall = sent.filter((s) => s.via === "openrouter").at(-1);
 expect("a heygen voice is answered by openrouter", out.voice.provider === "openrouter" && out.voice.id === "openrouter:noelle");
 expect("the free heygen slug is what gets sent", orCall?.body?.model === "heygen/heygen-voice-1-turbo:free");
 expect("the voice name travels in the body", orCall?.body?.voice === "noelle");
-expect("wav is asked for rather than a bare pcm stream", orCall?.body?.response_format === "wav");
+expect("pcm is asked for, because wav and mp3 are both refused", orCall?.body?.response_format === "pcm");
 expect("the sentence is sent as input and never as text", orCall?.body?.input === "heygen speaks this instead" && orCall?.body?.text === undefined);
 expect("the key is a bearer header and never in the url", orCall?.auth === `Bearer ${process.env.OPENROUTER_API_KEY}` && !orCall.url.includes(process.env.OPENROUTER_API_KEY!));
-expect("openrouter audio keeps its own header", readWav(out.bytes).rate === 24000);
+const orWav = readWav(out.bytes);
+expect("the bare stream is wrapped in a header a browser can decode", orWav.riff === "RIFF" && orWav.rate === 44100 && orWav.channels === 1 && orWav.bits === 16);
+expect("every sample byte survived the header", orWav.payload.equals(orPcm));
+
+/* A vendor that did send a container must not have a second header written onto it. */
+orBody = wavOf(orPcm, 44100);
+orType = "audio/wav";
+out = await synthesize("heygen answers with a container this time", "openrouter:noelle");
+expect("a container is handed back untouched", readWav(out.bytes).payload.equals(orPcm));
+orType = "audio/pcm;rate=44100;channels=1";
 
 /* The ladder: fish spent, so the middle vendor speaks and the page is told who did. */
 fishStatus = 429;
@@ -188,6 +203,17 @@ reply = { candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16
 out = await synthesize("fish and openrouter are both out so gemini covers this", "fish:default");
 expect("the third vendor speaks when the first two refuse", out.voice.provider === "gemini");
 expect("the last vendor reports its own voice, not the one that was asked for", out.voice.id.startsWith("gemini:"));
+
+/*
+ * The same sentence is often said twice, and the second one must be free. What it must not
+ * be is a lie: the answer is filed under the voice that was asked for, so a cache that
+ * stores only bytes hands back "fish" on the repeat for audio that gemini made. The producer
+ * travels with the audio instead.
+ */
+const beforeRepeat = sent.length;
+const again = await synthesize("fish and openrouter are both out so gemini covers this", "fish:default");
+expect("a repeat still names the vendor that really made the audio", again.voice.provider === "gemini");
+expect("a repeat costs no second call at anyone", sent.length === beforeRepeat && again.ms === 0);
 
 /* Failures have to come back as words the page can show, so nothing may answer here. */
 fishStatus = 503;
@@ -219,17 +245,27 @@ expect("the ten heygen voices are offered", voices().filter((v) => v.provider ==
 expect("a fish key makes fish the default rather than a possibility", defaultVoice().startsWith("fish:"));
 
 /*
- * A web session token pasted into a config file is not a key. Every route was measured
- * refusing it, so a build that believes it pays for a rejected request in front of every
- * sentence of a demo. This check needs a second copy of the module because the choice is
- * made once, when the file is first read.
+ * Two ways this route can be absent, and only one of them is fixable by the person reading
+ * the page. An empty value is the first, and the answer is a link to make a key. The second
+ * is a credential of a shape this file used to distrust, and that distrust cost a working
+ * vendor: a value beginning `apikey_` was called a browser session token, sent to a server
+ * that never accepts such keys, and written off. It was a real key for a different company.
+ * No prefix is judged here, so the checks below pin that down in both directions. Each needs
+ * a second copy of the module because the choice is made once, when the file is first read.
  */
+process.env.OPENROUTER_API_KEY = "";
+const unkeyed = await import(`./speech.js?no-key=${Date.now()}`);
+const quiet = unkeyed.ttsState().providers.find((p: any) => p.id === "openrouter");
+expect("a route with no key at all is not offered", quiet?.ready === false);
+expect("the reason says where to get one", /openrouter\.ai\/settings\/keys/.test(quiet?.why ?? ""));
+expect("a route with no key offers no voices", unkeyed.voices().every((v: any) => v.provider !== "openrouter"));
+
 process.env.OPENROUTER_API_KEY = `apikey_${"0".repeat(35)}_${"a".repeat(64)}`;
-const guarded = await import(`./speech.js?session-token=${Date.now()}`);
-const route = guarded.ttsState().providers.find((p: any) => p.id === "openrouter");
-expect("a session token is never used as an api key", route?.ready === false);
-expect("the reason says what to do about it", /openrouter\.ai\/settings\/keys/.test(route?.why ?? ""));
-expect("a route that is not a key offers no voices", guarded.voices().every((v: any) => v.provider !== "openrouter"));
+const trusting = await import(`./speech.js?any-shape=${Date.now()}`);
+const believed = trusting.ttsState().providers.find((p: any) => p.id === "openrouter");
+expect("a key is believed whatever prefix it starts with", believed?.ready === true);
+expect("and believing it costs nothing until a sentence asks", trusting.voices().filter((v: any) => v.provider === "openrouter").length === 10);
+process.env.OPENROUTER_API_KEY = OR_KEY || "sk-or-v1-test-key";
 
 /*
  * A vendor can hold a working key and still be out of sentences, which is the one state
@@ -262,7 +298,7 @@ globalThis.fetch = real;
  * to see the wall, not to be surprised by it. Set VOICE_LIVE=0 to skip it.
  */
 const live: [string, string][] = [["fish", "fish:default"]];
-if (OR_KEY.startsWith("sk-or-v1-")) live.push(["openrouter", "openrouter:noelle"]);
+if (OR_KEY) live.push(["openrouter", "openrouter:noelle"]);
 live.push(["gemini", "gemini:Kore"]);
 
 if ((GEMINI_KEY || FISH_KEY) && process.env.VOICE_LIVE !== "0") {

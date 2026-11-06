@@ -4,19 +4,21 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "npm run typecheck && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/due-test.ts && tsx src/note-test.ts && tsx src/brain-test.ts",
+    "start": "tsx src/seller.ts & tsx src/server.ts",
+    "test": "export SEATS_DB=:memory:; npm run typecheck && for f in public/*.js; do node --check \"$f\" || exit 1; done && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/x402wire-test.ts && tsx src/due-test.ts && tsx src/history-test.ts && tsx src/cap-test.ts && tsx src/requests-test.ts && tsx src/pay-test.ts && tsx src/seat-test.ts && tsx src/chats-test.ts && tsx src/sessions-test.ts && tsx src/address-test.ts && tsx src/spam-test.ts && tsx src/reminder-test.ts && tsx src/brief-test.ts && tsx src/report-test.ts && tsx src/note-test.ts && tsx src/earn-test.ts && tsx src/receipt-test.ts && tsx src/route-test.ts && tsx src/chat-actions-test.ts && tsx src/live-test.ts && tsx src/brain-test.ts",
     "plumb": "tsx src/plumbing.ts",
     "plate": "node tools/plate.mjs",
     "agent": "tsx src/agent.ts",
     "tools": "tsx src/tools.ts",
     "chat": "tsx src/chat.ts",
     "serve": "tsx src/server.ts",
+    "sell": "tsx src/seller.ts",
     "stub": "tsx src/stub-model.ts",
-    "demo": "npm run stub & MODEL_BASE_URL=http://127.0.0.1:8899 MODEL_API_KEY=stub PAY_ENABLED=1 npm run serve",
+    "demo": "npm run stub & npm run sell & MODEL_BASE_URL=http://127.0.0.1:8899 MODEL_API_KEY=stub PAY_ENABLED=1 npm run serve",
     "selftest": "tsx src/brain-test.ts",
     "selftest:live": "tsx src/brain-live-test.ts",
     "voicetest": "tsx src/speech-test.ts",
-    "seed": "PAY_ENABLED=1 tsx src/seed.ts",
+    "seed": "PAY_NETWORK=testnet PAY_ENABLED=1 tsx src/seed.ts",
     "count": "tsx src/count.ts",
     "faucet": "tsx src/faucet.ts",
     "typecheck": "tsc -p tsconfig.json",
@@ -28,21 +30,27 @@
     "echotest": "tsx src/echo-test.ts",
     "x402test": "tsx src/x402-test.ts",
     "duetest": "tsx src/due-test.ts",
-    "notetest": "tsx src/note-test.ts"
+    "notetest": "tsx src/note-test.ts",
+    "receipttest": "tsx src/receipt-test.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "dependencies": {
     "@mysten-incubation/memwal": "^0.1.9",
     "@mysten/sui": "^2.37.0",
     "dotenv": "^18.0.9",
-    "hash-wasm": "^4.12.0"
+    "gsap": "^3.15.0",
+    "hash-wasm": "^4.12.0",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "tsx": "^4.23.15",
+    "qrcode-generator": "^1.4.4",
     "typescript": "^6.0.3"
   }
 }

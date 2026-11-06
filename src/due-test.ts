@@ -1,4 +1,4 @@
-import { type Party, dueRows } from "./knowledge.js";
+import { bills, commitments, type Party, dueRows } from "./knowledge.js";
 
 /*
  * Nothing here touches a chain or a model. Rhythms are arithmetic over dates, and
@@ -28,6 +28,9 @@ const party = (over: Partial<Party>): Party => ({
   usualAmount: "0.5",
   gapDays: null,
   memorised: true,
+  service: false,
+  faucet: false,
+  coins: [],
   ...over,
 });
 
@@ -62,6 +65,11 @@ expect("a two way relationship is not reported as a donation", byName("Mixed").w
 expect("a payer who has gone quiet is late too", byName("Ravi").state === "late");
 expect("the amount quoted carries its own asset", byName("Imran").usual === "40 USDC" && byName("Dev").usual === "0.5 SUI");
 expect("an unnamed one payment address is not offered as a person", !rows.some((r) => r.name?.startsWith("0x")));
+const withFaucet = dueRows(
+  [party({ name: "Sui testnet faucet", faucet: true, lastSeen: "2026-10-27", gapDays: 6 })],
+  TODAY,
+);
+expect("the faucet is a funding source, not a bill", withFaucet.length === 0);
 expect("the note the user spoke travels with the row", byName("Imran").note === "flat maintenance");
 expect("no sentence a model can read aloud contains an ISO date", rows.every((r) => !/\d{4}-\d{2}-\d{2}/.test(r.line)));
 expect("the lines use no em dash and no semicolon", rows.every((r) => !/[—–;]/.test(r.line)));
@@ -69,6 +77,21 @@ expect("the lines use no em dash and no semicolon", rows.every((r) => !/[—–;
 const midnight = dueRows([party({ name: "Solo", lastSeen: "2026-10-03", gapDays: 30, flows: 2 })], Date.parse("2026-11-02T00:10:00Z"));
 expect("a day that has just begun is not read as a day early", midnight[0].expected_on === "2026-11-02");
 expect("and lands as due today rather than late", midnight[0].state === "due" && midnight[0].line.includes("due today"));
+
+const sums = commitments(rows);
+expect("the monthly rollup keeps each asset on its own line", new Set(sums.map((c) => c.asset)).size === sums.length);
+// 40 monthly, 6.99 twice a month, 0.5 every two days, 0.5 weekly, 0.5 every ten days.
+expect("a rhythm is scaled to a month by its own period and not by a guess", sums[0]?.per_month === "65.12 USDC");
+expect("the rollup names every person inside the number", [...sums[0].people].sort().join(",") === ["Imran", "Tara", "Sana", "Ravi", "Mixed"].sort().join(","));
+expect("a counterparty with one payment never enters the total", !sums.some((c) => c.people.includes("Dev")));
+// The exclusion is an address rather than a flag, so a build with payments switched off
+// still drops the index and a build with no index configured still keeps every person.
+expect("an unset index address is no reason to drop a real rhythm", bills(rows, [""]).length === rows.length);
+
+const kept = bills(rows, [byName("Imran").address]);
+expect("a counterparty that charges per question can be dropped from the bill list", !kept.some((r) => r.name === "Imran") && kept.length === rows.length - 1);
+expect("dropping it changes no other rhythm", kept.every((r) => rows.find((x) => x.address === r.address)!.state === r.state));
+expect("and nothing is dropped when there is no index to exclude", bills(rows).length === rows.length);
 
 console.log(fails ? `\n${fails} rhythm check(s) failed` : `\n${rows.length} rhythms read, all checks green`);
 process.exit(fails ? 1 : 0);
