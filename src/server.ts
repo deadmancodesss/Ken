@@ -242,7 +242,38 @@ async function handle(req: any, res: any) {
   const threadKeyFor = (owner: string, stored?: string) =>
     stored && stored.includes("::") ? stored : threadFor(owner).key;
 
+  const GATED_PREFIXES = [
+    "/turn",
+    "/sessions",
+    "/chats",
+    "/live/",
+    "/memories",
+    "/pending",
+    "/transfers",
+    "/cap",
+    "/requests",
+    "/address",
+    "/ask",
+    "/sellable",
+    "/earned",
+    "/send",
+    "/verify",
+    "/speak",
+    "/reset",
+    "/report.json",
+  ];
+  const isGatedApi =
+    GATED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + "/")) &&
+    !(req.method === "GET" && (url.pathname === "/ask" || /^\/ask\/[A-Za-z0-9_-]{1,16}$/.test(url.pathname)));
+
   try {
+    if (isGatedApi && session().source !== "wallet") {
+      return json(res, 401, {
+        error: "Connect your Sui wallet first. Demo mode has been disabled so every action belongs strictly to your connected wallet.",
+        needs: "wallet",
+      });
+    }
+
     if (req.method === "POST" && url.pathname === "/turn") {
       const { text, session: wanted } = JSON.parse((await readBody(req)) || "{}");
       if (typeof text !== "string" || !text.trim()) return json(res, 400, { error: "text required" });
@@ -423,6 +454,15 @@ async function handle(req: any, res: any) {
     // chain read, and cached because Tatum answers three requests a second.
     if (url.pathname === "/balance") {
       const s = session();
+      if (s.source !== "wallet") {
+        return json(res, 200, {
+          holdings: [],
+          network: s.network,
+          address: "",
+          source: "none",
+          price_source: "",
+        });
+      }
       const key = `${s.wallet}:${s.network}`;
       const hit = balanceCache.get(key);
       if (hit && hit.at + 20_000 > Date.now()) return json(res, 200, hit.body);
@@ -449,12 +489,33 @@ async function handle(req: any, res: any) {
     }
 
     if (url.pathname === "/state") {
+      const s = session();
+      if (s.source !== "wallet") {
+        return json(res, 200, {
+          roster: [],
+          parties: [],
+          due: { rows: [], committed: [] },
+          stats: { total: 0, namespaces: [] },
+          session: { wallet: "", network: s.network, source: "none", reported: "" },
+          payments: paymentsEnabled(),
+          pay_network: PAY_NET,
+          spend: {
+            usdc: 0,
+            lookups: 0,
+            price: priceUsdc(),
+          },
+          model: modelName(),
+          brain: brainState(),
+          tts: ttsState(),
+          live: liveState(),
+        });
+      }
       // The roster is held for the whole session so a warm question never pays
       // Tatum for it, which means the page needs one explicit way to re-read.
       if (url.searchParams.get("refresh")) forgetCounterparties();
       const [roster, parties, stats] = await Promise.all([
         peopleRoster(),
-        counterparties(session().wallet, session().network),
+        counterparties(s.wallet, s.network),
         memoryStats(),
       ]);
       const owed = bills(dueRows(parties), [indexPayout()]);
@@ -467,12 +528,12 @@ async function handle(req: any, res: any) {
         // sums would be a second sum to get wrong.
         due: { rows: owed, committed: commitments(owed) },
         stats,
-        session: session(),
+        session: s,
         payments: paymentsEnabled(),
         pay_network: PAY_NET,
         spend: {
-          usdc: totalSpent(session().wallet),
-          lookups: purchases(session().wallet).length,
+          usdc: totalSpent(s.wallet),
+          lookups: purchases(s.wallet).length,
           price: priceUsdc(),
         },
         model: modelName(),
@@ -1225,6 +1286,39 @@ async function handle(req: any, res: any) {
     }
 
     if (url.pathname === "/report.svg") {
+      if (session().source !== "wallet") {
+        const preview = cardSvg({
+          wallet: "0x0000000000000000000000000000000000000000000000000000000000000000",
+          network: PAY_NET,
+          isDemo: false,
+          period: "Connect wallet for live statement",
+          headline: "0.00 USDC",
+          direction: "none",
+          totalOut: "0.00 USDC",
+          otherAssets: "",
+          asset: "USDC",
+          totalIn: "0.00 USDC",
+          inAsset: "USDC",
+          inOtherAssets: "",
+          sendCount: 0,
+          senders: [],
+          months: [
+            { month: "2026-09", amount: 0, label: "Sep" },
+            { month: "2026-10", amount: 0, label: "Oct" },
+            { month: "2026-11", amount: 0, label: "Nov" },
+          ],
+          people: [],
+          overdue: 0,
+          dueNow: 0,
+          remembered: 0,
+          bought: 0,
+          paid: "0.00 USDC",
+          price: `${priceUsdc().toFixed(2)} USDC`,
+          generatedAt: new Date().toISOString().slice(0, 10),
+        });
+        res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" });
+        return res.end(preview);
+      }
       const svg = cardSvg(await buildStatement());
       res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" });
       return res.end(svg);

@@ -394,19 +394,13 @@ export function mountWallet(onChange) {
 
   const toDemo = async () => {
     btn.textContent = "letting go…";
-    /* One call hands the page back to the wallet this build speaks for, and the server
-       drops the address, the cached balance read, the transcript and every sentence it
-       had recorded in a voice, because all three are derived from the wallet that is
-       going away. The reply is the proof: a sheet that promised the address was gone
-       after a request that never landed would be this page lying about the one thing
-       the person pressed the button to find out. */
     let left = null;
     try {
       left = await post({ demo: true });
     } catch {
       /* nothing was dropped, and the sheet below says so */
     }
-    if (left?.source !== "demo") {
+    if (left?.source !== "demo" && left?.source !== "none") {
       btn.textContent = "Disconnect";
       dialogue({
         who: "mouse",
@@ -431,10 +425,7 @@ export function mountWallet(onChange) {
     btn.dataset.mode = "";
     btn.classList.remove("on");
     btn.removeAttribute("title");
-    /* The transcript is the page's own memory of what it was told about this wallet, and
-       no cache clear reaches it. Saying so out loud on the document is what lets the Talk
-       page wipe its own screen rather than leaving a stranger's conversation up after the
-       person has pressed let go. */
+    syncWalletGate(false);
     document.dispatchEvent(new CustomEvent("wallet:changed"));
     onChange?.();
     dialogue({
@@ -442,18 +433,18 @@ export function mountWallet(onChange) {
       tone: "good",
       kicker: "the page let go of your account",
       title: "nothing here carries your address now",
-      line: "This page reads the demo story's own wallet again, so nothing on it can reach your account or your money.",
+      line: "Your wallet is disconnected and all workspace tools are locked until you connect a Sui wallet again.",
       beats: [
         {
           text: dropped.length ? `this browser also dropped ${dropped.join(", ")}` : "this browser had nothing of yours stored",
           mark: "check",
         },
         { text: "the server dropped your address, the balance it had read for you, the conversation, and every sentence it had voiced about your people", mark: "check" },
-        { text: "the screen went back to how it looked before you asked it anything", mark: "check" },
+        { text: "every protected surface is now locked until you reconnect", mark: "check" },
         { text: "what stays is what no button here can undo: the notes already written to Walrus under your address, since that store has no delete verb, and anything that settled on the chain", mark: "dot" },
         { text: "press Connect wallet whenever you want your own account back", mark: "dot" },
       ],
-      stamp: "gone",
+      stamp: "locked",
     });
   };
 
@@ -502,10 +493,7 @@ export function mountWallet(onChange) {
       btn.title = "let go of this wallet and clear what this page stored about it";
       btn.dataset.mode = "wallet";
       btn.classList.add("on");
-      /* The same wipe runs in this direction. Every sentence above the log was answered
-         to a different wallet, and leaving the demo story's people on screen the moment
-         your own address arrives is how a page shows a stranger's money inside your
-         account. */
+      syncWalletGate(true);
       document.dispatchEvent(new CustomEvent("wallet:changed"));
       dlg.replace(walletOpen(picked, { seconds: dlg.seconds(), onDemo: toDemo, payNet: settleNet }));
       onChange?.();
@@ -626,22 +614,95 @@ export function paintMeta(body) {
     } catch {
       /* the address is plenty when storage is unavailable */
     }
-    set("whose", s.source === "wallet" ? `${named || "your wallet"} · ${shortAddr(s.wallet)}` : `the demo story · ${shortAddr(s.wallet)}`);
+    const on = s.source === "wallet" && Boolean(s.wallet);
+    set("whose", on ? `${named || "your wallet"} · ${shortAddr(s.wallet)}` : "wallet not connected");
     const btn = $("connect");
     if (btn) {
-      const on = s.source === "wallet";
       btn.dataset.mode = on ? "wallet" : "";
       btn.classList.toggle("on", on);
       btn.textContent = on ? "Disconnect" : "Connect wallet";
       if (on) btn.title = "let go of this wallet and clear what this page stored about it";
       else btn.removeAttribute("title");
     }
+    syncWalletGate(on);
     /* The seat says a wallet is connected, which outlives the tab, so this load has
        not asked the wallet anything yet. Asking it quietly here is what lets Sign in
        wallet find the account later without opening a window on page load. */
-    if (s.source === "wallet") resumeWallet();
+    if (on) resumeWallet();
   }
   return body;
+}
+
+const PUBLIC_PATHS = new Set(["/", "/index.html", "/how", "/how.html", "/features", "/features.html", "/life", "/life.html"]);
+
+export function syncWalletGate(connected) {
+  const path = location.pathname.replace(/\/+$/, "") || "/";
+  if (PUBLIC_PATHS.has(path)) return;
+  const main = document.querySelector("main");
+  if (!main) return;
+  let gate = document.getElementById("walletGate");
+  if (connected) {
+    if (gate) gate.hidden = true;
+    main.hidden = false;
+    return;
+  }
+  main.hidden = true;
+  if (!gate) {
+    gate = document.createElement("section");
+    gate.id = "walletGate";
+    gate.className = "walletGate";
+    gate.setAttribute("aria-label", "Wallet connection required");
+    gate.innerHTML = `
+      <div class="wgShell">
+        <div class="wgCard">
+          <div class="wgTop">
+            <span class="wgKicker">wallet required · demo mode disabled</span>
+            <span class="wgStamp">locked</span>
+          </div>
+          <div class="wgBody">
+            <div class="wgStage" aria-hidden="true">
+              <div class="wgMouse">
+                <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="" />
+              </div>
+              <div class="wgCaption">the purse mouse · guards the door</div>
+            </div>
+            <div class="wgCopy">
+              <h1>Connect your Sui wallet to unlock this room.</h1>
+              <p class="wgLead">Shared demo mode has been removed so no visitor can pollute another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for the wallet you connect.</p>
+              <div class="wgGrid">
+                <div class="wgCell">
+                  <span class="wgIdx">01 · walrus</span>
+                  <b>Isolated memory</b>
+                  <span>Your people and notes live under your own wallet namespace on Mainnet.</span>
+                </div>
+                <div class="wgCell">
+                  <span class="wgIdx">02 · sui usdc</span>
+                  <b>Unsigned tickets only</b>
+                  <span>This server prepares bytes and holds no signing key. You sign in your wallet.</span>
+                </div>
+                <div class="wgCell">
+                  <span class="wgIdx">03 · zero conflicts</span>
+                  <b>Private workspace</b>
+                  <span>Chats, voice calls, spam marks, reminders and statements belong to your address alone.</span>
+                </div>
+              </div>
+              <div class="wgActions">
+                <button type="button" class="primary" id="wgConnectBtn">Connect Sui wallet</button>
+                <a class="wgHowBtn" href="/how">Interactive How It Works →</a>
+                <a class="wgFeatBtn" href="/features">Explore 18 capabilities</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    main.parentNode.insertBefore(gate, main);
+    gate.querySelector("#wgConnectBtn")?.addEventListener("click", () => {
+      const topBtn = $("connect");
+      if (topBtn) topBtn.click();
+    });
+  }
+  gate.hidden = false;
 }
 
 let stillAsking = false;

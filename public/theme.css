@@ -985,3 +985,36 @@ dd, dt { margin: 0; }
 
 /* Nothing hides the readouts on a phone any more. They left the masthead row and
    live inside the menu sheet, where there is room to read them. */
+
+/* ---------- wallet required gate ----------
+   Strict geometric lock sheet displayed on workspace pages when no wallet is connected. */
+.walletGate { flex: 1; display: grid; align-items: center; padding: clamp(32px, 5vw, 64px) var(--pad); }
+.walletGate[hidden], main[hidden] { display: none !important; }
+.wgShell { width: 100%; max-width: 1080px; margin: 0 auto; }
+.wgCard { border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper); box-shadow: 7px 7px 0 var(--sheet); overflow: hidden; }
+.wgTop { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: var(--edge) solid var(--rule-strong); background: var(--paper-sunk); background-image: var(--dots); }
+.wgKicker { font: 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+.wgStamp { padding: 4px 10px; border: 1.5px solid var(--brick); border-radius: 4px; background: var(--paper); color: var(--brick); font: 10px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.wgBody { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 32px; padding: 28px 28px 30px; align-items: stretch; }
+.wgStage { display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 18px 14px 14px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper-sunk); text-align: center; }
+.wgMouse { position: relative; width: 156px; aspect-ratio: 286 / 509; overflow: hidden; }
+.wgMouse img { position: absolute; width: 384.6%; height: 123.4%; left: -284.6%; top: -11.1%; max-width: none; display: block; }
+.wgCaption { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--rule-strong); width: 100%; font: 10px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.wgCopy { display: flex; flex-direction: column; justify-content: space-between; gap: 20px; min-width: 0; }
+.wgCopy h1 { font: 400 clamp(26px, 3.2vw, 36px)/1.1 var(--serif); letter-spacing: -0.02em; margin: 0 0 8px; max-width: none; }
+.wgLead { font: var(--step-0)/1.55 var(--sans); color: var(--ink-2); max-width: 64ch; margin: 0; }
+.wgGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.wgCell { display: flex; flex-direction: column; gap: 6px; padding: 14px 15px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); }
+.wgIdx { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--clay); }
+.wgCell b { font: 400 var(--step-1)/1.25 var(--serif); color: var(--ink); }
+.wgCell span { font: var(--step--1)/1.5 var(--sans); color: var(--ink-2); }
+.wgActions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 4px; }
+.wgActions .wgHowBtn, .wgActions .wgFeatBtn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; background: var(--paper); color: var(--ink); font: var(--step--1)/1 var(--mono); text-decoration: none; transition: border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
+.wgActions .wgHowBtn:hover, .wgActions .wgFeatBtn:hover { border-color: var(--ink); transform: translate(-1px, -1px); }
+@media (max-width: 860px) {
+  .wgBody { grid-template-columns: minmax(0, 1fr); gap: 22px; padding: 22px; }
+  .wgStage { flex-direction: row; justify-content: flex-start; gap: 18px; text-align: left; }
+  .wgMouse { width: 84px; flex: 0 0 auto; }
+  .wgCaption { border-top: 0; margin-top: 0; padding-top: 0; }
+  .wgGrid { grid-template-columns: minmax(0, 1fr); }
+}

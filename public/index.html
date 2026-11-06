@@ -839,9 +839,34 @@
 
       const $ = (id) => document.getElementById(id);
 
-      /* The hero runs the real product path against real wallet data, so the sentence
-         in the card is a sentence the agent can actually answer on this build. */
+      const SHOWCASE_CAST = [{ name: "Sana" }, { name: "Dev" }, { name: "Tara" }, { name: "Imran" }];
+      const SHOWCASE_SCRIPT = [
+        {
+          ask: "who do I pay most?",
+          said: "Sana. 14.80 USDC across 6 payments, most recently two days ago for weekly groceries.",
+          meter: [["read Walrus, then Tatum", "free"], ["note kept: buys groceries", ""]],
+        },
+        {
+          ask: "who did I send money to at 0x81cd…8d8f?",
+          said: "I have never been told who that is. A measured chain profile costs 0.01 USDC at the x402 index — sign once and I write it to Walrus.",
+          meter: [["memory miss", ""], ["x402 quote: 0.01 USDC", "paid"]],
+        },
+        {
+          ask: "who was that address again?",
+          said: "Already written down on Walrus. Asking the same question twice is the one thing this agent refuses to pay for.",
+          meter: [["read Walrus only", "free"], ["0.00 USDC · chain skipped", "free"]],
+        },
+        {
+          ask: "pay Sana 0.95 USDC for coffee",
+          said: "Prepared 0.95 USDC to Sana. The unsigned bytes are waiting in the ticket below for your wallet extension to sign.",
+          meter: [["unsigned ticket held", "free"], ["your wallet signs", ""]],
+        },
+      ];
+
+      /* When a wallet is connected, the hero runs against real wallet data; when
+         unconnected, it runs the self-contained showcase so no shared demo wallet exists. */
       function script(state) {
+        if (state?.session?.source !== "wallet") return SHOWCASE_SCRIPT;
         const named = state.parties.filter((p) => p.name && !p.service);
         const byNet = [...named].sort((a, b) => Number(b.net) - Number(a.net));
         const top = byNet[0];
@@ -869,10 +894,6 @@
             meter: [["memory answered nothing", ""], [`a profile starts at ${state.spend.price} USDC`, "paid"]],
           });
         }
-        /* Asking twice and being answered free is the whole product, but the sentence is
-           only true once something has actually been written down. Saying "already written
-           down" to a wallet whose memory is empty would be the card inventing a fact about
-           the person reading it. */
         if (state.roster?.length) {
           rows.push({
             ask: "who was that, again",
@@ -885,14 +906,17 @@
 
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      /* A wallet holds more than the one coin this card used to print, and a reader with
-         three SUI in front of a bare "0.00 USDC" reasonably decided the page could not
-         read his money. So the coin worth the most in dollars becomes the headline, and
-         the headline says which coin it is and what it is worth. */
       const coinPlaces = (h) => (String(h.symbol).toUpperCase() === "SUI" ? 3 : 2);
       const worth = (h) => (typeof h.usd === "number" ? h.usd : 0);
 
-      function showBalance() {
+      function showBalance(owned) {
+        if (!owned) {
+          $("demoBal").textContent = "12.60";
+          $("demoUnit").textContent = "USDC · showcase preview";
+          $("liveBal").textContent = "—";
+          $("liveBalUnit").textContent = "connect wallet to read";
+          return;
+        }
         fetch("/balance")
           .then((r) => r.json())
           .then((b) => {
@@ -904,9 +928,6 @@
               : top.amount > 0
                 ? `${top.symbol} available${typeof top.usd === "number" ? ` · about $${top.usd.toFixed(2)}` : ""}`
                 : "nothing in this wallet yet";
-            /* Both tiles print the same figure, so both are written from the same two
-               strings. A page that updates one number and one label is a page that shows
-               its reader two different wallets at once. */
             $("demoBal").textContent = amount;
             $("demoUnit").textContent = unit;
             $("liveBal").textContent = amount;
@@ -918,9 +939,6 @@
           });
       }
 
-      /* Names and notes arrive from Walrus, and profiles from a paid index, so none of them are
-         dropped into innerHTML. A person's stored note is data, and data that reaches
-         markup is a hole rather than a shortcut. */
       function pill(text, kind) {
         const p = document.createElement("span");
         p.className = kind ? `pill ${kind}` : "pill";
@@ -953,10 +971,12 @@
 
       async function run(state) {
         if (!state?.session) return;
-        const owned = state.session.source === "wallet";
-        $("demoWallet").textContent = `${owned ? "your wallet" : "the demo story"} · ${shortAddr(state.session.wallet)} · ${state.session.network}`;
-        const named = (state.parties ?? []).filter((p) => p.name && !p.service);
-        $("livePeople").textContent = named.length;
+        const owned = state.session.source === "wallet" && Boolean(state.session.wallet);
+        $("demoWallet").textContent = owned
+          ? `your wallet · ${shortAddr(state.session.wallet)} · ${state.session.network}`
+          : "interactive showcase · connect wallet for live data";
+        const named = owned ? (state.parties ?? []).filter((p) => p.name && !p.service) : SHOWCASE_CAST;
+        $("livePeople").textContent = owned ? named.length : "—";
         const rail = $("faces");
         rail.innerHTML = "";
         if (!named.length) {
@@ -965,12 +985,12 @@
           none.textContent = "this wallet has paid nobody and been paid by nobody yet";
           rail.append(none);
         } else {
-          named.slice(0, 3).forEach((p) => rail.append(face(p)));
+          named.slice(0, 4).forEach((p) => rail.append(face(p)));
         }
         facesPop();
         fillStats(state);
         castNotice(state);
-        showBalance();
+        showBalance(owned);
 
         const rows = script(state);
         const ask = $("demoAsk");
@@ -982,7 +1002,7 @@
           blank.hidden = false;
           blank.textContent = owned
             ? "This wallet has no payments and no notes yet, so this card has nothing true to type. Ask Ken a question, and the answer you get becomes the card."
-            : "The demo wallet could not be read just now, so the card stays empty rather than invented.";
+            : "Connect your Sui wallet to read your own people and balances here.";
           return;
         }
         ask.hidden = false;

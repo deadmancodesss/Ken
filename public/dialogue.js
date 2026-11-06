@@ -342,7 +342,7 @@ export function walletAsked(count) {
  * be open, says where a hidden window usually is, and keeps a button that asks again,
  * because "nothing happened" is nearly always a window behind the browser.
  */
-export function walletWaiting(name, { onAgain, onDemo } = {}) {
+export function walletWaiting(name, { onAgain } = {}) {
   return {
     who: "mouse",
     tone: "wait",
@@ -364,7 +364,7 @@ export function walletWaiting(name, { onAgain, onDemo } = {}) {
             },
           ]
         : []),
-      ...(onDemo ? [{ label: "use the demo story", onClick: (dlg) => { dlg.close(true); onDemo(); } }] : []),
+      { label: "explore how it works", onClick: () => { location.href = "/how"; } },
     ],
   };
 }
@@ -467,9 +467,9 @@ export function walletFailed(err, { seconds, retry, onDemo } = {}) {
     none: "nothing in this browser told this page it holds a Sui wallet",
   };
   const nextStep = {
-    answered: "Nothing is lost, and nothing was spent. The demo story keeps working while this gets fixed.",
+    answered: "Nothing is lost, and nothing was spent. Unlock a Sui wallet account and try again, or explore the interactive workflow on /how.",
     silent: "Reload the page once your wallet is open and unlocked, then try again. That is what makes a quiet wallet speak.",
-    none: "You do not need a wallet to read this. The demo story has its own money and its own people.",
+    none: "Install or unlock a Sui wallet extension (such as Slush or Phantom) to unlock your workspace, or explore the interactive workflows on /how.",
   };
   const plain = (t) => (t && !machine.test(t) ? t : "");
   const title = plain(err?.message) || headline[answered ? "answered" : silent ? "silent" : "none"];
@@ -487,7 +487,7 @@ export function walletFailed(err, { seconds, retry, onDemo } = {}) {
     stamp: "no account",
     actions: [
       ...(retry ? [{ label: "try again", primary: true, onClick: (dlg) => { dlg.close(true); retry(); } }] : []),
-      ...(onDemo ? [{ label: "use the demo story", onClick: (dlg) => { dlg.close(true); onDemo(); } }] : []),
+      { label: "interactive showcase", onClick: () => { location.href = "/how"; } },
       {
         label: "copy the small print",
         onClick: (dlg) => {

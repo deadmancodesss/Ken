@@ -275,7 +275,7 @@
               </div>
               <div class="traffic"><i></i><i></i></div>
               <div class="ends"><div><b>this page</b><span>holds the bytes</span></div><div style="text-align:right"><b>your wallet</b><span>holds the key</span></div></div>
-              <p class="note">no secret of yours is stored on this server, and the demo wallet is a scripted stand-in. <a href="/how">The safety rules in full</a></p>
+              <p class="note">no secret of yours is stored on this server; every payment waits for your connected wallet to sign. <a href="/how">The safety rules in full</a></p>
             </div>
             <figure class="plate narrow split-visual">
               <img src="/assets/wallet-seal.webp" width="900" height="900" loading="lazy" decoding="async" alt="A woman pressing a wax seal onto a document while a small robot stands back with both hands raised and a purse hangs out of reach" />
@@ -332,14 +332,9 @@
         const root = $("root");
         pinCycle(flow(), p ? (p.digest ? 4 : 1) : 0);
         if (!p) {
-          const demo = st.session?.source !== "wallet";
           root.innerHTML =
             `<div class="none"><h2>Nothing waiting for a signature</h2>` +
-            `<p>${demo
-              ? payNetwork() === "testnet"
-                ? "Right now the agent is narrating its own demo wallet, which spends without asking because the money is worthless testnet dust. Connect a wallet above and every payment starts here instead."
-                : "Right now the agent is narrating its own demo wallet, and on mainnet it will not sign a payment of its own because that money is real. Connect a wallet above and every payment starts here instead."
-              : "Say it to the agent on the Chat page, or fill the box under this one. Either way the payment lands here first and waits for your signature."}</p>` +
+            `<p>Say it to the agent on the Chat page, or fill the box under this one. Either way the payment lands here first and waits for your wallet signature.</p>` +
             `<a href="/app"><button class="primary">Go to Chat</button></a></div>`;
           return;
         }
@@ -448,10 +443,7 @@
           if (!priced && st.spend?.price) {
             priced = true;
             const cost = `one check costs ${spoken(`${st.spend.price} USDC`)} the first time a digest is asked about, and nothing after`;
-            $("verifyHint").textContent =
-              st.session?.source === "wallet"
-                ? cost
-                : `${cost}. On the demo story the agent pays for this itself on the Chat page, so connect a wallet to sign one here`;
+            $("verifyHint").textContent = cost;
           }
           render(p, st);
         } catch (err) {
