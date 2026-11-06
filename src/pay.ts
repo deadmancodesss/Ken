@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { PAY_CHAIN } from "./chain.js";
 import { payUsdc, paymentsEnabled, paymentCap } from "./wallet.js";
 
 const to = process.argv[2];
@@ -9,7 +10,7 @@ if (!to?.startsWith("0x")) {
   process.exit(1);
 }
 if (!paymentsEnabled()) {
-  console.error("payments are disabled. Set PAY_ENABLED=1 in .env to move testnet money");
+  console.error(`payments are disabled. Set PAY_ENABLED=1 in .env to move ${PAY_CHAIN} money`);
   process.exit(1);
 }
 

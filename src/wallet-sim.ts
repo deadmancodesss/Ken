@@ -12,6 +12,14 @@ async function main() {
   if (!p) throw new Error("nothing is waiting for a signature");
 
   const bytes = Uint8Array.from(Buffer.from(p.bytes, "base64"));
+  /* This script is an extension impersonation: it holds the agent key, signs the
+     pending bytes and broadcasts them itself. On the ledger the build settles on when
+     that money is real, that is a payment nobody approved, so it stops here. */
+  if (String(p.chain ?? "").includes("mainnet")) {
+    throw new Error(
+      "the pending ticket is sui:mainnet, and this script signs with the agent key and broadcasts. Record the paying demo with PAY_NETWORK=testnet, or connect a real wallet and sign it yourself",
+    );
+  }
   const key = Ed25519Keypair.fromSecretKey(process.env.AGENT_SECRET_KEY!);
   const sig = await key.signTransaction(bytes);
   // signTransaction already hands back base64 of the scheme bytes, so re-encoding it
