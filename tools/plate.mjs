@@ -119,9 +119,10 @@ async function cloudflare(modelKey, prompt, flags) {
 
 function parseArgs(argv) {
   const positional = [];
-  const flags = { model: "", ratio: "3:2", seed: "20261102", width: 1100, steps: "4", key: "on", provider: "" };
+  const flags = { model: "", ratio: "3:2", seed: "20261102", width: 1100, steps: "4", key: "on", provider: "", alpha: "" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === "--alpha") { flags.alpha = "alpha"; continue; }
     if (["--model", "--ratio", "--seed", "--width", "--from", "--steps", "--provider"].includes(a)) flags[a.slice(2)] = argv[++i];
     else if (a === "--no-key") flags.key = "off";
     else positional.push(a);
@@ -191,8 +192,9 @@ function run(cmd, args) {
 
 const { name, scene, flags } = parseArgs(process.argv.slice(2));
 if (!name || (!scene && !flags.from)) {
-  console.error('usage: npm run plate -- <name> "<scene>" [--model flux-2-klein-4b] [--ratio 3:2] [--steps 4] [--seed N] [--width 1100] [--no-key]');
-  console.error('       npm run plate -- <name> --from somewhere/drawing.png [--width 1100] [--no-key]');
+  console.error('usage: npm run plate -- <name> "<scene>" [--model flux-2-klein-4b] [--ratio 3:2] [--steps 4] [--seed N] [--width 1100] [--no-key] [--alpha]');
+  console.error('       npm run plate -- <name> --from somewhere/drawing.png [--width 1100] [--no-key] [--alpha]');
+  console.error('       --alpha keys the sheet out to transparency, so the plate is a cut-out that may be transformed');
   process.exit(2);
 }
 
@@ -208,7 +210,7 @@ function encode() {
     return;
   }
   const keyed = join(RAW, `${basename(name)}-keyed.png`);
-  run("node", ["tools/normalize.mjs", rawPath, keyed, String(flags.width)]);
+  run("node", ["tools/normalize.mjs", rawPath, keyed, String(flags.width), flags.alpha]);
   run("cwebp", ["-m", "6", "-q", "74", keyed, "-o", join(ASSETS, `${basename(name)}.webp`)]);
   const out = join(ASSETS, `${basename(name)}.webp`);
   console.log(`out  ${out} ${(readFileSync(out).length / 1024).toFixed(0)} KB`);

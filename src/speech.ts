@@ -18,36 +18,36 @@ const GEMINI_MODEL = process.env.TTS_MODEL ?? "gemini-3.8-flash-tts";
 const GEMINI_KEY = process.env.TTS_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.MODEL_API_KEY;
 const FISH_KEY = process.env.FISH_API_KEY;
 
-/**
- * OpenRouter only ever accepts its own keys, which begin `sk-or-v1-`. A value that begins
- * `apikey_` is the shape a browser session leaves behind and was measured answering an
- * authentication error rather than a model answer, so it is reported instead of being sent
- * in front of every sentence of a demo. Any other shape is believed, because a prefix is
- * not a promise and being wrong about that only ever costs one request.
- */
-const rawOpenRouterKey = (process.env.OPENROUTER_API_KEY ?? "").trim();
-const OPENROUTER_KEY = /^apikey_/i.test(rawOpenRouterKey) ? "" : rawOpenRouterKey;
-const OPENROUTER_WHY = OPENROUTER_KEY
-  ? ""
-  : rawOpenRouterKey
-    ? "OPENROUTER_API_KEY is a web session token, not an API key. Make one at openrouter.ai/settings/keys"
-    : "no OPENROUTER_API_KEY in .env";
-const OPENROUTER_BASE = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
-
-/**
- * HeyGen is the only new voice on this route. Fish also sells a free model through
- * OpenRouter, but it is the same s2.1-pro-free already called direct, described by the
- * catalogue itself as without production latency, and asking it through a middleman
- * spends one of the fifty free requests a day that the brain needs more.
- */
-const OPENROUTER_MODEL = process.env.OPENROUTER_TTS_MODEL ?? "heygen/heygen-voice-1-turbo:free";
-const OPENROUTER_VOICES = ["nadine", "tabitha", "bram", "gareth", "noelle", "meredith", "sabrina", "lucian", "weston", "vincent"];
-
 /** A vendor that is present but throttled is not enabled, so the demo does not wait on it. */
 const usable = (k?: string) => {
   const v = (k ?? "").trim();
   return v.length > 0 && v !== "stub";
 };
+
+/**
+ * OpenRouter keys begin `sk-or-v1-`, and that prefix is deliberately not checked here. A
+ * credential of any other shape is sent once and answered by the provider's own 401, which
+ * is a truer sentence on screen than this file guessing what a value was copied from. It
+ * guessed once, called a working key a browser session token, and threw the route away.
+ */
+const rawOpenRouterKey = (process.env.OPENROUTER_API_KEY ?? "").trim();
+const OPENROUTER_KEY = usable(rawOpenRouterKey) ? rawOpenRouterKey : "";
+const OPENROUTER_WHY = OPENROUTER_KEY
+  ? ""
+  : rawOpenRouterKey
+    ? "OPENROUTER_API_KEY is set but is not usable, so HeyGen was never asked"
+    : "no OPENROUTER_API_KEY in .env. Make one at openrouter.ai/settings/keys";
+const OPENROUTER_BASE = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
+
+/**
+ * HeyGen is the only voice this route carries, and finding that out cost two wrong answers.
+ * The model catalogue does not list it, which made it look fictional, and asking the speech
+ * route for `fish/s2.1-pro-free` is answered with "does not exist". Fish speaks only through
+ * its own API, so the middle of this ladder is a second vendor's mouth rather than a second
+ * door to the first one.
+ */
+const OPENROUTER_MODEL = process.env.OPENROUTER_TTS_MODEL ?? "heygen/heygen-voice-1-turbo:free";
+const OPENROUTER_VOICES = ["nadine", "tabitha", "bram", "gareth", "noelle", "meredith", "sabrina", "lucian", "weston", "vincent"];
 
 export type Provider = "fish" | "openrouter" | "gemini";
 export type Voice = { id: string; label: string; provider: Provider; note: string };
@@ -145,15 +145,25 @@ export function ttsEnabled() {
   return voices().length > 0;
 }
 
+/**
+ * Which vendor last produced bytes. A page prints this as "speaks with openrouter", so
+ * it has to be a measurement of who answered rather than a reading of which keys exist.
+ * A route that holds a working credential and still refuses every sentence is not the
+ * voice of the demo, and naming it as one is the same lie the `x-voice` header exists to
+ * stop. Empty until a sentence has actually been spoken.
+ */
+let spoke: Provider | "" = "";
+
 export function ttsState() {
   const providers: { id: Provider; ready: boolean; why: string; resting: string }[] = [
     { id: "fish", ready: usable(FISH_KEY), why: usable(FISH_KEY) ? "" : "no FISH_API_KEY in .env", resting: restingFor("fish") },
     { id: "openrouter", ready: usable(OPENROUTER_KEY), why: OPENROUTER_WHY, resting: restingFor("openrouter") },
     { id: "gemini", ready: usable(GEMINI_KEY), why: usable(GEMINI_KEY) ? "" : "no GEMINI_API_KEY in .env", resting: restingFor("gemini") },
   ];
+  const answered = providers.find((p) => p.id === spoke && p.ready);
   return {
     enabled: ttsEnabled(),
-    model: providers.find((p) => p.ready && !p.resting)?.id ?? providers.find((p) => p.ready)?.id ?? "none",
+    model: answered?.id ?? providers.find((p) => p.ready && !p.resting)?.id ?? providers.find((p) => p.ready)?.id ?? "none",
     voice: defaultVoice(),
     voices: voices(),
     providers,
@@ -236,9 +246,10 @@ async function viaOpenRouter(text: string, voice: string): Promise<Buffer> {
       model: OPENROUTER_MODEL,
       input: text,
       voice,
-      // The route is OpenAI shaped and returns a bare stream, so the format is asked for
-      // by name. pcm would need a sample rate that nobody here has measured yet.
-      response_format: "wav",
+      // Measured 2026-11-03: this vendor answers 400 for both wav and mp3 and says out
+      // loud that it supports pcm only. The format is therefore asked for by its real
+      // name, and the bare samples get their header written below.
+      response_format: "pcm",
     }),
   });
   const type = res.headers.get("content-type") ?? "";
@@ -252,7 +263,11 @@ async function viaOpenRouter(text: string, voice: string): Promise<Buffer> {
   }
   const bytes = Buffer.from(await res.arrayBuffer());
   if (bytes.length < 1000) throw new Error("openrouter sent an empty take");
-  return bytes;
+  // A container already carries its own rate, so only a bare stream needs a header. The
+  // rate is read from the content type because the vendor's own answer was measured at
+  // 44.1 kHz, which is not the 24 kHz this file uses everywhere else.
+  if (type.includes("wav")) return bytes;
+  return wav(bytes, Number(type.match(/rate=(\d+)/)?.[1]) || 44100);
 }
 
 async function viaFish(text: string, voice: string): Promise<Buffer> {
@@ -344,8 +359,22 @@ function audioFrom(body: any): Buffer | null {
   return null;
 }
 
-/** Spoken answers get repeated on screen, and a repeat must never cost a second call. */
-const heard = new Map<string, Buffer>();
+/**
+ * Spoken answers get repeated on screen, and a repeat must never cost a second call. The
+ * producer travels with the bytes rather than the requested voice id, because a sentence
+ * that fish refused and gemini covered would otherwise come back on the second reading
+ * claiming to be fish.
+ */
+const heard = new Map<string, { bytes: Buffer; voice: Voice }>();
+
+/**
+ * Letting go of a wallet has to drop these bytes too. The key of every entry is the
+ * sentence the agent said, and the sentences are about this person's own people, so a
+ * cache that survives a disconnect survives with their names spelled inside it.
+ */
+export function forgetAudio(): void {
+  heard.clear();
+}
 
 export type Spoken = { bytes: Buffer; voice: Voice; ms: number };
 
@@ -362,7 +391,10 @@ export async function synthesize(text: string, raw?: string): Promise<Spoken> {
 
   const memo = `${chosen.id}|${clean.toLowerCase()}`;
   const remembered = heard.get(memo);
-  if (remembered) return { bytes: remembered, voice: chosen, ms: 0 };
+  if (remembered) {
+    spoke = remembered.voice.provider;
+    return { bytes: remembered.bytes, voice: remembered.voice, ms: 0 };
+  }
 
   // The chosen voice is tried first and the rest follow in the configured order, because
   // a listener who picked HeyGen should get HeyGen until it fails rather than a ladder.
@@ -382,8 +414,9 @@ export async function synthesize(text: string, raw?: string): Promise<Spoken> {
     try {
       const bytes = p === "fish" ? await viaFish(clean, name) : p === "openrouter" ? await viaOpenRouter(clean, name) : await viaGemini(clean, name);
       if (heard.size > 24) heard.delete(heard.keys().next().value as string);
-      heard.set(memo, bytes);
+      heard.set(memo, { bytes, voice });
       refused.delete(p);
+      spoke = p;
       return { bytes, voice, ms: Date.now() - t0 };
     } catch (err) {
       const message = (err as Error).message;

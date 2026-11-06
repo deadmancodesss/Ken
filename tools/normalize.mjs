@@ -1,8 +1,17 @@
 /*
- * The generated plates sit on their own warm off-white, a few points darker than
+ * Two ways to put a drawing on the page, and the difference between them is a
+ * transform.
+ *
+ * Default: the plate sits on its own warm off-white, a few points darker than
  * --paper, so mix-blend-mode: multiply would darken a visible rectangle. Pushing
- * each plate's paper to pure white first makes multiply a no-op on the background
- * and leaves the ink where it was.
+ * the sheet to pure white first makes multiply a no-op on the background and
+ * leaves the ink where it was. The cost is that no ancestor of the image may
+ * ever transform, because a transform isolates the blend and the rectangle comes
+ * straight back. That is why every shipped plate is static.
+ *
+ * `alpha`: the same white lift, then the paper is keyed out to real transparency,
+ * so the drawing is a cut-out sticker. It needs no blend mode, so it can be
+ * lifted, tilted, parallaxed and cropped. Use this for anything that moves.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { inflateSync, deflateSync } from "node:zlib";
@@ -80,17 +89,38 @@ function decode(buf) {
   return { w, h, px: out };
 }
 
-function encode({ w, h, px }) {
-  const stride = w * 3;
-  const raw = Buffer.alloc(h * (stride + 1));
+function encode({ w, h, px, alpha }) {
+  const from = w * 3;
+  const to = alpha ? w * 4 : from;
+  const raw = Buffer.alloc(h * (to + 1));
   for (let y = 0; y < h; y++) {
-    raw[y * (stride + 1)] = 0;
-    px.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+    raw[y * (to + 1)] = 0;
+    if (!alpha) {
+      px.copy(raw, y * (to + 1) + 1, y * from, (y + 1) * from);
+      continue;
+    }
+    const line = raw.subarray(y * (to + 1) + 1, y * (to + 1) + 1 + to);
+    for (let x = 0; x < w; x++) {
+      const i = y * from + x * 3;
+      const j = x * 4;
+      line[j] = px[i];
+      line[j + 1] = px[i + 1];
+      line[j + 2] = px[i + 2];
+      /* Distance from white is the only honest ink detector: a paper pixel that the
+         gain pass has already lifted sits at 255 on all three channels, and anything
+         the drawing actually put a mark on is below it. The ramp rather than a cut
+         keeps a crosshatch grey half-present instead of either vanishing or turning
+         into a hard blob. */
+      const d = 255 - Math.min(px[i], px[i + 1], px[i + 2]);
+      line[j + 3] = Math.round(255 * Math.min(1, Math.max(0, (d - 5) / 42)));
+    }
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  ihdr[8] = 8;
+  ihdr[9] = alpha ? 6 : 2;
+  ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
   return Buffer.concat([
     SIG,
     chunk("IHDR", ihdr),
@@ -110,8 +140,8 @@ function paperOf(img) {
   return paper.map((v) => Math.max(1, v - 8));
 }
 
-const [,, src, dst, width] = process.argv;
-if (!src || !dst) throw new Error("usage: normalize.mjs in.png out.png [maxWidth]");
+const [,, src, dst, width, mode] = process.argv;
+if (!src || !dst) throw new Error("usage: normalize.mjs in.png out.png [maxWidth] [alpha]");
 const buf = readFileSync(src);
 const img = decode(buf);
 let { w, h, px } = img;
@@ -134,5 +164,6 @@ if (width && Number(width) < w) {
 const paper = paperOf({ w: img.w, h: img.h, px: img.px });
 const gain = paper.map((v) => 255 / v);
 for (let i = 0; i < px.length; i++) px[i] = Math.min(255, Math.round(px[i] * gain[i % 3]));
-writeFileSync(dst, encode({ w, h, px }));
-console.log(`${dst} ${w}x${h} paper=[${paper.join(",")}] gain=${gain.map((g) => g.toFixed(3)).join(",")}`);
+const alpha = mode === "alpha";
+writeFileSync(dst, encode({ w, h, px, alpha }));
+console.log(`${dst} ${w}x${h} ${alpha ? "cut out" : "white sheet"} paper=[${paper.join(",")}] gain=${gain.map((g) => g.toFixed(3)).join(",")}`);

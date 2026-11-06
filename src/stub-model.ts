@@ -19,6 +19,10 @@ const RULES: [RegExp, string, (m: RegExpMatchArray) => Record<string, unknown>][
   [/^\s*(?:pay|send)\s+(.+?)\s+([\d.]+)\s*(?:usdc)?$/i, "pay_usdc", (m) => ({ amount: m[2], to: m[1] })],
   // A full address spoken back to the agent is a lookup, not a memory search.
   [/^\s*(?:who|what)\s+(?:is|was)\s+(0x[0-9a-fA-F]+)/i, "who_is_this", (m) => ({ address: m[1] })],
+  // A pasted digest is the only sentence with a 43 character word in it, and the
+  // claim it carries is the one question this index is paid to settle. Addresses
+  // cannot match: base58 has no 0, so the 0x that opens one breaks the run.
+  [/(?:^|\s)([1-9A-HJ-NP-Za-km-z]{43,44})(?:\s|$)/, "verify_payment", (m) => ({ digest: m[1] })],
   // Must come before "who do I pay": a superlative is a ranking question, and
   // answering it with a list of names is the difference between a demo and a toy.
   // "most often" is cadence and has to win over the plain amount reading.
@@ -28,6 +32,7 @@ const RULES: [RegExp, string, (m: RegExpMatchArray) => Record<string, unknown>][
   [/has ([a-z][a-z]{2,}) paid/i, "find_person", (m) => ({ name: m[1] })],
   [/(?:sent|paid|given|received|owe) (?:me back )?(?:to |from )?(?:me )?([a-z][a-z]{2,})/i, "find_person", (m) => ({ name: m[1] })],
   [/who do i (know|pay)|my people|list people/i, "people_you_know", () => ({})],
+  [/due|overdue|bill|subscription|recurring|every month|each month|committed/i, "what_is_due", () => ({})],
   [/what do i (usually )?(pay|owe)|how much do i|history|spent/i, "money_history", () => ({ limit: 12 })],
   [/month|last month/i, "monthly_summary", () => ({})],
   [/how many|how much.*stored|memory.*full|what.*stored/i, "memory_stats", () => ({})],
@@ -79,6 +84,19 @@ function monthName(iso: string): string {
 }
 
 function say(name: string, result: any, args: any = {}): string {
+  // Both find_person and pay_usdc can report this. A payment to an unknown name is
+  // not a failure, so the stub says what the field on screen is waiting for.
+  if (result?.needs_address) {
+    const who = String(result.who ?? result.not_found ?? "that person");
+    return result.amount
+      ? `I do not have an address for ${who}. Type it into the field on screen and ${spoken(result.amount)} USDC goes to it.`
+      : `I do not have an address for ${who}. Type it into the field on screen and I will keep it.`;
+  }
+  if (name === "make_report") {
+    const inn = String(result?.total_in ?? "0.00 USDC");
+    const out = String(result?.total_out ?? "0.00 USDC");
+    return `The statement is ready at /report. ${inn} came in and ${out} went out. Both numbers are set on the card.`;
+  }
   if (name === "people_you_know") {
     if (!result?.length) return "I have not been taught any names yet.";
     return "You have named " + result.map((p: any) => `${p.alias}${p.note ? `, ${p.note}` : ""}`).join(". ") + ".";
@@ -100,6 +118,11 @@ function say(name: string, result: any, args: any = {}): string {
       `, most recently ${when(p.lastSeen)}.`;
     return result.slice(0, 5).map(line).join(" ");
   }
+  if (name === "what_is_due") {
+    const lines = (result?.said ?? []) as string[];
+    if (!lines.length) return "Nothing has a rhythm yet, so nothing is due.";
+    return lines.map((s) => `${s}.`).join(" ");
+  }
   if (name === "monthly_summary") {
     if (!result?.length) return "No monthly totals yet.";
     return result.map((m: any) => `${monthName(m.month)}: ${spoken(m.total)} ${m.asset}`).join(". ");
@@ -110,7 +133,7 @@ function say(name: string, result: any, args: any = {}): string {
   // unlistenable, so the proof stays in the tool trace and the eye only says it landed.
   if (name === "pay_usdc") {
     if (result?.awaiting_signature) {
-      return `I have put ${spoken(result.usdc)} USDC for ${result.to} on the Pay page. Sign it there and it goes.`;
+      return `I have put ${spoken(result.usdc)} USDC for ${result.to} in the ticket under this reply. Sign it there and it goes.`;
     }
     return `Sent ${spoken(result?.usdc)} USDC. It settled on chain just now.`;
   }
@@ -118,11 +141,23 @@ function say(name: string, result: any, args: any = {}): string {
     return result?.address ? `Found ${result.address.slice(0, 10)}…` : `I have never been told who that is.`;
   if (name === "paid_lookup") {
     if (result?.awaiting_signature) {
-      return `Naming that address costs ${spoken(result.usdc)} USDC at the paid index. It is on the Pay page for you to sign.`;
+      return `A profile of that address costs ${spoken(result.usdc)} USDC at the paid index. It is in the ticket under this reply for you to sign.`;
     }
-    const note = receipt(result?.note);
-    if (!result?.cost_usdc) return `I already knew that one. ${result?.name}${note ? `, ${note}` : ""}. It cost nothing.`;
-    return `That cost ${spoken(result.cost_usdc)} USDC at the paid index. It is ${result.name}, ${note}. I will remember it now.`;
+    if (result?.refused) return String(result.saying ?? "The index quoted above my ceiling, so I did not buy it.");
+    const found = receipt(result?.note ?? result?.answer);
+    if (!result?.cost_usdc) return `I already had that one.${found ? ` ${found}.` : ""} It cost nothing.`;
+    return `That cost ${spoken(result.cost_usdc)} USDC at the paid index.${found ? ` ${found}.` : ""} I will remember it now.`;
+  }
+  if (name === "verify_payment") {
+    if (result?.awaiting_signature) {
+      return `Checking that on chain costs ${spoken(result.usdc)} USDC. It is in the ticket under this reply for you to sign.`;
+    }
+    // The memory line starts with the digest it is filed under. Nothing reads a
+    // base58 string aloud, so the sentence keeps the finding and drops the key.
+    const truth = String(result?.answer ?? "").replace(/^Chain receipt for \S+:\s*/, "");
+    return result?.cost_usdc
+      ? `${spoken(result.cost_usdc)} USDC to ask the chain. ${truth} I will remember that answer.`
+      : `I already paid to check that one. ${truth}`;
   }
   if (name === "who_is_this") {
     if (result?.named_as) return `${result.named_as}. ${receipt(result.note)}`.trim();
