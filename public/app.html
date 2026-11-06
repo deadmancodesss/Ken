@@ -2,715 +2,1707 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Talk · Total Recall</title>
+    <title>Chat · Ken</title>
     <script>
       /* Wallets announce themselves before any module can load, so this captures
          the announcement into a global that public/wallet.js reads later. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
     <link rel="stylesheet" href="/theme.css" />
     <style>
-      main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
-      #log { overflow-y: auto; padding: 0 var(--pad) 10px; }
+      /* ---------- the room ----------
+         One conversation fills the page. The left rail holds the conversations this
+         wallet has had, the right side holds nothing at all, and the middle is the
+         transcript with a composer pinned under it. Every measure below is one of four
+         numbers (8, 12, 16, 24) so the page keeps a rhythm at any width. */
+      :root { --rail: 276px; --read: 720px; --bar: 62px; --compose: 148px; }
+      body { height: 100dvh; overflow: hidden; }
+      main.room { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
 
-      /* The balance sits above the conversation like the header of any payments app,
-         because the first thing a person wants is the number, not a chat window. */
-      #log > .sheet { max-width: var(--measure); margin: 0 auto; padding-top: 22px; position: sticky; top: 0; z-index: 3; background: var(--paper); }
-      .money { display: flex; align-items: flex-end; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
-      .money .amt { font: 400 clamp(34px, 6vw, 46px)/1 var(--serif); letter-spacing: -0.02em; }
-      .money .amt small { font: var(--step-0)/1 var(--mono); color: var(--ink-3); margin-left: 6px; letter-spacing: 0.06em; }
-      .money .side { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: 5px; font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
-      .money .side b { color: var(--ink-2); font-weight: 400; }
-      .money .side .gas.low { color: var(--brick); }
+      /* ---------- conversations ---------- */
+      .rail {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--rule);
+        background: var(--paper-sunk);
+        padding: 16px 12px 14px;
+      }
+      .railTop { flex: 0 0 auto; display: grid; gap: 4px; }
+      .newChat {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        padding: 11px 13px;
+        border: var(--edge) solid var(--rule-strong);
+        border-radius: 11px;
+        background: var(--paper);
+        color: var(--ink);
+        font: var(--step-0)/1 var(--sans);
+        text-align: left;
+        box-shadow: 2px 2px 0 var(--sheet);
+      }
+      .newChat:hover { border-color: var(--ink); transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--sheet); }
+      .newChat:active { transform: translate(2px, 2px); box-shadow: none; }
+      .newChat i {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 7px;
+        font: 400 15px/1 var(--mono);
+        font-style: normal;
+        color: var(--clay);
+        background: var(--paper-sunk);
+      }
+      .railLabel { margin: 18px 4px 8px; font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .chatList { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
+      .chatItem {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        gap: 10px;
+        width: 100%;
+        padding: 10px 11px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--ink-2);
+        font: var(--step-0)/1.3 var(--sans);
+        text-align: left;
+        box-shadow: none;
+        transform: none;
+      }
+      .chatItem:hover { background: var(--paper); border-color: var(--rule); color: var(--ink); transform: none; box-shadow: none; }
+      .chatItem.on { background: var(--paper); border-color: var(--rule-strong); color: var(--ink); }
+      .chatTitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chatWhen { font: 10px/1 var(--mono); color: var(--ink-3); white-space: nowrap; }
+      .chatItem.on .chatWhen { color: var(--clay); }
+      .railListEmpty { padding: 10px 6px; color: var(--ink-3); font: var(--step--1)/1.55 var(--mono); }
 
-      .faces { display: flex; gap: 9px; overflow-x: auto; padding: 14px 0 2px; scrollbar-width: thin; }
-      .face { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 7px 13px 7px 7px; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); cursor: pointer; font: var(--step-0)/1 var(--sans); color: var(--ink); transition: border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
-      .face:hover { border-color: var(--ink-2); }
-      .face:active { transform: translateY(1px); }
-      .face .av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--clay-wash); color: var(--clay); font: var(--step--1)/1 var(--mono); }
-      .face.unk { border-style: dashed; }
-      .face.unk .av { background: var(--paper-sunk); color: var(--brick); border: 1px dashed var(--rule-strong); border-radius: 6px; }
-      .face em { font-style: normal; color: var(--ink-3); font: var(--step--1)/1 var(--mono); }
+      .railFoot { flex: 0 0 auto; border-top: 1px solid var(--rule); padding: 14px 4px 0; display: grid; gap: 10px; }
+      .balance { display: grid; gap: 3px; }
+      .balance .balLabel { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .balance .balAmt { font: 400 var(--step-2)/1.1 var(--serif); color: var(--ink); }
+      .balance .balAmt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 5px; letter-spacing: 0.05em; }
+      .balance .balGas { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
+      .balance .balGas.low { color: var(--brick); }
+      .railLinks { display: flex; flex-wrap: wrap; gap: 6px 12px; font: var(--step--1)/1 var(--mono); }
+      .railLinks a { color: var(--ink-3); border-bottom: 0; }
+      .railLinks a:hover { color: var(--clay); }
 
-      /* Everything in the left column shares one axis: the sheet, the transcript and
-         the composer are each centred inside the space the rail leaves, so a question
-         you type lands under the question you read rather than under the page. */
-      .stream { padding: 22px 0; display: flex; flex-direction: column; gap: 22px; max-width: var(--measure); margin: 0 auto; }
-      /* The opening drawing shares the transcript's own measure instead of the page's
-         plate width, so an empty page and a page full of answers break on the same edge
-         and the invitation stays above the fold on a tool people are about to type into. */
-      .open { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 24px; align-items: center; }
-      .open img { width: 100%; height: auto; mix-blend-mode: multiply; }
-      .turn { display: flex; flex-direction: column; gap: 6px; }
-      .said { padding: 10px 14px; border-radius: 8px; max-width: 92%; }
-      .turn.you { align-items: flex-end; }
-      .turn.you .said { background: var(--paper-sunk); border: 1px solid var(--rule); }
-      .turn.agent .said {
-        font: 400 var(--step-2)/1.5 var(--serif);
-        letter-spacing: -0.005em;
-        padding-left: 15px;
-        border-left: 2px solid var(--clay);
+      /* ---------- the chat column ---------- */
+      .chat { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--paper); }
+      .roombar {
+        flex: 0 0 auto;
+        height: var(--bar);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--rule);
+      }
+      .railBtn { display: none; }
+      .roomTitle { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 var(--step-2)/1.2 var(--serif); color: var(--ink); }
+      .roomActs { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; position: relative; }
+      .voicePill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border: var(--edge) solid var(--ink);
+        border-radius: 999px;
+        background: var(--clay);
+        color: var(--paper);
+        font: var(--step--1)/1 var(--mono);
+        letter-spacing: 0.04em;
+        box-shadow: 2px 2px 0 var(--ink);
+      }
+      .voicePill:hover { background: #8f4420; box-shadow: 3px 3px 0 var(--ink); transform: translate(-1px, -1px); }
+      .voicePill:active { box-shadow: 0 0 0 var(--ink); transform: translate(2px, 2px); }
+      .voicePill svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+      .iconBtn {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        background: transparent;
+        color: var(--ink-3);
+        box-shadow: none;
+      }
+      .iconBtn:hover { border-color: var(--rule-strong); color: var(--ink); background: var(--paper); transform: none; box-shadow: none; }
+      .iconBtn:active { transform: none; box-shadow: none; }
+      .iconBtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+      .roomMenu {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        z-index: 20;
+        min-width: 168px;
+        padding: 5px;
+        border: var(--edge) solid var(--ink);
+        border-radius: 11px;
+        background: var(--paper);
+        box-shadow: 4px 4px 0 var(--sheet);
+      }
+      .roomMenu[hidden] { display: none; }
+      .roomMenu button {
+        display: block;
+        width: 100%;
+        padding: 9px 10px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--ink-2);
+        font: var(--step-0)/1 var(--sans);
+        text-align: left;
+        box-shadow: none;
+      }
+      .roomMenu button:hover { background: var(--paper-sunk); color: var(--ink); transform: none; box-shadow: none; }
+      .roomMenu button.danger { color: var(--brick); }
+      .roomMenu button.danger:hover { background: var(--brick-wash, #f3e3df); }
+
+      .log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+      .thread { min-height: 100%; display: flex; flex-direction: column; gap: 26px; width: 100%; max-width: var(--read); margin: 0 auto; padding: 28px 24px 34px; }
+
+      /* ---------- messages ----------
+         A question is a sheet on the right, an answer is a column of reading on the
+         left. Both live on the same 720px axis so the eye never changes column. */
+      .msg { display: flex; flex-direction: column; min-width: 0; }
+      .msg.you { align-items: flex-end; }
+      .msg .bubble {
+        max-width: 86%;
+        padding: 11px 15px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 16px 16px 5px 16px;
+        background: var(--paper-sunk);
+        color: var(--ink);
+        font: var(--step-1)/1.55 var(--sans);
+        overflow-wrap: anywhere;
+      }
+      .msg.ken { gap: 10px; }
+      .khead { display: flex; align-items: center; gap: 8px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+      .khead img { width: 19px; height: 19px; display: block; }
+      .msg .kbody { font: 400 17px/1.68 var(--serif); color: var(--ink); letter-spacing: -0.004em; overflow-wrap: anywhere; max-width: 66ch; }
+      .msg .kbody p + p { margin-top: 10px; }
+      .msg .fallback { font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); }
+      .msg.error .kbody { font: var(--step-0)/1.6 var(--mono); color: var(--brick); }
+      .dots { display: inline-flex; gap: 4px; align-items: center; height: 1.4em; }
+      .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--clay); animation: dot 1.05s infinite; }
+      .dots i:nth-child(2) { animation-delay: 0.16s; opacity: 0.66; }
+      .dots i:nth-child(3) { animation-delay: 0.32s; opacity: 0.36; }
+      @keyframes dot { 0%, 60%, 100% { opacity: 0.24; } 30% { opacity: 1; } }
+
+      .trace { margin-top: 2px; max-width: 66ch; }
+      .trace summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        list-style: none;
+        cursor: pointer;
+        padding: 4px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        font: 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .trace summary::-webkit-details-marker { display: none; }
+      .trace summary:hover { border-color: var(--rule-strong); color: var(--ink-2); }
+      .trace summary::after { content: "+"; color: var(--clay); margin-left: 2px; }
+      .trace[open] summary::after { content: "−"; }
+      .trace .tlist { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+      .trace .tstep {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 7px;
+        background: var(--paper-sunk);
+        font: var(--step--1)/1 var(--mono);
+        color: var(--ink-2);
+      }
+      .trace .tstep::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--moss); flex: 0 0 auto; }
+      .trace .tstep.bad { color: var(--brick); }
+      .trace .tstep.bad::before { background: var(--brick); }
+
+      /* A settled payment is a fact, so it is not hidden inside the steps drawer. */
+      .rcpt {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        align-self: flex-start;
+        margin-top: 2px;
+        padding: 8px 12px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 10px;
+        background: var(--paper);
+        color: var(--ink);
+        font: var(--step-0)/1.2 var(--sans);
+        border-bottom-width: 1px;
+      }
+      .rcpt:hover { border-color: var(--ink-3); }
+      .rcpt .seal { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--moss); color: var(--paper); font: 600 11px/1 var(--sans); flex: 0 0 auto; }
+      .rcpt b { font-weight: 600; font-variant-numeric: tabular-nums; }
+      .rcpt .to { color: var(--ink-2); }
+      .rcpt .tx { font: 10px/1 var(--mono); color: var(--ink-3); margin-left: 3px; }
+
+      /* ---------- inline panels ----------
+         The address, the request and the signature are the only places the page turns
+         into a form. They all share one sheet, one padding and one hard offset, so a
+         field opening mid conversation reads as part of the same page. */
+      .panel {
+        align-self: stretch;
+        display: grid;
+        gap: 12px;
         max-width: 100%;
+        padding: 16px;
+        border: var(--edge) solid var(--rule-strong);
+        border-left: 3px solid var(--clay);
+        border-radius: 12px;
+        background: var(--paper);
+        box-shadow: 3px 3px 0 var(--sheet);
       }
-      .turn.error .said { color: var(--brick); font: var(--step-0)/1.5 var(--mono); }
-      .who { font: var(--step--1)/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
-      .trace { font: var(--step--1)/1.7 var(--mono); color: var(--ink-3); padding-left: 16px; }
-      .trace .t { color: var(--ink-2); }
-      .trace .t::after { content: " ·"; }
-      .trace .t:last-child::after { content: ""; }
-      .trace .bad { color: var(--brick); }
+      .panel.moss { border-left-color: var(--moss); }
+      .panel h4 { margin: 0; font: 400 var(--step-2)/1.3 var(--serif); color: var(--ink); max-width: 46ch; }
+      .panel .hint { margin: 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .panel .hint.bad { color: var(--brick); }
+      .panel .hint.good { color: var(--moss); }
+      .panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .panel .row > input { flex: 1 1 240px; min-width: 0; font: var(--step--1)/1.4 var(--mono); padding: 10px 12px; }
+      .panel button { border-radius: 8px; padding: 9px 13px; font: var(--step--1)/1 var(--sans); box-shadow: 2px 2px 0 var(--sheet); }
+      .panel button:hover { box-shadow: 3px 3px 0 var(--sheet); }
+      .panel button:active { box-shadow: none; }
+      .panel .quietBtn { border: 0; background: transparent; color: var(--ink-3); box-shadow: none; padding: 2px 0; }
+      .panel .quietBtn:hover { color: var(--ink); transform: none; box-shadow: none; }
+      .fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+      .fields .wide { grid-column: 1 / -1; }
+      .lf { display: grid; gap: 6px; min-width: 0; }
+      .lf > span { font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .lf input[type="text"] { font: var(--step-0)/1.4 var(--sans); padding: 10px 12px; }
+      .amount { display: flex; align-items: baseline; gap: 8px; }
+      .amount input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        border-bottom: 1px dashed var(--rule-strong);
+        border-radius: 0;
+        background: transparent;
+        font: 400 var(--step-3)/1.05 var(--serif);
+        color: var(--ink);
+        padding: 4px 0 6px;
+      }
+      .amount input:focus-visible { outline: 0; border-bottom-color: var(--clay); }
+      .amount b { font: 10px/1 var(--mono); font-weight: 400; color: var(--ink-2); }
+      .samount { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
+      .samount small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); margin-left: 6px; }
+      .sline { display: flex; gap: 10px; align-items: baseline; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); min-width: 0; }
+      .sline b { font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
+      .receipt { display: grid; gap: 6px; padding-top: 2px; }
+      .receipt code { font: var(--step--1)/1.6 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+      .receipt a { font: var(--step--1)/1.5 var(--mono); justify-self: start; }
+      .done .rseal { font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--moss); }
+      .done .ramt { font: 400 var(--step-3)/1 var(--serif); letter-spacing: -0.01em; }
+      .done .ramt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 5px; }
+      .done .note { font: var(--step-0)/1.55 var(--sans); color: var(--ink-2); }
+      .done code { font: var(--step--1)/1.55 var(--mono); overflow-wrap: anywhere; }
 
-      aside { border-left: 1px solid var(--rule); background: var(--paper-sunk); overflow-y: auto; padding: 26px 20px; }
-      /* The explanation lives in the rail so a curious person can open it without
-         leaving the transcript they are watching. */
-      .reads { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-      .reads > div { border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); padding: 9px 10px; display: flex; flex-direction: column; gap: 4px; transition: border-color var(--t-2) var(--ease), background var(--t-2) var(--ease); }
-      .reads b { font: var(--step--1)/1.2 var(--mono); color: var(--ink-3); transition: color var(--t-2) var(--ease); }
-      .reads span { font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-3); }
-      .reads div.on { border-color: var(--clay); background: var(--clay-wash); }
-      .reads div.on b { color: var(--clay); }
+      /* A statement requested in the conversation stays in it, with the same controls
+         the statement page offers. */
+      .reportCard { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 14px; align-items: start; }
+      .reportCard img { width: 100%; height: auto; display: block; border: 1px solid var(--rule); border-radius: 6px; }
+      .reportCard p { margin: 4px 0 10px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .reportCard .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+      .reportCard .acts a, .reportCard .acts button { padding: 7px 11px; border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--paper); color: var(--ink-2); font: 10px/1 var(--mono); box-shadow: none; text-decoration: none; }
+      .reportCard .acts a:hover, .reportCard .acts button:hover { border-color: var(--ink); color: var(--ink); transform: none; box-shadow: none; }
 
-      .howto { margin-top: 26px; border-top: 1px solid var(--rule); padding-top: 14px; }
-      .howto summary { font: var(--step--1)/1.6 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; list-style: none; display: flex; }
-      .howto summary::-webkit-details-marker { display: none; }
-      .howto summary::after { content: "+"; margin-left: auto; color: var(--clay); }
-      .howto[open] summary::after { content: "−"; }
-      .howto .steps { background: transparent; border: 0; border-radius: 0; }
-      .howto .steps > div { background: transparent; padding: 11px 0; border-bottom: 1px solid var(--rule); grid-template-columns: 22px 1fr; gap: 10px; }
-      .howto .steps > div:last-child { border-bottom: 0; }
-      .howto .steps p { font-size: var(--step--1); line-height: 1.55; color: var(--ink-2); }
-      .howto .steps b { color: var(--ink); font-weight: 400; }
-      .person { padding: 14px 0; border-bottom: 1px solid var(--rule); }
-      .person:last-child { border-bottom: 0; }
-      .person h3 { margin: 0; font: 400 var(--step-1)/1.3 var(--serif); }
-      .person h3 .tag { color: var(--ink-3); font: var(--step--1)/1 var(--mono); }
-      .person p { margin: 4px 0 0; color: var(--ink-2); font-size: var(--step-0); }
-      .person dl { margin: 9px 0 0; display: flex; gap: 14px; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
-      .person dl div { display: flex; flex-direction: column; gap: 4px; }
-      .person dt { color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.07em; font-size: 10px; }
-      .person.unknown { border-left: 2px solid var(--brick); padding-left: 12px; margin-left: -14px; }
-      .person.unknown h3 { color: var(--ink-2); font-family: var(--mono); font-size: var(--step-0); }
-      .person.two-way dl div:first-child dd { color: var(--moss); }
-      .rail-empty { color: var(--ink-3); font-size: var(--step-0); }
+      /* ---------- the empty page ---------- */
+      .empty { flex: 1; display: grid; align-content: center; gap: 22px; padding: 26px 0 40px; width: 100%; }
+      .emptyMark { display: grid; place-items: center; width: 58px; height: 58px; }
+      .emptyMark img { width: 58px; height: 58px; display: block; filter: drop-shadow(3px 3px 0 var(--sheet)); }
+      .empty h1 { margin: 0; font: 400 clamp(27px, 4vw, 34px)/1.15 var(--serif); letter-spacing: -0.022em; color: var(--ink); }
+      .empty .lede { max-width: 46ch; color: var(--ink-2); font: var(--step-1)/1.6 var(--sans); }
+      .asks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 2px; }
+      .asks button {
+        display: grid;
+        gap: 3px;
+        padding: 12px 13px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 10px;
+        background: var(--paper);
+        color: var(--ink);
+        font: var(--step-0)/1.35 var(--sans);
+        text-align: left;
+        box-shadow: none;
+      }
+      .asks button span { font: 10px/1.35 var(--mono); color: var(--ink-3); }
+      .asks button:hover { border-color: var(--ink); background: var(--paper-sunk); transform: none; box-shadow: none; }
+      .voiceStart { justify-self: start; display: inline-flex; align-items: center; gap: 8px; padding: 10px 15px; border-radius: 999px; font: var(--step-0)/1 var(--sans); }
+      .voiceStart svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 
-      /* A rhythm is a claim about money, so it is one line with a date rather than a
-         gauge. Colour carries only whether that date has already passed. */
-      .due { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--rule); padding: 9px 0; font: var(--step-0)/1.5 var(--sans); color: var(--ink-2); cursor: pointer; }
-      .due b { display: block; font-weight: 600; color: var(--ink); }
-      .due.soon b { color: var(--clay); }
-      .due.late b { color: var(--brick); }
-      .due:hover b { text-decoration: underline; }
+      /* ---------- composer ---------- */
+      .composeWrap { flex: 0 0 auto; padding: 10px 24px calc(14px + env(safe-area-inset-bottom)); background: var(--paper); }
+      .composer { width: 100%; max-width: var(--read); margin: 0 auto; display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 16px; background: var(--paper); box-shadow: 3px 3px 0 var(--sheet); transition: border-color var(--t-1) var(--ease); }
+      .composer:focus-within { border-color: var(--ink); }
+      .composer textarea {
+        flex: 1;
+        min-width: 0;
+        max-height: 160px;
+        min-height: 26px;
+        resize: none;
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        font: var(--step-1)/1.5 var(--sans);
+        padding: 5px 0;
+        outline: 0;
+        overflow-y: auto;
+      }
+      .composer textarea::placeholder { color: var(--ink-3); }
+      .cactions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+      .cactions .iconBtn { width: 34px; height: 34px; border-radius: 50%; }
+      .cactions .iconBtn.on { border-color: var(--brick); color: var(--brick); background: var(--paper-sunk); }
+      .send {
+        display: grid;
+        place-items: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: var(--edge) solid var(--ink);
+        border-radius: 50%;
+        background: var(--clay);
+        color: var(--paper);
+        box-shadow: none;
+      }
+      .send:hover { background: #8f4420; transform: none; box-shadow: none; }
+      .send:disabled { background: var(--paper-sunk); border-color: var(--rule); color: var(--ink-3); }
+      .send svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .cfoot { width: 100%; max-width: var(--read); margin: 8px auto 0; display: flex; justify-content: space-between; gap: 12px; font: 10px/1.4 var(--mono); color: var(--ink-3); }
+      .cfoot kbd { font-family: var(--mono); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 4px; color: var(--ink-2); }
 
-      footer { border-top: 1px solid var(--rule); padding: 14px var(--pad) 18px; display: grid; grid-template-columns: minmax(0, 1fr) 321px; }
-      /* 321px is the rail plus its hairline, which is the only way the composer ends up
-         centred over the transcript rather than over the whole window. */
-      .footcol { min-width: 0; }
-      .suggests { max-width: var(--measure); margin: 0 auto 12px; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
-      .suggests::-webkit-scrollbar { display: none; }
-      .suggests button { flex: 0 0 auto; border: 1px solid var(--rule); background: var(--paper); color: var(--ink-2); border-radius: 999px; padding: 7px 13px; font: var(--step--1)/1 var(--sans); cursor: pointer; transition: border-color var(--t-1) var(--ease), color var(--t-1) var(--ease); }
-      .suggests button:hover { border-color: var(--ink); color: var(--ink); }
-      .suggests button.buy { border-color: var(--brick); color: var(--brick); }
-      .bar { max-width: var(--measure); margin: 0 auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-      /* Talk, a box and Refresh fit on one line on a laptop and do not on a phone, and a
-         nowrap row simply carried Refresh off the edge of the screen. The box takes the
-         whole line when it has to, because typing a question is the thing being saved. */
-      #text { flex: 1 1 200px; min-width: 0; }
-      /* The ribbon only takes room while it has something to say, so a page that is
-         being typed into stays a page that is being typed into. */
-      .voicebar { max-width: var(--measure); margin: 0 auto; height: 0; overflow: hidden; transition: height var(--t-2) var(--ease); }
-      .voicebar.on { height: 58px; }
-      /* Hidden means unmeasured, so the ribbon stops drawing instead of painting
-         frames nobody can see. */
-      .voicebar canvas { display: none; width: 100%; height: 58px; }
-      .voicebar.on canvas { display: block; }
-      #mic { min-width: 108px; }
-      #mic.listening { background: var(--ink); border-color: var(--ink); }
-      .quiet { max-width: var(--measure); margin: 10px auto 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
-      /* Each note is one idea, so the row breaks between them rather than inside the
-         words "/ to write", which is what made this line look like it had been knocked over. */
-      .quiet > * { white-space: nowrap; }
-      .quiet a { color: var(--ink-3); border-bottom-color: var(--rule); }
-      /* This one link names the voice engine and the language as well as where it goes,
-         so it is the single note allowed to break onto a second line instead of pushing
-         the page sideways on a narrow handset. */
-      #langLink { white-space: normal; min-width: 0; }
-      .quiet a:hover { color: var(--clay); border-bottom-color: var(--clay); }
+      /* ---------- dialogs ---------- */
+      dialog.sheet { width: min(430px, calc(100vw - 32px)); margin: auto; padding: 20px; border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper); color: var(--ink); box-shadow: 6px 6px 0 var(--sheet); }
+      dialog.sheet::backdrop { background: rgba(33, 31, 27, 0.42); }
+      dialog.sheet form { display: grid; gap: 14px; }
+      dialog.sheet h3 { margin: 0; font: 400 var(--step-3)/1.2 var(--serif); }
+      dialog.sheet p { margin: 0; color: var(--ink-2); font: var(--step-0)/1.55 var(--sans); }
+      dialog.sheet .sheetActs { display: flex; justify-content: flex-end; gap: 8px; }
+      dialog.sheet input[type="text"] { width: 100%; }
 
+      /* ---------- the call sheet ---------- */
+      #callOverlay { position: fixed; inset: 0; z-index: 150; background: var(--paper); }
+      #callOverlay[hidden] { display: none; }
+      #callFrame { width: 100%; height: 100%; border: 0; display: block; background: var(--paper); }
+      body.calling { overflow: hidden; }
+
+      /* ---------- narrow screens ---------- */
+      .railScrim { display: none; }
       @media (max-width: 900px) {
-        .open { grid-template-columns: 1fr; }
-        .open img { width: 240px; margin: 0 auto; }
+        main.room { grid-template-columns: minmax(0, 1fr); }
+        .rail { position: fixed; z-index: 70; left: 0; top: 0; bottom: 0; width: min(302px, 86vw); transform: translateX(-103%); transition: transform 0.22s var(--ease); box-shadow: 6px 0 0 var(--sheet); }
+        body.railOpen .rail { transform: none; }
+        .railBtn { display: grid; }
+        .railScrim { display: block; position: fixed; inset: 0; z-index: 65; border: 0; padding: 0; background: rgba(33, 31, 27, 0.36); box-shadow: none; }
+        .railScrim[hidden] { display: none; }
       }
-
-      @media (max-width: 860px) {
-        main { grid-template-columns: 1fr; }
-        footer { grid-template-columns: 1fr; }
-        aside { border-left: 0; border-top: 1px solid var(--rule); }
-        #log > .sheet { position: static; }
+      @media (max-width: 620px) {
+        :root { --bar: 56px; }
+        .roombar { padding: 0 12px; gap: 8px; }
+        .roomTitle { font-size: var(--step-1); }
+        .voicePill { padding: 8px 12px; }
+        .thread { padding: 20px 14px 26px; gap: 22px; }
+        .composeWrap { padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
+        .composer { padding: 8px 8px 8px 13px; border-radius: 14px; }
+        .cfoot { display: none; }
+        .asks { grid-template-columns: minmax(0, 1fr); }
+        .empty { padding: 18px 0 28px; gap: 18px; }
+        .empty .lede { font-size: var(--step-0); }
+        .fields { grid-template-columns: minmax(0, 1fr); }
+        .reportCard { grid-template-columns: minmax(0, 1fr); }
+        .reportCard .shot { max-width: 190px; }
+        .msg .bubble { max-width: 92%; }
+        .msg .kbody { font-size: var(--step-1); }
+        .panel { padding: 14px; }
       }
-
-      /* Same breakpoint the masthead folds at. A phone gets the two buttons on one line
-         and the box on the next, because a squeezed typing field is worse than a taller
-         console, and the question you type is the reason the page exists. */
-      @media (max-width: 719px) {
-        #text { flex: 1 1 100%; order: 3; }
+      @media (prefers-reduced-motion: reduce) {
+        .rail { transition: none; }
+        .dots i { animation: none; }
       }
     </style>
   </head>
   <body>
     <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">it learns your people, then it stops asking</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
+      <nav class="tabs" id="siteMenu" aria-label="Main">
+        <div class="navExtra" id="navExtra"></div>
+        <a href="/app" aria-current="page">Chat</a>
+        <a href="/memory">Memory</a>
+        <a href="/pay">Pay</a>
+        <a href="/request">Request</a>
+        <div class="more">
+          <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu">More</button>
+          <div class="moreMenu" id="moreMenu" hidden>
+            <a href="/ask">Ask to pay</a>
+            <a href="/report">Statement</a>
+            <a href="/features">Features</a>
+            <a href="/how">How it works</a>
+            <a href="/life">In your life</a>
+          </div>
+        </div>
+      </nav>
       <div class="wallet">
         <span class="whose" id="whose"></span>
         <button class="chip" id="connect">Connect wallet</button>
       </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app" aria-current="page">Talk</a>
-        <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
-        <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
-    <main>
-      <div id="log">
-        <div class="sheet">
-          <div class="money">
-            <div class="amt" id="bal">·<small>USDC</small></div>
-            <div class="side">
-              <div class="gas" id="gas">gas ·</div>
-              <div>names bought <b id="bought">·</b></div>
-              <div id="netName">·</div>
-            </div>
-          </div>
-          <div class="faces" id="faces"><span class="rail-empty">reading your people…</span></div>
+    <main class="room">
+      <aside class="rail" id="rail" aria-label="Your chats">
+        <div class="railTop">
+          <button class="newChat" id="newChat" type="button"><i aria-hidden="true">+</i>New chat</button>
+          <div class="railLabel">Chats</div>
         </div>
-
-        <div class="stream">
-          <div class="open" data-empty>
-            <div class="lede">
-              Ask about your money the way you would ask a friend.
-              <span>Tap a face above, tap a question below, or press Talk and say it out loud.
-                <a href="/life">See what people actually ask.</a></span>
-            </div>
-            <img src="/assets/app-desk.webp" width="1100" height="733" loading="lazy" decoding="async" alt="The man and the woman sitting opposite each other at a wooden table, he writing in an open ledger and she pointing at a small stack of cards between them, with a shelf of glass jars full of folded papers above them" />
+        <div class="chatList" id="chatList"><div class="railListEmpty">reading your chats</div></div>
+        <div class="railFoot">
+          <div class="balance">
+            <span class="balLabel">wallet</span>
+            <span class="balAmt"><b id="balUsdc">·</b><small>USDC</small></span>
+            <span class="balGas" id="balGas">reading the balance</span>
+          </div>
+          <div class="railLinks">
+            <a href="/pay">Pay</a>
+            <a href="/request">Request</a>
+            <a href="/report">Statement</a>
           </div>
         </div>
-      </div>
-
-      <aside>
-        <div class="label">What your last question read</div>
-        <div class="reads" id="reads">
-          <div data-src="memory"><b>memory</b><span>Walrus</span></div>
-          <div data-src="chain"><b>the chain</b><span>Tatum</span></div>
-          <div data-src="index"><b>a paid name</b><span>the index</span></div>
-          <div data-src="sign"><b>your sign</b><span>wallet</span></div>
-        </div>
-        <p class="rail-empty" id="readNote">Nothing asked yet. When you do, these four light in the order the answer needed them, and that order is the whole product.</p>
-
-        <div class="label" style="margin-top:26px">What the rhythm says is due</div>
-        <div id="due" class="rows"><div class="rail-empty">reading the dates…</div></div>
-
-        <div class="label" style="margin-top:26px">People the agent can name</div>
-        <div id="people" class="rows"><div class="rail-empty">reading Walrus…</div></div>
-
-        <details class="howto">
-          <summary>How this page works</summary>
-          <div class="steps reveal" style="margin-top:16px">
-            <div><span class="num">1</span><div><p><b>Memory is read first.</b> A person you already named is answered from Walrus, and nothing on the chain or the index is contacted.</p></div></div>
-            <div><span class="num">2</span><div><p><b>Then the chain.</b> Tatum reads your transfers and the other side of each one, because inbound money does not appear in your own list.</p></div></div>
-            <div><span class="num">3</span><div><p><b>Money waits for you.</b> A payment you ask for becomes a ticket on the Pay page, and it leaves only when your wallet signs.</p></div></div>
-            <div><span class="num">4</span><div><p><b>An unknown address is offered, not bought.</b> Naming one costs <span data-stat="price">0.01</span> USDC once at the paid index, and every later mention of it is free.</p></div></div>
-          </div>
-          <p class="rail-empty">the model chooses from a fixed set of tools over this one transcript. <a href="/how">What each one does</a></p>
-        </details>
       </aside>
+      <button class="railScrim" id="railScrim" type="button" aria-label="Close the chat list" hidden></button>
+
+      <section class="chat" aria-label="Conversation">
+        <div class="roombar">
+          <button class="iconBtn railBtn" id="railBtn" type="button" aria-label="Open the chat list">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+          </button>
+          <div class="roomTitle" id="roomTitle">New chat</div>
+          <div class="roomActs">
+            <button class="voicePill" id="voiceBtn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+              Voice
+            </button>
+            <button class="iconBtn" id="chatMenuBtn" type="button" aria-expanded="false" aria-controls="chatMenu" aria-label="Chat actions">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/></svg>
+            </button>
+            <div class="roomMenu" id="chatMenu" hidden>
+              <button type="button" id="renameBtn">Rename chat</button>
+              <button type="button" id="deleteBtn" class="danger">Delete chat</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="log" id="log">
+          <div class="thread" id="thread"></div>
+        </div>
+
+        <div class="composeWrap">
+          <form class="composer" id="composer">
+            <textarea id="text" rows="1" placeholder="Ask about your money" autocomplete="off" spellcheck="false" aria-label="Your message"></textarea>
+            <div class="cactions">
+              <button class="iconBtn" id="mic" type="button" title="Speak your question" aria-label="Speak your question">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+              </button>
+              <button class="send" id="send" type="submit" title="Send" aria-label="Send">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+              </button>
+            </div>
+          </form>
+          <div class="cfoot">
+            <span>Memory first, then the chain. Money waits for your signature.</span>
+            <span><kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <footer>
-      <div class="footcol">
-      <div class="suggests" id="suggests">
-        <button data-q="who do I pay most?">who do I pay most?</button>
-        <button data-q="how much have I sent this month?">this month</button>
-        <button data-q="who do I know?">who do I know?</button>
-        <button data-q="what do you remember about me?">what do you remember?</button>
-        <button class="buy" hidden>who is an unknown address?</button>
+    <template id="emptyTpl">
+      <div class="empty">
+        <div class="emptyMark"><img src="/assets/ken-mark.svg" alt="" /></div>
+        <h1>What do you want to know?</h1>
+        <p class="lede">Ask about your money in plain words. Ken reads what it remembers first, then the chain, and money only moves when your wallet signs.</p>
+        <div class="asks">
+          <button type="button" data-q="who do I pay most?">Who do I pay most?<span>Ranked by what left this wallet</span></button>
+          <button type="button" data-q="how much have I sent this month?">What did I send this month?<span>Read from the chain, not a guess</span></button>
+          <button type="button" data-q="who do I know?">Who do I know?<span>The people memory has already named</span></button>
+          <button type="button" data-q="what do you remember about me?">What do you remember?<span>Straight from Walrus</span></button>
+        </div>
+        <button class="voiceStart" type="button" data-voice>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+          Start a voice call
+        </button>
       </div>
-      <div class="voicebar" id="voicebar"><canvas id="wave" aria-hidden="true"></canvas></div>
-      <div class="bar">
-        <button id="mic" class="primary">Talk</button>
-        <input id="text" type="text" placeholder="Ask about your money" autocomplete="off" spellcheck="false" />
-        <button id="reload" title="Re-read the chain, memory and balances">Refresh</button>
-      </div>
-      <div class="quiet">
-        <button class="switch" id="voiceSwitch" type="button" role="switch" aria-checked="true"><span class="dot"></span><span id="voiceLabel">voice out on</span></button>
-        <a href="/call" id="langLink">voice and language</a>
-        <span><kbd>/</kbd> to write</span>
-        <span><kbd>esc</kbd> to clear</span>
-      </div>
-      </div>
-    </footer>
+    </template>
+
+    <dialog class="sheet" id="renameDlg">
+      <form id="renameForm">
+        <h3>Name this chat</h3>
+        <p>A short name makes it easy to find later. The first question names it for you if you leave it alone.</p>
+        <input type="text" id="renameInput" maxlength="80" autocomplete="off" aria-label="Chat name" />
+        <div class="sheetActs">
+          <button type="button" data-close="renameDlg">Cancel</button>
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="sheet" id="deleteDlg">
+      <form id="deleteForm">
+        <h3>Delete this chat?</h3>
+        <p>The messages in this chat are removed from the store. The other chats, the people Ken named and the money on chain stay exactly where they are.</p>
+        <div class="sheetActs">
+          <button type="button" data-close="deleteDlg">Keep it</button>
+          <button type="submit" class="primary" id="deleteGo">Delete</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="callOverlay" hidden>
+      <iframe id="callFrame" title="Voice call with Ken" allow="microphone; autoplay; clipboard-write"></iframe>
+    </div>
 
     <script type="module">
-      import { $, spoken, when, plain, shortAddr, mountWallet, loadMeta, buildSpeech, langSetting, langName, startMic, reveal, fillStats, remoteSpeech, gvoiceSetting, speakRemote } from "./shared.js";
-      import { createWave } from "./wave.js";
-      reveal();
+      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
+      import { signAndExecute, signX402 } from "./wallet.js";
+      import { mountSelect } from "./ui.js";
 
-      const stream = () => $("log").querySelector(".stream");
-      let speakOn = true;
+      const thread = $("thread");
+      const log = $("log");
+      const input = $("text");
+      const sendBtn = $("send");
 
-      function row(kind, text) {
-        const wrap = document.createElement("div");
-        wrap.className = "turn " + kind;
-        wrap.innerHTML = `<div class="who">${kind === "you" ? "you" : kind === "agent" ? "total recall" : "stuck"}</div>`;
-        const said = document.createElement("div");
-        said.className = "said";
-        said.textContent = text;
-        wrap.appendChild(said);
-        stream().appendChild(wrap);
-        $("log").scrollTop = $("log").scrollHeight;
-        return said;
+      let active = "";
+      let shownTurns = 0;
+      let sessions = [];
+      let lastState = null;
+      let lastBalance = null;
+      let busy = false;
+
+      const scroll = () => { log.scrollTop = log.scrollHeight; };
+      /* The invitation is a block inside the transcript rather than a separate screen,
+         so a page with one question and a page with none share one axis. */
+      const showEmpty = () => {
+        thread.innerHTML = "";
+        thread.appendChild($("emptyTpl").content.cloneNode(true));
+      };
+      const opening = () => thread.querySelector(".empty")?.remove();
+      const plain = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
+
+      function when(ts) {
+        const at = Number(ts);
+        if (!at) return "";
+        const mins = Math.max(0, Math.round((Date.now() - at) / 60000));
+        if (mins < 1) return "now";
+        if (mins < 60) return `${mins}m`;
+        const hours = Math.round(mins / 60);
+        if (hours < 24) return `${hours}h`;
+        const days = Math.round(hours / 24);
+        if (days < 7) return `${days}d`;
+        return new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" });
       }
 
-      // The trace is the one place the machinery shows through, so it stays short
-      // and in plain words rather than snake_case internals.
+      /* ---------- messages ---------- */
+      function userMessage(text) {
+        const wrap = document.createElement("div");
+        wrap.className = "msg you";
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = text;
+        wrap.appendChild(bubble);
+        return wrap;
+      }
+
+      function kenMessage(text) {
+        const wrap = document.createElement("div");
+        wrap.className = "msg ken";
+        const head = document.createElement("div");
+        head.className = "khead";
+        const img = document.createElement("img");
+        img.src = "/assets/ken-mark.svg";
+        img.alt = "";
+        const who = document.createElement("span");
+        who.textContent = "Ken";
+        head.append(img, who);
+        const body = document.createElement("div");
+        body.className = "kbody";
+        if (text != null) body.textContent = text;
+        wrap.append(head, body);
+        return wrap;
+      }
+
+      function panelMessage(panel) {
+        const wrap = kenMessage("");
+        wrap.querySelector(".kbody").remove();
+        wrap.appendChild(panel);
+        return wrap;
+      }
+
       const LABELS = {
         people_you_know: "who you have named",
         who_is_this: "looking up an address",
         money_history: "reading the chain",
         monthly_summary: "month by month",
+        what_is_due: "reading the rhythm",
         name_a_person: "writing a name to Walrus",
         find_person: "finding a name",
         remember_this: "writing to Walrus",
         what_do_i_remember: "searching memory",
         memory_stats: "counting memories",
+        wallet_balance: "reading the balance",
+        how_money_came: "walking the history back",
+        address_activity: "reading an address",
+        make_report: "typesetting the statement",
+        set_monthly_limit: "the monthly limit",
+        request_money: "opening the request form",
         pay_usdc: "holding it for your sign",
-        paid_lookup: "buying a name",
+        paid_lookup: "buying a profile",
+        verify_payment: "checking a claim",
+        mark_spam: "marking address as spam",
+        unmark_spam: "clearing spam mark",
+        spam_marks: "reading spam marks",
+        remind_me: "setting a reminder",
+        reminders: "reading reminders",
+        cancel_reminder: "clearing reminder",
       };
 
-      // Which service each tool touches. The strip in the rail draws the whole
-      // claim of the product: memory first, chain second, money only under a sign.
-      const SOURCES = {
-        people_you_know: ["memory"],
-        find_person: ["memory"],
-        what_do_i_remember: ["memory"],
-        memory_stats: ["memory"],
-        remember_this: ["memory"],
-        name_a_person: ["memory"],
-        money_history: ["chain"],
-        monthly_summary: ["chain"],
-        who_is_this: ["chain", "index"],
-        paid_lookup: ["index"],
-        pay_usdc: ["sign"],
-      };
-
-      function markReads(steps) {
-        const order = [];
-        for (const s of steps) {
-          for (const src of SOURCES[s.name] || []) {
-            if (!order.includes(src)) order.push(src);
-          }
+      const stepLabel = (s) => {
+        const label = LABELS[s.name] || String(s.name || "a step").replaceAll("_", " ");
+        if (s.ok) {
+          if (s.result?.marked_spam) return "stopped: marked as spam";
+          if (s.result?.needs_address) return "waiting for a typed address";
+          if (s.result?.needs_request_fields) return "waiting for the request form";
+          if (s.result?.link) return "the request link is made";
+          if (s.result?.digest) return "settled on chain";
         }
-        $("readNote").hidden = order.length > 0;
-        order.forEach((src, i) => {
-          const el = $("reads").querySelector(`[data-src="${src}"]`);
-          setTimeout(() => el.classList.add("on"), i * 240);
+        if (!s.ok) return s.error ? String(s.error) : `${label} failed`;
+        return label;
+      };
+
+      function receiptLink(step) {
+        const digest = step.result?.digest;
+        if (!digest) return null;
+        const net = String(step.result?.chain ?? lastState?.session?.network ?? lastBalance?.network ?? payChain()).split(":").pop();
+        const a = document.createElement("a");
+        a.className = "rcpt";
+        a.href = explorerTx(net, digest);
+        a.target = "_blank";
+        a.rel = "noreferrer";
+        const seal = document.createElement("span");
+        seal.className = "seal";
+        seal.textContent = "✓";
+        const mid = document.createElement("span");
+        const amt = document.createElement("b");
+        amt.textContent = `${step.result?.usdc ?? ""} USDC`;
+        const to = document.createElement("span");
+        to.className = "to";
+        to.textContent = step.result?.named_as ? ` to ${step.result.named_as}` : step.result?.to ? ` to ${shortAddr(step.result.to)}` : "";
+        mid.append(amt, to);
+        const tx = document.createElement("span");
+        tx.className = "tx";
+        tx.textContent = `${String(digest).slice(0, 6)}…${String(digest).slice(-4)} ↗`;
+        a.append(seal, mid, tx);
+        return a;
+      }
+
+      function traceInto(host, steps) {
+        const list = (steps || []).filter((s) => s && s.name);
+        if (!list.length) return;
+        const details = document.createElement("details");
+        details.className = "trace";
+        const summary = document.createElement("summary");
+        summary.textContent = `${list.length} ${list.length === 1 ? "step" : "steps"}`;
+        const box = document.createElement("div");
+        box.className = "tlist";
+        for (const s of list) {
+          const el = document.createElement("span");
+          el.className = "tstep" + (s.ok ? "" : " bad");
+          el.textContent = stepLabel(s);
+          box.appendChild(el);
+        }
+        details.append(summary, box);
+        host.appendChild(details);
+        for (const s of list) {
+          if (!s.ok || s.name !== "pay_usdc") continue;
+          const receipt = receiptLink(s);
+          if (receipt) host.appendChild(receipt);
+        }
+      }
+
+      /* ---------- the statement ---------- */
+      async function statementSvg() {
+        const res = await fetch("/report.svg", { cache: "no-store" });
+        if (!res.ok) throw new Error("the statement could not be built");
+        return res.text();
+      }
+
+      async function saveStatementPng() {
+        const svg = await statementSvg();
+        const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+        const img = new Image();
+        await new Promise((ok, no) => {
+          img.onload = ok;
+          img.onerror = () => no(new Error("the browser refused to draw the card"));
+          img.src = url;
         });
+        const canvas = document.createElement("canvas");
+        canvas.width = 2160;
+        canvas.height = 2700;
+        canvas.getContext("2d").drawImage(img, 0, 0, 2160, 2700);
+        URL.revokeObjectURL(url);
+        const blob = await new Promise((ok) => canvas.toBlob(ok, "image/png"));
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "ken-statement.png";
+        a.click();
       }
 
-      function trace(steps) {
-        if (!steps.length) return;
-        const div = document.createElement("div");
-        div.className = "trace";
-        for (const s of steps) {
-          const span = document.createElement("span");
-          span.className = s.ok ? "t" : "t bad";
-          span.textContent = s.ok ? LABELS[s.name] || s.name : LABELS[s.name] || s.name + ": " + s.error;
-          div.appendChild(span);
+      async function saveStatementCsv() {
+        const d = await (await fetch("/report.json", { cache: "no-store" })).json();
+        const rows = [["person", "amount", "flows", "next payment", "last seen", "named from memory"]];
+        if (d.direction === "in") {
+          for (const p of d.senders) rows.push([p.name, p.amount, p.flows, "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
+        } else {
+          for (const p of d.people) rows.push([p.name, p.amount, p.flows, p.cadence ?? "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
         }
-        stream().appendChild(div);
-        $("log").scrollTop = $("log").scrollHeight;
+        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]), [], ["total in", d.totalIn], ["total out", d.totalOut], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
+        const cell = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(",")).join("\n")], { type: "text/csv" }));
+        a.download = "ken-statement.csv";
+        a.click();
       }
 
-      /*
-       * Two mouths, one ribbon. Model audio moves the ribbon from the sound itself.
-       * Browser speech cannot be tapped, so each spoken word pushes a swell instead.
-       */
-      let stopAudio = null;
-      let said = 0;
-      /*
-       * Whether the speaker is busy is not the same as whether audio is playing right
-       * now. A sentence fetched from a model voice is on its way long before the first
-       * byte moves, and an ear opened in that gap hears the answer as a new question.
-       */
-      let mouthBusy = false;
-      function speak(text) {
-        if (!speakOn) return;
-        const mine = ++said;
-        stopAudio?.();
-        stopAudio = null;
-        mouthBusy = true;
-        speechSynthesis?.cancel();
-        const done = () => {
-          if (mine !== said) return;
-          mouthBusy = false;
-          if (!listening) showWave(false);
-        };
-        const local = () => {
-          const u = buildSpeech(text);
-          if (!u) {
-            done();
+      async function printStatement() {
+        const svg = await statementSvg();
+        const frame = document.createElement("iframe");
+        frame.style.cssText = "position:fixed;width:0;height:0;border:0;visibility:hidden";
+        document.body.appendChild(frame);
+        frame.contentDocument.open();
+        frame.contentDocument.write(`<!doctype html><title>Ken statement</title><style>@page { size: portrait; margin: 0 } html, body { margin: 0 } svg { width: 100%; height: auto; display: block }</style>${svg}`);
+        frame.contentDocument.close();
+        await new Promise((r) => setTimeout(r, 250));
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        setTimeout(() => frame.remove(), 60_000);
+      }
+
+      function reportCard() {
+        const el = document.createElement("div");
+        el.className = "reportCard";
+        el.innerHTML = `<a class="shot" href="/report" target="_blank" rel="noopener"><img src="/report.svg" alt="the statement this wallet can keep" loading="lazy"></a>
+          <div><p>Every figure is typeset from the same chain read behind the sentence above. It is a real page, not a picture drawn by a model.</p>
+          <div class="acts"><a href="/report" target="_blank" rel="noopener">open</a><button type="button" data-rc="png">save image</button><button type="button" data-rc="csv">csv</button><button type="button" data-rc="pdf">print or PDF</button></div></div>`;
+        el.querySelector('[data-rc="png"]').onclick = () => saveStatementPng().catch((err) => noteError(err.message));
+        el.querySelector('[data-rc="csv"]').onclick = () => saveStatementCsv().catch((err) => noteError(err.message));
+        el.querySelector('[data-rc="pdf"]').onclick = () => printStatement().catch((err) => noteError(err.message));
+        return el;
+      }
+
+      function noteError(text) {
+        const msg = kenMessage(text);
+        msg.classList.add("error");
+        opening();
+        thread.appendChild(msg);
+        scroll();
+      }
+
+      /* ---------- address, request and signature ---------- */
+      function addressCard(need) {
+        document.querySelectorAll("form.addrPanel").forEach((el) => el.closest(".msg")?.remove());
+        const form = document.createElement("form");
+        form.className = "panel addrPanel";
+        const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
+        form.innerHTML = `<h4></h4>
+          <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
+          <p class="hint">The address is the one thing a microphone cannot carry. Type or paste it here. The agent will not guess one.</p>
+          <button class="quietBtn" type="button">not now</button>`;
+        const title = form.querySelector("h4");
+        const field = form.querySelector("input");
+        const go = form.querySelector("button.primary");
+        const hint = form.querySelector(".hint");
+        title.textContent = need.looksLikeAddress
+          ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
+          : amount
+            ? `keep ${need.who} and send ${amount}`
+            : `the address for ${need.who}`;
+        go.textContent = amount ? `keep it and send ${amount}` : "keep this address";
+        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const address = field.value.trim();
+          if (!SUI_ADDRESS.test(address)) {
+            hint.textContent = "That is not a full Sui address. A Sui address is 0x followed by 64 hex characters.";
+            hint.classList.add("bad");
+            field.focus();
             return;
           }
-          u.onstart = () => showWave(true);
-          u.onboundary = () => wave.pulse(0.7);
-          u.onend = done;
-          speechSynthesis.speak(u);
+          go.disabled = true;
+          hint.classList.remove("bad");
+          hint.textContent = "keeping it…";
+          try {
+            const res = await fetch("/address", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                name: need.looksLikeAddress ? "" : need.who,
+                address,
+                usdc: need.amount ?? undefined,
+                session: active,
+              }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+            form.closest(".msg")?.remove();
+            const msg = kenMessage(body.note || "the address is kept.");
+            const steps = [{ name: "name_a_person", ok: true }];
+            if (body.payment) steps.push({ name: "pay_usdc", ok: true, result: body.payment });
+            else if (body.payment_error) steps.push({ name: "pay_usdc", ok: false, error: body.payment_error });
+            traceInto(msg, steps);
+            opening();
+            thread.appendChild(msg);
+            scroll();
+            loadState();
+            loadBalance();
+            refreshSessions();
+            if (body.payment?.awaiting_signature) signCard();
+          } catch (err) {
+            hint.textContent = err.message;
+            hint.classList.add("bad");
+            go.disabled = false;
+          }
         };
-        if (!remoteSpeech().enabled) {
-          local();
-          return;
-        }
-        showWave(true);
-        speakRemote(text, {
-          onLevel: (level) => {
-            if (mine === said) wave.push(level);
-          },
-          // Silence is the usual case. A line only appears when a different vendor
-          // answered than the one was picked, which is when the page would otherwise
-          // be reporting a voice that never spoke.
-          onVoice: (v) => {
-            if (mine !== said) return;
-            const asked = (gvoiceSetting() || "").split(":")[0];
-            const who = (v.id || "").split(":")[0];
-            if (who && asked && who !== asked) row("error", `this sentence came from ${who}, because ${asked} did not answer`);
-          },
-          onEnd: done,
-        })
-          .then((stop) => {
-            if (mine === said) stopAudio = stop;
-            else stop();
-          })
-          .catch((err) => {
-            if (mine !== said) return;
-            row("error", "model voice failed, so this browser spoke it instead. " + err.message);
-            local();
-          });
+        opening();
+        const msg = panelMessage(form);
+        thread.appendChild(msg);
+        scroll();
+        field.focus();
       }
 
+      function requestDone(r) {
+        const card = document.createElement("div");
+        card.className = "panel done moss";
+        const seal = document.createElement("span");
+        seal.className = "rseal";
+        seal.textContent = "ready to send";
+        const amount = document.createElement("div");
+        amount.className = "ramt";
+        amount.textContent = spoken(String(r.usdc_text ?? r.usdc));
+        const unit = document.createElement("small");
+        unit.textContent = "USDC";
+        amount.append(unit);
+        card.append(seal, amount);
+        if (r.note) {
+          const note = document.createElement("p");
+          note.className = "note";
+          note.textContent = `“${plain(r.note)}”`;
+          card.append(note);
+        }
+        const url = location.origin + r.link;
+        const code = document.createElement("code");
+        code.textContent = url;
+        const row = document.createElement("div");
+        row.className = "row";
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "copy the link";
+        copy.onclick = async () => {
+          const ok = await copyText(url);
+          copy.textContent = ok ? "copied" : "press and hold to copy";
+          setTimeout(() => (copy.textContent = "copy the link"), 1800);
+        };
+        const open = document.createElement("a");
+        open.href = r.link;
+        open.target = "_blank";
+        open.rel = "noopener";
+        open.textContent = "open it";
+        row.append(copy, open);
+        const mins = Math.max(1, Math.round(Number(r.expires_in || 0) / 60));
+        const lives = mins < 60 ? `${mins} minutes` : `${Math.round(mins / 60)} hours`;
+        const hint = document.createElement("p");
+        hint.className = "hint";
+        hint.textContent = `This link has not been sent to anyone. Copy it and send it yourself. It closes in ${lives}.`;
+        card.append(code, row, hint);
+        return card;
+      }
+
+      function requestCard(need) {
+        document.querySelectorAll("form.reqPanel").forEach((el) => el.closest(".msg")?.remove());
+        const form = document.createElement("form");
+        form.className = "panel reqPanel";
+        form.innerHTML = `<h4></h4>
+          <div class="fields">
+            <label class="lf"><span>amount</span><div class="amount"><input type="text" inputmode="decimal" autocomplete="off" aria-label="amount in USDC"><b>USDC</b></div></label>
+            <label class="lf"><span>the link dies after</span><select aria-label="how long the link lives">
+              <option value="30">30 minutes</option>
+              <option value="120">2 hours</option>
+              <option value="1440">24 hours</option>
+            </select></label>
+            <label class="lf wide"><span>what it is for</span><input type="text" maxlength="90" autocomplete="off" placeholder="optional, one short line" aria-label="what the money is for"></label>
+          </div>
+          <p class="hint">Nothing is made until you press this. The link points at this wallet and only a ${payNetwork()} wallet can pay it${payNetwork() === "mainnet" ? ", in real money" : ", in dust that is worth nothing"}.</p>
+          <div class="row"><button class="primary" type="submit">make the link</button><button class="quietBtn" type="button">not now</button></div>`;
+        const title = form.querySelector("h4");
+        const amount = form.querySelector(".amount input");
+        const term = form.querySelector("select");
+        const note = form.querySelector(".wide input");
+        const go = form.querySelector("button.primary");
+        const hint = form.querySelector(".hint");
+        title.textContent = need.usdc ? `a link asking for ${spoken(`${need.usdc} USDC`)}` : "a link asking to be paid";
+        amount.value = need.usdc != null ? String(need.usdc) : "";
+        term.value = String(need.minutes);
+        note.value = need.whatFor;
+        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const usdc = Number(String(amount.value).replace(",", "."));
+          if (!Number.isFinite(usdc) || usdc <= 0) {
+            hint.textContent = "A request needs an amount above zero.";
+            hint.classList.add("bad");
+            amount.focus();
+            return;
+          }
+          if (usdc > need.maxUsdc) {
+            hint.textContent = `One signature here can pay at most ${spoken(`${need.maxUsdc} USDC`)}, so a link above that could never be paid.`;
+            hint.classList.add("bad");
+            amount.focus();
+            return;
+          }
+          go.disabled = true;
+          hint.classList.remove("bad");
+          hint.textContent = "making the link…";
+          try {
+            const res = await fetch("/requests", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ usdc, note: note.value, minutes: Number(term.value), from: "chat", session: active }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+            form.closest(".msg")?.remove();
+            const msg = kenMessage("");
+            msg.querySelector(".kbody").remove();
+            msg.appendChild(requestDone(body.request));
+            opening();
+            thread.appendChild(msg);
+            scroll();
+            refreshSessions();
+          } catch (err) {
+            hint.textContent = err.message;
+            hint.classList.add("bad");
+            go.disabled = false;
+          }
+        };
+        opening();
+        thread.appendChild(panelMessage(form));
+        scroll();
+        mountSelect(term).catch(() => null);
+        if (!need.usdc) amount.focus();
+        else note.focus();
+      }
+
+      function signCard() {
+        document.querySelectorAll("form.signPanel").forEach((el) => el.closest(".msg")?.remove());
+        fetch("/pending", { cache: "no-store" })
+          .then((r) => r.json())
+          .then(({ pending }) => {
+            if (!pending) {
+              noteError("the payment is no longer waiting, so there is nothing to sign.");
+              return;
+            }
+            const form = document.createElement("form");
+            form.className = "panel signPanel moss";
+            const amount = document.createElement("div");
+            amount.className = "samount";
+            amount.textContent = spoken(String(pending.usdc));
+            const unit = document.createElement("small");
+            unit.textContent = "USDC";
+            amount.append(unit);
+            form.appendChild(amount);
+
+            if (pending.digest) {
+              const receipt = document.createElement("div");
+              receipt.className = "receipt";
+              const top = document.createElement("div");
+              top.className = "sline";
+              const seal = document.createElement("b");
+              seal.textContent = "settled and read back from the chain";
+              top.append(seal);
+              const code = document.createElement("code");
+              code.textContent = pending.digest;
+              const link = document.createElement("a");
+              const net = String(pending.chain ?? payChain()).split(":").pop();
+              link.href = explorerTx(net, pending.digest);
+              link.target = "_blank";
+              link.rel = "noreferrer";
+              link.textContent = "open on Suiscan ↗";
+              receipt.append(top, code, link);
+              form.append(receipt);
+              thread.appendChild(panelMessage(form));
+              scroll();
+              return;
+            }
+
+            const person = lastState?.roster?.find(
+              (r) => String(r.address).toLowerCase() === String(pending.to).toLowerCase(),
+            );
+            const to = document.createElement("div");
+            to.className = "sline";
+            const toLabel = document.createElement("span");
+            toLabel.textContent = "to";
+            const toWho = document.createElement("b");
+            toWho.textContent = pending.name || person?.alias || shortAddr(pending.to);
+            to.append(toLabel, toWho);
+
+            const from = document.createElement("div");
+            from.className = "sline";
+            const fromLabel = document.createElement("span");
+            fromLabel.textContent = "from";
+            const fromWho = document.createElement("b");
+            fromWho.textContent = shortAddr(pending.sender);
+            from.append(fromLabel, fromWho);
+
+            const acts = document.createElement("div");
+            acts.className = "row";
+            const sign = document.createElement("button");
+            sign.type = "submit";
+            sign.className = "primary";
+            sign.textContent = "Sign in wallet";
+            const elsewhere = document.createElement("a");
+            elsewhere.href = "/pay";
+            elsewhere.className = "quietBtn";
+            elsewhere.textContent = "open the Pay page";
+            const later = document.createElement("button");
+            later.type = "button";
+            later.className = "quietBtn";
+            later.textContent = "not now";
+            later.onclick = () => form.closest(".msg")?.remove();
+            acts.append(sign, elsewhere, later);
+
+            const hint = document.createElement("p");
+            hint.className = "hint";
+            hint.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
+
+            form.append(to, from, acts, hint);
+            form.onsubmit = async (e) => {
+              e.preventDefault();
+              sign.disabled = true;
+              sign.textContent = "check your wallet…";
+              hint.className = "hint";
+              hint.textContent = "asking the wallet for the account that started this payment";
+              try {
+                const buysFact = !!pending.resource;
+                const signed = buysFact
+                  ? await signX402({
+                      address: pending.sender,
+                      chain: pending.chain,
+                      bytesBase64: pending.bytes,
+                      onStatus: (s) => { hint.textContent = s; },
+                    })
+                  : await signAndExecute({
+                      address: pending.sender,
+                      chain: pending.chain,
+                      bytesBase64: pending.bytes,
+                      onStatus: (s) => { hint.textContent = s; },
+                    });
+                if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+                hint.textContent = buysFact
+                  ? "the wallet signed it. The seller is checking and settling the exact signed payment"
+                  : "the wallet signed it. Reading the chain to check the money arrived";
+                const settledRequest = await fetch("/pending/settle", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify(buysFact ? { bytes: signed.bytes, signature: signed.signature } : { digest: signed.digest }),
+                });
+                const settled = await settledRequest.json();
+                if (!settledRequest.ok) throw new Error(settled.error || `the server answered ${settledRequest.status}`);
+                const done = settled.pending ?? { ...pending, digest: buysFact ? settled.tx : signed.digest };
+                const net = String(done.chain ?? pending.chain ?? payChain()).split(":").pop();
+                const receipt = document.createElement("div");
+                receipt.className = "receipt";
+                const top = document.createElement("div");
+                top.className = "sline";
+                const seal = document.createElement("b");
+                seal.textContent = buysFact ? "paid, and the answer was released" : "settled and read back from the chain";
+                top.append(seal);
+                const code = document.createElement("code");
+                code.textContent = done.digest;
+                const link = document.createElement("a");
+                link.href = explorerTx(net, done.digest);
+                link.target = "_blank";
+                link.rel = "noreferrer";
+                link.textContent = "open on Suiscan ↗";
+                receipt.append(top, code, link);
+                if (buysFact && settled.learned?.note) {
+                  const answer = document.createElement("p");
+                  answer.className = "hint good";
+                  answer.textContent = settled.learned.note;
+                  receipt.append(answer);
+                }
+                acts.remove();
+                hint.className = "hint good";
+                hint.textContent = buysFact
+                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered.`
+                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent}.`;
+                form.append(receipt);
+                loadState();
+                loadBalance();
+                refreshSessions();
+              } catch (err) {
+                sign.disabled = false;
+                sign.textContent = "Sign in wallet";
+                hint.className = "hint bad";
+                hint.textContent = err.message;
+              }
+            };
+            thread.appendChild(panelMessage(form));
+            scroll();
+          })
+          .catch((err) => noteError("the waiting payment could not be read: " + err.message));
+      }
+
+      /* ---------- the transcript ---------- */
+      function drawTurn(t) {
+        thread.querySelector(".empty")?.remove();
+        if (t.asked) thread.appendChild(userMessage(t.asked));
+        const msg = kenMessage(t.said || "");
+        if (!t.said) msg.querySelector(".kbody").textContent = "";
+        traceInto(msg, t.steps || []);
+        const report = (t.steps || []).find((s) => s.name === "make_report" && s.ok);
+        if (report) msg.appendChild(reportCard());
+        const made = (t.steps || []).find((s) => s.name === "request_money" && s.ok && s.result?.link);
+        if (made) msg.appendChild(requestDone(made.result));
+        thread.appendChild(msg);
+      }
+
+      async function loadChats(id) {
+        try {
+          const res = await fetch("/chats" + (id ? `?session=${encodeURIComponent(id)}` : ""), { cache: "no-store" });
+          if (!res.ok) return;
+          const body = await res.json();
+          active = body.session || id || active;
+          thread.innerHTML = "";
+          const turns = body.turns || [];
+          shownTurns = turns.length;
+          if (!turns.length) showEmpty();
+          else turns.forEach(drawTurn);
+          const last = turns[turns.length - 1];
+          const need = last ? addressNeed(last.steps || []) : null;
+          if (need) addressCard(need);
+          if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
+            fetch("/pending", { cache: "no-store" })
+              .then((r) => r.json())
+              .then(({ pending }) => { if (pending) signCard(); })
+              .catch(() => {});
+          }
+          scroll();
+        } catch {
+          /* A transcript that cannot be replayed is not worth an error over the
+             conversation the person is about to have. The next turn still works. */
+        }
+      }
+
+      /* ---------- sessions ---------- */
+      function paintTitle() {
+        const mine = sessions.find((s) => s.id === active);
+        const title = mine?.title || "New chat";
+        $("roomTitle").textContent = title;
+        document.title = `${title} · Ken`;
+      }
+
+      function renderSessions() {
+        const box = $("chatList");
+        box.innerHTML = "";
+        if (!sessions.length) {
+          const empty = document.createElement("div");
+          empty.className = "railListEmpty";
+          empty.textContent = "No chats yet. The first question starts one.";
+          box.appendChild(empty);
+          paintTitle();
+          return;
+        }
+        for (const s of sessions) {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "chatItem" + (s.id === active ? " on" : "");
+          item.dataset.id = s.id;
+          const title = document.createElement("span");
+          title.className = "chatTitle";
+          title.textContent = s.title || "New chat";
+          const stamp = document.createElement("span");
+          stamp.className = "chatWhen";
+          stamp.textContent = when(s.updated);
+          item.append(title, stamp);
+          item.onclick = () => switchSession(s.id);
+          box.appendChild(item);
+        }
+        paintTitle();
+      }
+
+      async function loadSessions(wanted) {
+        try {
+          const res = await fetch("/sessions" + (wanted ? `?session=${encodeURIComponent(wanted)}` : ""), { cache: "no-store" });
+          if (!res.ok) return null;
+          const body = await res.json();
+          sessions = body.sessions || [];
+          active = body.active || "";
+          renderSessions();
+          return body;
+        } catch {
+          return null;
+        }
+      }
+
+      async function refreshSessions() {
+        const body = await loadSessions(active);
+        if (!body) return;
+        active = body.active || active;
+        renderSessions();
+      }
+
+      async function switchSession(id) {
+        if (!id) return;
+        if (id === active) {
+          closeRail();
+          return;
+        }
+        active = id;
+        renderSessions();
+        history.replaceState(null, "", `/app?session=${encodeURIComponent(id)}`);
+        thread.innerHTML = "";
+        closeRail();
+        await loadChats(id);
+        input.focus();
+      }
+
+      async function newChat() {
+        const current = sessions.find((s) => s.id === active);
+        if (current && current.turns === 0) {
+          closeRail();
+          input.focus();
+          return;
+        }
+        try {
+          const res = await fetch("/sessions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          const body = await res.json();
+          sessions = body.sessions || sessions;
+          active = body.active || "";
+          history.replaceState(null, "", `/app?session=${encodeURIComponent(active)}`);
+          renderSessions();
+          showEmpty();
+          closeRail();
+          input.focus();
+        } catch {
+          noteError("a new chat could not be made, so this one is still open.");
+        }
+      }
+
+      /* ---------- rail on a handset ---------- */
+      function openRail() {
+        document.body.classList.add("railOpen");
+        $("railScrim").hidden = false;
+      }
+      function closeRail() {
+        document.body.classList.remove("railOpen");
+        $("railScrim").hidden = true;
+      }
+      $("railBtn").onclick = openRail;
+      $("railScrim").onclick = closeRail;
+      $("newChat").onclick = newChat;
+
+      /* ---------- menu ---------- */
+      function setMenu(open) {
+        $("chatMenu").hidden = !open;
+        $("chatMenuBtn").setAttribute("aria-expanded", String(open));
+      }
+      $("chatMenuBtn").onclick = (e) => {
+        e.stopPropagation();
+        setMenu($("chatMenu").hidden);
+      };
+      document.addEventListener("click", (e) => {
+        if (!$("chatMenu").hidden && !e.target.closest(".roomMenu") && !e.target.closest("#chatMenuBtn")) setMenu(false);
+      });
+
+      $("renameBtn").onclick = () => {
+        setMenu(false);
+        const mine = sessions.find((s) => s.id === active);
+        $("renameInput").value = mine?.title === "New chat" ? "" : mine?.title || "";
+        $("renameDlg").showModal();
+        setTimeout(() => $("renameInput").select(), 30);
+      };
+      $("renameForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const title = $("renameInput").value.trim();
+        if (!title) return;
+        try {
+          const res = await fetch("/sessions/rename", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: active, title }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+          sessions = body.sessions || sessions;
+          renderSessions();
+          $("renameDlg").close();
+        } catch (err) {
+          noteError(err.message);
+        }
+      };
+
+      $("deleteBtn").onclick = () => {
+        setMenu(false);
+        $("deleteDlg").showModal();
+      };
+      $("deleteForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const go = $("deleteGo");
+        go.disabled = true;
+        try {
+          const res = await fetch("/sessions/delete", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: active }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+          sessions = body.sessions || [];
+          active = body.active || "";
+          history.replaceState(null, "", `/app?session=${encodeURIComponent(active)}`);
+          renderSessions();
+          thread.innerHTML = "";
+          $("deleteDlg").close();
+          closeRail();
+          await loadChats(active);
+        } catch (err) {
+          noteError(err.message);
+        } finally {
+          go.disabled = false;
+        }
+      };
+
+      document.querySelectorAll("[data-close]").forEach((btn) => {
+        btn.onclick = () => $(btn.dataset.close).close();
+      });
+
+      /* ---------- the conversation ---------- */
       async function send(text) {
-        text = text.trim();
-        if (!text) return;
-        row("you", text);
-        document.querySelectorAll("[data-empty]").forEach((el) => el.remove());
-        $("text").value = "";
-        [...$("reads").children].forEach((el) => el.classList.remove("on"));
-        const waiting = row("agent", "");
-        waiting.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+        text = String(text || "").trim();
+        if (!text || busy) return;
+        busy = true;
+        sendBtn.disabled = true;
+        input.value = "";
+        grow();
+        opening();
+        thread.appendChild(userMessage(text));
+        const answer = kenMessage("");
+        const body = answer.querySelector(".kbody");
+        body.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+        thread.appendChild(answer);
+        scroll();
         try {
           const res = await fetch("/turn", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({ text, session: active }),
           });
-          const body = await res.json();
-          if (!res.ok) throw new Error(body.error || "http " + res.status);
-          waiting.textContent = body.text;
-          trace(body.steps || []);
-          markReads(body.steps || []);
-          speak(body.text);
-          const names = (body.steps || []).map((s) => s.name);
-          if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup"].includes(n))) {
+          const turn = await res.json();
+          if (!res.ok) throw new Error(turn.error || "http " + res.status);
+          body.textContent = turn.text;
+          if (turn.fallback) {
+            const note = document.createElement("div");
+            note.className = "fallback";
+            note.textContent = turn.fallback;
+            answer.appendChild(note);
+          }
+          traceInto(answer, turn.steps || []);
+          if ((turn.steps || []).some((s) => s.name === "make_report" && s.ok)) {
+            answer.appendChild(reportCard());
+          }
+          const need = addressNeed(turn.steps || []);
+          if (need) addressCard(need);
+          const asked = requestNeed(turn.steps || []);
+          if (asked) requestCard(asked);
+          if ((turn.steps || []).some((s) => s.result?.awaiting_signature)) signCard();
+          const names = (turn.steps || []).map((s) => s.name);
+          if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup", "pay_usdc", "open_paid_link", "verify_payment"].includes(n))) {
             loadState();
             loadBalance();
           }
-          // Anything that ends up unsigned belongs on the review page, whether it
-          // was a payment or the fee for a lookup.
-          if ((body.steps || []).some((s) => s.result?.awaiting_signature)) location.href = "/pay";
+          active = turn.session || active;
+          await refreshSessions();
         } catch (err) {
-          waiting.parentNode.className = "turn error";
-          waiting.parentNode.querySelector(".who").textContent = "stuck";
-          waiting.textContent = err.message;
+          answer.classList.add("error");
+          answer.querySelector(".khead").textContent = "stuck";
+          body.textContent = err.message;
+        } finally {
+          busy = false;
+          sendBtn.disabled = false;
+          scroll();
+          input.focus();
         }
       }
 
-      function card(p) {
-        const el = document.createElement("div");
-        const unnamed = !p.name;
-        // "mixed" and "flows" are chain words. The claim of the product is that
-        // you never have to learn them.
-        const dir = { sent: "you have sent", received: "you have received", mixed: "both ways" }[p.direction];
-        el.className = "person" + (unnamed ? " unknown" : "") + (p.direction === "mixed" ? " two-way" : "");
-        el.innerHTML =
-          `<h3>${unnamed ? shortAddr(p.address) : p.name}${p.flows > 1 ? ` <span class="tag">${p.flows} payments</span>` : ""}</h3>` +
-          `<p>${unnamed ? "the agent has never been told who this is" : plain(p.note) || "named, no note yet"}</p>` +
-          `<dl>
-             <div><dt>${dir || p.direction}</dt><dd>${spoken(p.net + " " + p.asset.replace(/ \(.*/, ""))}</dd></div>
-             <div><dt>${p.gapDays ? "cadence" : "last seen"}</dt><dd>${
-               p.gapDays ? "every " + p.gapDays + (p.gapDays === 1 ? " day" : " days") : when(p.lastSeen)
-             }</dd></div>
-           </dl>`;
-        if (unnamed) {
-          const hint = document.createElement("span");
-          hint.style.color = "var(--ink-3)";
-          hint.textContent = ", or tap the red question under the transcript";
-          el.querySelector("p").appendChild(hint);
-        }
-        return el;
-      }
-
-      // A face is a shortcut into the agent, not a profile page. The question it
-      // asks depends on which way the money has actually moved.
-      function face(p) {
-        const el = document.createElement("button");
-        const unnamed = !p.name;
-        el.className = "face" + (unnamed ? " unk" : "");
-        const label = unnamed ? shortAddr(p.address) : p.name;
-        el.innerHTML = `<span class="av">${unnamed ? "?" : label.slice(0, 1).toUpperCase()}</span>${label}<em>${
-          p.direction === "received" ? "in" : p.direction === "mixed" ? "both" : "out"
-        }</em>`;
-        el.onclick = () => {
-          if (unnamed) return send("who is " + p.address + "?");
-          if (p.direction === "received") return send("what have I received from " + p.name + "?");
-          if (p.direction === "mixed") return send("has " + p.name + " paid me back?");
-          send("how much have I sent to " + p.name + "?");
-        };
-        return el;
-      }
-
-      /*
-       * The rail says what is due before it says who you know, because a date is the
-       * one thing a list of people cannot give you. Tapping a line asks the agent about
-       * it, so the sentence on the right and the answer above are one measurement.
-       */
-      function renderDue(rows) {
-        const wrap = $("due");
-        wrap.innerHTML = "";
-        const soon = (rows ?? []).filter((r) => r.state === "late" || r.state === "due");
-        if (!soon.length) {
-          const measured = (rows ?? []).filter((r) => r.every_days).length;
-          wrap.innerHTML = `<div class="rail-empty">${
-            measured
-              ? `Nothing overdue. ${measured} rhythm${measured === 1 ? "" : "s"} measured so far.`
-              : "No rhythm measured yet. Two payments to the same person is when a cadence becomes a fact."
-          }</div>`;
+      thread.addEventListener("click", (e) => {
+        const q = e.target.closest("[data-q]");
+        if (q) {
+          send(q.dataset.q);
           return;
         }
-        soon.forEach((r) => {
-          const el = document.createElement("button");
-          el.type = "button";
-          el.className = "due " + (r.state === "late" ? "late" : "soon");
-          el.dataset.q = r.state === "late" ? `is ${r.name} overdue?` : `what do I usually pay ${r.name}, and when is it due`;
-          el.innerHTML = `<b>${plain(r.name)}</b><span>${plain(r.line)}</span>`;
-          wrap.appendChild(el);
-        });
-      }
+        if (e.target.closest("[data-voice]")) openVoice();
+      });
 
-      async function loadState(force) {
-        try {
-          const body = await fetch(force ? "/state?refresh=1" : "/state").then((r) => r.json());
-          if (!body.parties) throw new Error(body.error || "could not read");
-          renderDue(body.due);
-          $("bought").textContent = body.spend?.lookups ?? 0;
-          const parties = [...body.parties].sort(
-            (a, b) => (b.name ? 1 : 0) - (a.name ? 1 : 0) || Math.abs(b.net) - Math.abs(a.net),
-          );
-          const wrap = $("people");
-          wrap.innerHTML = "";
-          if (!parties.length) {
-            wrap.innerHTML = '<div class="rail-empty">Nobody yet. Pay someone, or name an address, and it appears here.</div>';
-            $("faces").innerHTML = '<span class="rail-empty">Nothing has moved through this wallet yet. <a href="/pay">Make the first payment</a>.</span>';
+      $("composer").onsubmit = (e) => {
+        e.preventDefault();
+        send(input.value);
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          send(input.value);
+        }
+      });
+
+      function grow() {
+        input.style.height = "auto";
+        input.style.height = Math.min(160, input.scrollHeight) + "px";
+      }
+      input.addEventListener("input", grow);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "/" && document.activeElement !== input) {
+          e.preventDefault();
+          input.focus();
+        }
+        if (e.key === "Escape") {
+          closeRail();
+          setMenu(false);
+          if (!$("callOverlay").hidden) closeVoice();
+        }
+      });
+
+      /* ---------- dictation into the box ---------- */
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        $("mic").disabled = true;
+        $("mic").title = "this browser has no speech recognition";
+      } else {
+        const rec = new SR();
+        rec.lang = langSetting();
+        rec.interimResults = true;
+        rec.continuous = false;
+        let base = "";
+        let finalText = "";
+        rec.onstart = () => {
+          base = input.value.trim();
+          finalText = "";
+          $("mic").classList.add("on");
+          $("mic").title = "Stop dictating";
+        };
+        rec.onresult = (e) => {
+          let interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const piece = e.results[i][0].transcript;
+            if (e.results[i].isFinal) finalText += piece;
+            else interim += piece;
+          }
+          input.value = [base, finalText, interim].filter(Boolean).join(" ").trim();
+          grow();
+        };
+        rec.onend = () => {
+          $("mic").classList.remove("on");
+          $("mic").title = "Speak your question";
+          input.focus();
+        };
+        rec.onerror = (e) => {
+          if (e.error !== "no-speech" && e.error !== "aborted") noteError("microphone: " + e.error);
+        };
+        $("mic").onclick = () => {
+          if ($("mic").classList.contains("on")) {
+            try { rec.stop(); } catch { /* not running */ }
             return;
           }
-          parties.forEach((p) => wrap.appendChild(card(p)));
-          $("faces").innerHTML = "";
-          parties.slice(0, 8).forEach((p) => $("faces").appendChild(face(p)));
+          try { rec.start(); } catch { /* already running */ }
+        };
+      }
 
-          // A stranger inside your own history is the one question worth paying
-          // for, so it becomes a chip rather than a paragraph of advice.
-          const stranger = parties.find((p) => !p.name);
-          const buy = $("suggests").querySelector(".buy");
-          if (stranger) {
-            buy.hidden = false;
-            buy.dataset.q = "who is " + stranger.address + "?";
-            buy.textContent = "who is " + shortAddr(stranger.address) + "?";
-          } else {
-            buy.hidden = true;
-          }
-        } catch (err) {
-          $("people").innerHTML = '<div class="rail-empty">could not read: ' + err.message + "</div>";
-          $("due").innerHTML = '<div class="rail-empty">the dates could not be read either</div>';
+      /* ---------- voice ---------- */
+      let voiceTimer = 0;
+      function openVoice() {
+        if (!active) return;
+        setMenu(false);
+        clearTimeout(voiceTimer);
+        const frame = $("callFrame");
+        frame.src = `/call?embed=1&session=${encodeURIComponent(active)}`;
+        $("callOverlay").hidden = false;
+        document.body.classList.add("calling");
+      }
+      function finishClose() {
+        clearTimeout(voiceTimer);
+        if ($("callOverlay").hidden) return;
+        const frame = $("callFrame");
+        $("callOverlay").hidden = true;
+        document.body.classList.remove("calling");
+        frame.src = "about:blank";
+        loadSessions(active).then(() => loadChats(active));
+        loadState();
+        loadBalance();
+      }
+      /*
+       * The sheet is asked to end its own call first, because the last sentence is
+       * written by the room rather than by this page. The room answers after the write
+       * and the hang up, and the timer is only for a room that cannot answer at all.
+       */
+      function closeVoice() {
+        const frame = $("callFrame");
+        if (!frame.contentWindow) {
+          finishClose();
+          return;
+        }
+        clearTimeout(voiceTimer);
+        voiceTimer = setTimeout(finishClose, 1600);
+        frame.contentWindow.postMessage({ type: "ken:voice-close" }, location.origin);
+      }
+      $("voiceBtn").onclick = openVoice;
+      window.addEventListener("message", (e) => {
+        if (e.origin !== location.origin) return;
+        if (e.data?.type === "ken:voice-closed") finishClose();
+      });
+
+      /* ---------- wallet, balance and the masthead ---------- */
+      async function loadState(force) {
+        try {
+          const body = await fetch(force ? "/state?refresh=1" : "/state", { cache: "no-store" }).then((r) => r.json());
+          if (!body.parties) throw new Error(body.error || "could not read");
+          lastState = body;
+          paintMeta(body);
+          fillStats(body);
+        } catch {
+          /* the transcript still works on a read that failed */
         }
       }
 
       async function loadBalance() {
         try {
-          const body = await fetch("/balance").then((r) => r.json());
+          const body = await fetch("/balance", { cache: "no-store" }).then((r) => r.json());
           if (body.error) throw new Error(body.error);
-          const usdc = (body.holdings || []).find((h) => h.symbol === "USDC");
-          const sui = (body.holdings || []).find((h) => h.symbol === "SUI");
-          $("bal").innerHTML = (usdc ? usdc.amount.toFixed(2) : "0.00") + "<small>USDC</small>";
-          $("gas").innerHTML = "gas <b>" + (sui ? sui.amount.toFixed(3) : "0") + " SUI</b>";
-          $("gas").classList.toggle("low", !!sui && sui.amount < 0.5);
-          $("netName").textContent = body.network;
+          lastBalance = body;
+          const coins = body.holdings ?? [];
+          const usdc = coins.find((h) => String(h.symbol).toUpperCase() === "USDC");
+          const sui = coins.find((h) => String(h.symbol).toUpperCase() === "SUI");
+          $("balUsdc").textContent = usdc ? Number(usdc.amount).toFixed(2) : "0.00";
+          const gas = $("balGas");
+          gas.classList.toggle("low", !!sui && Number(sui.amount) < 0.5);
+          gas.textContent = !sui
+            ? `${body.network ?? "this network"}, no SUI for gas`
+            : Number(sui.amount) === 0
+              ? `${body.network ?? "this network"}, no SUI for gas`
+              : `${body.network ?? "this network"} · ${Number(sui.amount).toFixed(3)} SUI for gas`;
         } catch {
-          $("gas").textContent = "gas not read";
+          lastBalance = null;
+          $("balUsdc").textContent = "·";
+          $("balGas").textContent = "the balance was not read";
         }
       }
 
-      $("suggests").addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (btn && btn.dataset.q) send(btn.dataset.q);
-      });
-
-      $("due").addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (btn?.dataset.q) send(btn.dataset.q);
-      });
-
-      // Connecting a wallet changes the masthead, the rail and the balance, so all
-      // three are re-read together instead of one at a time.
       const refresh = () => {
-        loadMeta(true).then((body) => {
-          fillStats(body);
-          mouthLabel();
-        });
         loadState(true);
         loadBalance();
       };
       mountWallet(refresh);
-      // The masthead counts, the people rail and the voice label are all facts about the
-      // server, and none of them arrive until the first read is asked for. Opening the
-      // page and being told "this browser's voice" while the server is holding a Fish key
-      // is the page lying about itself, so the read happens on load rather than on click.
-      refresh();
-      $("reload").onclick = refresh;
-      $("voiceSwitch").onclick = () => {
-        speakOn = !speakOn;
-        // Muting mid sentence has to actually stop it, not just promise silence
-        // for the next one.
-        if (!speakOn) {
-          speechSynthesis?.cancel();
-          stopAudio?.();
-          stopAudio = null;
-          if (!listening) showWave(false);
-        }
-        $("voiceSwitch").classList.toggle("off", !speakOn);
-        $("voiceSwitch").setAttribute("aria-checked", String(speakOn));
-        $("voiceLabel").textContent = "voice out " + (speakOn ? "on" : "off");
-      };
-      // Which voice is actually running is a fact about the server, not the page, so
-      // the quiet row reads it from the state the masthead already fetches. The ear is
-      // named too, because this page turns the microphone around once per sentence and
-      // the Call page holds it open, which is a different engine wearing the same face.
-      const mouthLabel = () => {
-        const r = remoteSpeech();
-        if (!r.known) return;
-        $("langLink").textContent = `this page listens with ${langName(langSetting())} and speaks with ${r.enabled ? r.model : "this browser"} · a two-way call is on Call`;
-      };
-      mouthLabel();
-      $("text").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") send($("text").value);
-        if (e.key === "Escape") $("text").value = "";
+      mountNetwork(refresh);
+
+      document.addEventListener("wallet:changed", async () => {
+        // The call belongs to the wallet that has just been left, and the server has
+        // already moved this seat, so it is dropped rather than written under the new one.
+        finishClose();
+        showEmpty();
+        sessions = [];
+        active = "";
+        renderSessions();
+        await loadSessions();
+        await loadChats(active);
+        loadState();
+        loadBalance();
       });
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "/" && document.activeElement !== $("text")) {
-          e.preventDefault();
-          $("text").focus();
+
+      window.addEventListener("pageshow", (e) => {
+        if (e.persisted) {
+          loadState();
+          loadBalance();
         }
       });
 
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const wave = createWave($("wave"));
-      const showWave = (on) => $("voicebar").classList.toggle("on", on);
-      let stopMic = null;
-      let listening = false;
-      if (!SpeechRecognition) {
-        $("mic").textContent = "No mic here";
-        $("mic").disabled = true;
-      } else {
-        const rec = new SpeechRecognition();
-        rec.lang = langSetting();
-        rec.interimResults = false;
-        rec.onresult = (e) => send(e.results[0][0].transcript);
-        rec.onerror = (e) => {
-          if (e.error !== "no-speech") row("error", "microphone: " + e.error);
-        };
-        // One result ends the recognition, not the session. The ear opens again so a
-        // conversation does not need a button press per sentence.
-        rec.onend = () => {
-          if (!listening) return;
-          // Opening the ear while the agent's own answer is still coming out of the
-          // speaker is how it hears itself, and then answers its own sentence one turn
-          // late. So the restart waits for the room to go quiet, and keeps waiting.
-          const wait = () => {
-            if (!listening) return;
-            if (mouthBusy || stopAudio || (speechSynthesis?.speaking ?? false)) return setTimeout(wait, 300);
-            try {
-              rec.start();
-            } catch {
-              /* already running */
-            }
-          };
-          setTimeout(wait, 700);
-        };
-        const off = () => {
-          listening = false;
-          stopMic?.();
-          stopMic = null;
-          showWave(false);
-          $("mic").classList.remove("listening");
-          $("mic").textContent = "Talk";
-        };
-        $("mic").onclick = async () => {
-          if (listening) {
-            try {
-              rec.stop();
-            } catch { /* not running */ }
-            off();
-            return;
-          }
-          listening = true;
-          // Opening the ear while the agent is still talking makes it hear its own
-          // voice back, so the answer is cut off first.
-          speechSynthesis?.cancel();
-          stopAudio?.();
-          stopAudio = null;
-          // The sentence being thrown away must not keep the ear shut after it is gone.
-          said++;
-          mouthBusy = false;
-          showWave(true);
-          wave.idle();
-          $("mic").classList.add("listening");
-          $("mic").textContent = "Listening";
-          try {
-            rec.start();
-          } catch { /* already running */ }
-          stopMic = await startMic((level) => wave.push(level)).catch((err) => {
-            row("error", err.message);
-            off();
-            return null;
-          });
-        };
-      }
+      /*
+       * A reminder is written into the thread by the server when its time comes, so
+       * the open page has to look for a new turn. It only redraws when the count grew,
+       * because redrawing a transcript under a reader is worse than a reminder that
+       * arrives a few seconds late.
+       */
+      setInterval(async () => {
+        if (document.hidden || !active) return;
+        try {
+          const res = await fetch(`/chats?session=${encodeURIComponent(active)}`, { cache: "no-store" });
+          if (!res.ok) return;
+          const body = await res.json();
+          if ((body.turns || []).length > shownTurns) await loadChats(active);
+        } catch {
+          /* the next tick tries again */
+        }
+      }, 10_000);
 
-      refresh();
+      /* ---------- boot ---------- */
+      const params = new URLSearchParams(location.search);
+      const wanted = params.get("session") || "";
+      (async () => {
+        await loadSessions(wanted);
+        await loadChats(active);
+        if (!active && sessions.length) await loadChats(sessions[0].id);
+        loadState();
+        loadBalance();
+        if (params.get("voice") === "1") openVoice();
+        input.focus();
+      })();
     </script>
   </body>
 </html>

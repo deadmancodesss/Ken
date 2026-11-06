@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Request · Ken</title>
+    <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. */
+      window.__walletStandardEarly = [];
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
+    </script>
+    <script src="/vendor/qrcode.js"></script>
+    <script defer src="/vendor/gsap.min.js"></script>
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      main { flex: 1; overflow-y: auto; padding: 40px var(--pad) 72px; }
+      .wrap { width: 100%; max-width: 1060px; margin: 0 auto; }
+      #root > .ticket, #root > .none { max-width: 560px; margin-left: auto; margin-right: auto; }
+      .mine { max-width: 760px; margin-left: auto; margin-right: auto; }
+      h1 { font-size: clamp(32px, 3.6vw, 50px); line-height: 1.05; margin-bottom: 12px; }
+      .intro { margin-bottom: 22px; }
+      .intro p { color: var(--ink-2); max-width: 46ch; }
+      .heroLead { margin: 0; color: var(--ink-2); max-width: 48ch; font-size: var(--step-1); }
+
+      /* ---------- the request hero ----------
+         A link is a slip of paper that travels to somebody else's wallet. The picture says
+         that without a caption: the slip on the left, the wire in the middle, the wallet on
+         the right, and one dot making the trip. The words and the form sit beside it, so
+         the first thing a visitor sees is both what this does and where to do it. */
+      .reqHero { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr); grid-template-areas: "intro scene" "form scene"; gap: 22px clamp(30px, 4vw, 60px); align-items: start; }
+      .reqIntro { grid-area: intro; min-width: 0; }
+      .reqHero form.ticket { grid-area: form; min-width: 0; }
+      .reqScene { grid-area: scene; align-self: stretch; min-width: 0; display: flex; flex-direction: column; padding: 18px; border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--paper-sunk); background-image: var(--dots); box-shadow: 7px 7px 0 var(--sheet); }
+      .sceneBody { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+      .sceneTop { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+      .sceneStage { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 66px minmax(0, 1fr); align-items: center; padding-bottom: 20px; }
+      .sceneTicket { position: relative; min-width: 0; padding: 12px 12px 14px; border: var(--edge) solid var(--ink); border-radius: 6px 14px 6px 14px; background: var(--paper); box-shadow: 4px 4px 0 var(--sheet); transform: rotate(-1.2deg); animation: sceneIn 0.65s var(--ease-spring) both; }
+      .sceneMini { display: block; font: 9px/1 var(--mono); letter-spacing: 0.13em; text-transform: uppercase; color: var(--clay); }
+      .sceneTicket b { display: block; margin-top: 7px; font: 400 clamp(22px, 2.2vw, 30px)/1 var(--serif); letter-spacing: -0.02em; }
+      .sceneTicket b small { font: 9px/1 var(--mono); letter-spacing: 0.06em; color: var(--ink-3); }
+      .sceneNote { display: block; margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px/1.4 var(--mono); color: var(--ink-2); }
+      .sceneClock { display: flex; align-items: center; gap: 6px; margin-top: 11px; font: 9px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+      .sceneClock i { position: relative; width: 12px; height: 12px; border: 1px solid var(--clay); border-radius: 50%; }
+      .sceneClock i::after { content: ""; position: absolute; left: calc(50% - 0.5px); top: 2px; width: 1px; height: 4px; background: var(--clay); transform-origin: 50% 4px; animation: clockTick 7s linear infinite; }
+      .sceneSeal { position: absolute; right: 8px; bottom: 8px; padding: 3px 5px; border: 1.5px solid var(--clay); border-radius: 3px; color: var(--clay); font: 8px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; transform: rotate(-7deg); }
+      .sceneTrack { position: relative; height: 60px; }
+      .sceneTrack::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed var(--rule-strong); }
+      /* The one moving thing in the scene: the link itself, going to a wallet that is
+         not yours. It is the only loop on the page, so the eye follows the right thing. */
+      .sceneDot { position: absolute; top: calc(50% - 4px); left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--clay); animation: dotRun 7s var(--ease) infinite; }
+      .sceneLinkIco { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); padding: 3px; background: var(--paper-sunk); fill: none; stroke: var(--ink-2); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      .sceneWallet { position: relative; min-width: 0; display: grid; gap: 4px; padding: 12px; border: var(--edge) dashed var(--rule-strong); border-radius: 10px; background: var(--paper); animation: walletOpen 7s var(--ease) infinite; }
+      .sceneWalletTop { font: 9px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+      .sceneWalletBody { font: 400 12px/1.3 var(--serif); color: var(--ink); }
+      .scenePaid { position: absolute; right: 6px; bottom: 6px; padding: 3px 5px; border: 1.5px solid var(--moss); border-radius: 3px; color: var(--moss); font: 8px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; transform: rotate(-8deg); animation: paidIn 7s linear infinite; }
+      .sceneMouse { position: absolute; left: 2px; bottom: -20px; width: 48px; aspect-ratio: 286 / 509; overflow: hidden; pointer-events: none; }
+      .sceneMouse img { position: absolute; width: 384.62%; height: 123.46%; left: -284.62%; top: -11.11%; }
+      .sceneSay { margin: 26px 0 0; padding-top: 14px; border-top: 1px solid var(--rule-strong); font: var(--step--1)/1.6 var(--mono); color: var(--ink-2); }
+      .sceneSteps { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--rule); background: var(--rule); }
+      .sceneSteps li { display: flex; gap: 6px; align-items: baseline; padding: 8px; background: var(--paper); font: 10px/1.35 var(--mono); color: var(--ink-2); }
+      .sceneSteps i { font-style: normal; color: var(--clay); }
+
+      @media (min-width: 901px) {
+        .sceneStage { min-height: 220px; }
+        .sceneTicket { padding: 16px 16px 18px; }
+        .sceneTicket b { font-size: clamp(28px, 2.4vw, 34px); }
+        .sceneWallet { padding: 14px; }
+        .sceneWalletBody { font-size: 13px; }
+      }
+
+      @keyframes sceneIn { from { opacity: 0; transform: rotate(-2deg) translateY(14px); } }
+      @keyframes dotRun {
+        0%, 4% { left: 0; opacity: 0; }
+        8% { opacity: 1; }
+        38% { left: calc(100% - 8px); opacity: 1; }
+        44%, 100% { left: calc(100% - 8px); opacity: 0; }
+      }
+      @keyframes walletOpen {
+        0%, 34% { border-color: var(--rule-strong); transform: none; }
+        44% { border-color: var(--moss); transform: translateY(-3px); }
+        66% { border-color: var(--moss); transform: translateY(-3px); }
+        78%, 100% { border-color: var(--rule-strong); transform: none; }
+      }
+      @keyframes paidIn {
+        0%, 46% { opacity: 0; transform: rotate(-8deg) scale(0.7); }
+        54% { opacity: 1; transform: rotate(-8deg) scale(1); }
+        84% { opacity: 1; }
+        92%, 100% { opacity: 0; transform: rotate(-8deg) scale(1); }
+      }
+      @keyframes clockTick { to { transform: rotate(360deg); } }
+
+      @media (max-width: 900px) {
+        .reqHero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "scene" "form"; }
+        .reqScene { max-width: 520px; width: 100%; margin: 0 auto; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .sceneTicket, .sceneDot, .sceneWallet, .scenePaid, .sceneClock i::after { animation: none; }
+        .sceneDot { opacity: 0; }
+        .scenePaid { opacity: 1; }
+      }
+
+      /* The ticket is the page. A request is a slip of paper somebody hands you, so it
+         gets tape at the corners, a printed edge, a dashed tear line and a stack offset
+         underneath. Everything here is a border or a solid offset, never a glow. */
+      .ticket {
+        position: relative;
+        border: var(--edge) solid var(--ink);
+        border-radius: 4px 20px 4px 20px;
+        background: var(--paper);
+        box-shadow: 7px 7px 0 var(--sheet);
+        padding: 28px 24px 24px;
+      }
+      .ticket::before,
+      .ticket::after {
+        content: "";
+        position: absolute;
+        top: -10px;
+        width: 62px;
+        height: 20px;
+        background: var(--clay-wash);
+        border: 1px solid var(--rule);
+        opacity: 0.9;
+      }
+      .ticket::before { left: 18px; transform: rotate(-4deg); }
+      .ticket::after { right: 18px; transform: rotate(4deg); }
+      .ticketTitle { font: 400 var(--step-2)/1.2 var(--serif); margin: 2px 0 8px; }
+      .perf { border-top: 1px dashed var(--rule-strong); margin: 20px -24px; }
+
+      .amount { font: 400 clamp(42px, 11vw, 64px)/1 var(--serif); letter-spacing: -0.03em; }
+      .amount small { font-size: var(--step-2); color: var(--ink-2); }
+      .note { margin: 8px 0 0; color: var(--ink-2); font-size: var(--step-1); }
+      .seal {
+        display: inline-block;
+        padding: 7px 12px;
+        border: 2px solid var(--clay);
+        border-radius: 5px;
+        color: var(--clay);
+        font: var(--step--1)/1 var(--mono);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        transform: rotate(-4deg);
+        margin-bottom: 16px;
+        box-shadow: 3px 3px 0 var(--clay-wash);
+      }
+      .seal.done { border-color: var(--moss); color: var(--moss); box-shadow: 3px 3px 0 var(--paper-sunk); }
+      .seal.closed { border-color: var(--brick); color: var(--brick); box-shadow: 3px 3px 0 var(--paper-sunk); }
+
+      .terms { margin: 20px 0 0; padding: 16px 0 0; border-top: 1px dashed var(--rule-strong); display: grid; gap: 11px; }
+      .terms div { display: flex; gap: 14px; align-items: baseline; }
+      .terms dt { flex: 0 0 74px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .terms dd { margin: 0; font: var(--step-0)/1.5 var(--mono); color: var(--ink); word-break: break-all; min-width: 0; }
+      .actions { display: flex; gap: 12px; margin-top: 22px; }
+      .actions button, .actions .chip { flex: 1; justify-content: center; }
+      .hint { margin-top: 14px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .hint.bad { color: var(--brick); }
+      .hint.good { color: var(--moss); }
+
+      /* The purse mouse leans beside the note the way it leans out of the dialogue
+         sheet. It is cropped from the same cast sheet, so the page and the dialogue
+         are drawn by one hand. */
+      .mouseLine { display: flex; align-items: flex-end; gap: 12px; margin-top: 16px; }
+      .mascot { position: relative; flex: 0 0 46px; width: 46px; aspect-ratio: 286 / 509; overflow: hidden; }
+      .mascot img { position: absolute; width: 384.62%; height: 123.46%; left: -284.62%; top: -11.11%; }
+      .mouseLine p { margin: 0 0 4px; color: var(--ink-2); font: var(--step--1)/1.55 var(--mono); max-width: 36ch; }
+
+      .form { display: grid; gap: 16px; margin-top: 18px; }
+      .field { display: grid; gap: 7px; }
+      .field > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .bigMoney { display: flex; align-items: baseline; gap: 10px; }
+      .bigMoney input { flex: 1; min-width: 0; font: 400 var(--step-4)/1.1 var(--serif); padding: 8px 0; border: 0; border-bottom: 1px dashed var(--rule-strong); border-radius: 0; background: transparent; }
+      .bigMoney input:hover { border-color: var(--ink-3); }
+      .bigMoney b { font: var(--step-0)/1 var(--mono); font-weight: 400; color: var(--ink-2); }
+
+      /* One link, one action. The box is the thing a person copies, so it is drawn as
+         the object it is rather than as a line of prose with a button under it. */
+      .linkbox { border: var(--edge) dashed var(--ink); border-radius: 10px; padding: 12px; background: var(--clay-wash); display: grid; gap: 10px; }
+      .linkbox code { font: var(--step--1)/1.5 var(--mono); word-break: break-all; color: var(--ink); }
+      .copyBtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 12px 14px;
+        background: var(--ink);
+        color: var(--paper);
+        border: var(--edge) solid var(--ink);
+        border-radius: 8px;
+        box-shadow: 3px 3px 0 var(--clay);
+        font: var(--step--1)/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        animation: none;
+      }
+      .copyBtn:hover { background: var(--ink); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--clay); }
+      .copyBtn.copied { background: var(--moss); border-color: var(--moss); box-shadow: 3px 3px 0 var(--clay-wash); animation: copyPop 340ms var(--ease-spring); }
+      @keyframes copyPop {
+        0% { transform: scale(1); }
+        45% { transform: scale(1.06) rotate(-1deg); }
+        100% { transform: scale(1); }
+      }
+
+      .shareGrid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; margin-top: 6px; }
+      .shareGrid.noQr { grid-template-columns: minmax(0, 1fr); }
+      .qr { margin: 0; width: 138px; padding: 9px; background: var(--paper); border: var(--edge) solid var(--ink); border-radius: 8px; box-shadow: 4px 4px 0 var(--sheet); color: var(--ink); }
+      .qr svg { display: block; width: 100%; height: auto; }
+      .qr figcaption { margin-top: 7px; font: 10px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); text-align: center; }
+
+      .dieRow { margin-top: 18px; }
+      .dies { font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+      .dies b { color: var(--clay); font-weight: 400; }
+      .dies.spent { color: var(--brick); }
+
+      .rcp { margin-top: 20px; border-top: 1px dashed var(--rule-strong); padding-top: 18px; }
+      .rcp-top { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+      .rcp-amt { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; }
+      .rcp-amt small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
+      .rcp-to { margin: 6px 0 16px; color: var(--ink-2); }
+      .rcp-digest { background: var(--paper-sunk); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 14px; display: grid; gap: 8px; }
+      .rcp-digest code { font: var(--step--1)/1.65 var(--mono); word-break: break-all; color: var(--ink); }
+      .rcp-digest .row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .rcp-top .seal { margin-bottom: 0; }
+
+      .closedTx { margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--rule-strong); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; font: var(--step--1)/1.5 var(--mono); }
+
+      .none { border: var(--edge) dashed var(--rule-strong); border-radius: 10px; padding: 34px 24px; text-align: center; color: var(--ink-3); }
+      .none h2 { font-size: var(--step-2); color: var(--ink); margin-bottom: 10px; }
+      .none p { color: var(--ink-2); max-width: 44ch; margin: 0 auto 20px; }
+
+      .mine { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 26px; }
+      .mineList { display: grid; gap: 8px; margin-top: 14px; }
+      .reqRow { display: flex; align-items: baseline; gap: 12px; padding: 13px 14px; border: var(--edge) solid var(--rule-strong); border-radius: 8px; color: var(--ink); text-decoration: none; background: var(--paper); }
+      .reqRow:hover { border-color: var(--ink-3); box-shadow: 2px 2px 0 var(--sheet); }
+      .reqRow b { font: 400 var(--step-1)/1 var(--serif); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .reqRow span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .reqRow em { margin-left: auto; font: normal var(--step--1)/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+      .reqRow em.paid { color: var(--moss); }
+      .reqRow em.expired { color: var(--brick); }
+      .empty { margin-top: 14px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+
+      @media (max-width: 560px) {
+        .actions { flex-direction: column; }
+        .terms div { display: grid; gap: 4px; }
+        .terms dt { flex: none; }
+        .ticket { padding: 26px 18px 20px; }
+        .perf { margin: 20px -18px; }
+        .shareGrid { grid-template-columns: minmax(0, 1fr); justify-items: start; }
+        .qr { width: 124px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .copyBtn.copied { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+                <header>
+      <div class="brand">
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
+      </div>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
+        <a href="/memory">Memory</a>
+        <a href="/pay">Pay</a>
+        <a href="/request" aria-current="page">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
+    </header>
+
+    <main>
+      <div class="wrap" id="root"><div class="none">reading…</div></div>
+      <section class="wrap mine" id="mineBox" hidden>
+        <div class="label">Links you made</div>
+        <div class="mineList" id="mine"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      /* Absolute, because this page is served under /request/:id, where a relative
+         import would look for the script inside the link rather than at the root. */
+      import { $, mountWallet, mountNetwork, loadMeta, shortAddr, spoken, plain, reveal, explorerTx, copyText } from "/shared.js";
+      import { signAndExecute } from "/wallet.js";
+      import { mountSelect } from "/ui.js";
+      reveal();
+
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const id = (location.pathname.match(/^\/request\/([A-Za-z0-9_-]{6,16})$/) ?? [])[1] || "";
+      let st = null;
+      let ticker = null;
+
+      const day = (ms) => new Date(Number(ms) || Date.now()).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+      /* Minutes above an hour, seconds below it. The deadline is the same number the
+         server enforces, so the page cannot promise a longer life than the route gives. */
+      function clock(seconds) {
+        const s = Math.max(0, Math.ceil(Number(seconds) || 0));
+        const total = Math.floor(s / 60);
+        const rest = s % 60;
+        if (total >= 60) {
+          const h = Math.floor(total / 60);
+          const m = total % 60;
+          return `${h}h ${String(m).padStart(2, "0")}m`;
+        }
+        return `${total}:${String(rest).padStart(2, "0")}`;
+      }
+
+      const dieLine = (r) =>
+        `<span class="dies" data-until="${Number(r.expires_at) || 0}">dies in ${clock(r.expires_in)}</span>`;
+
+      function wireDies() {
+        clearInterval(ticker);
+        const el = document.querySelector(".dies[data-until]");
+        if (!el) return;
+        const until = Number(el.dataset.until) || 0;
+        const paint = () => {
+          const left = Math.ceil((until - Date.now()) / 1000);
+          el.textContent = left > 0 ? `dies in ${clock(left)}` : "time is up";
+          el.classList.toggle("spent", left <= 0);
+          if (left <= 0) {
+            clearInterval(ticker);
+            ticker = null;
+            setTimeout(() => {
+              if (document.body.contains(el)) load();
+            }, 1200);
+          }
+        };
+        paint();
+        ticker = setInterval(paint, 1000);
+      }
+
+      function copyButton(text, label = "copy link") {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "copyBtn";
+        b.textContent = label;
+        let reset = null;
+        b.onclick = async () => {
+          const ok = await copyText(text);
+          clearTimeout(reset);
+          b.textContent = ok ? "copied" : "press and hold to copy";
+          b.classList.toggle("copied", ok);
+          reset = setTimeout(() => {
+            b.textContent = label;
+            b.classList.remove("copied");
+          }, 1800);
+        };
+        return b;
+      }
+
+      function linkBox(url) {
+        const box = document.createElement("div");
+        box.className = "linkbox";
+        const code = document.createElement("code");
+        code.textContent = url;
+        box.append(code, copyButton(url, "copy the link"));
+        return box;
+      }
+
+      /* Drawn here rather than fetched from a QR service, so a request link is never
+         handed to a third party and the code still appears with no network. */
+      function qrFigure(url) {
+        if (typeof window.qrcode !== "function") return null;
+        try {
+          const qr = window.qrcode(0, "M");
+          qr.addData(url);
+          qr.make();
+          const fig = document.createElement("figure");
+          fig.className = "qr";
+          fig.innerHTML = qr
+            .createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: "QR code for this request link" })
+            .replace('fill="white"', 'fill="var(--paper)"')
+            .replace('fill="black"', 'fill="var(--ink)"');
+          const cap = document.createElement("figcaption");
+          cap.textContent = "scan to open";
+          fig.append(cap);
+          return fig;
+        } catch {
+          return null;
+        }
+      }
+
+      /* A request link is only ever paid on the network this build settles, and the
+         server names it in /state. Nothing on this page gets to guess. */
+      const payNet = () => (st?.pay_network === "testnet" ? "testnet" : "mainnet");
+
+      function receipt(r) {
+        return `<div class="rcp">
+          <div class="rcp-top"><span class="seal done">paid</span><span class="quiet">read back from the chain</span></div>
+          <div class="rcp-amt">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+          <div class="rcp-to">to ${esc(shortAddr(r.to))}${r.note ? ` for “${esc(plain(r.note))}”` : ""}</div>
+          <div class="rcp-digest">
+            <div class="quiet">transaction digest</div>
+            <code>${esc(r.paid.tx)}</code>
+            <div class="row">
+              <button class="chip" id="copyDigest" type="button">copy digest</button>
+              <a class="chip" href="${explorerTx(payNet(), r.paid.tx)}" target="_blank" rel="noopener">open on Suiscan ↗</a>
+            </div>
+          </div>
+        </div>`;
+      }
+
+      function paidView(r) {
+        return `<div class="ticket">
+          <div class="label">you paid, the link is closed</div>
+          <div class="amount">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+          ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
+          ${receipt(r)}
+          <p class="hint">Anyone else opening this link now sees that it was paid. It cannot take a second payment.</p>
+        </div>`;
+      }
+
+      function closedView(r, mine) {
+        const paid = Boolean(r.paid);
+        const title = paid
+          ? mine
+            ? "Your link was paid"
+            : "This request was paid"
+          : mine
+            ? "Your link ran out of time"
+            : "This link ran out of time";
+        const line = paid
+          ? "The request is closed, so nobody can pay it a second time."
+          : "The deadline passed before anyone paid, so this link cannot take money now.";
+        return `<div class="ticket">
+          <span class="seal ${paid ? "done" : "closed"}">${paid ? "paid" : "expired"}</span>
+          <h2 class="ticketTitle">${title}</h2>
+          <p class="note">${line}</p>
+          <div class="perf"></div>
+          <div class="amount">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+          ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
+          ${
+            paid
+              ? `<div class="closedTx"><span class="quiet">settled on ${payNet()}</span><a href="${explorerTx(payNet(), r.paid.tx)}" target="_blank" rel="noopener">read the transaction ↗</a></div>`
+              : `<p class="hint">${mine ? "Nothing was charged. Make a fresh link with a new clock." : "Nothing was charged. Ask the person who sent it for a fresh link."}</p>`
+          }
+          ${
+            !paid && mine
+              ? `<div class="actions"><a href="/request"><button class="primary" type="button">Make a fresh link</button></a></div>`
+              : ""
+          }
+        </div>`;
+      }
+
+      function selfView(r) {
+        return `<div class="ticket">
+          <span class="seal">yours</span>
+          <h2 class="ticketTitle">This link is for someone else</h2>
+          <p class="note">You are the one asking. Send it to whoever owes you, and they pay from their own wallet.</p>
+          <div class="perf"></div>
+          <div class="label">you are asking for</div>
+          <div class="amount">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+          ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
+          <div class="shareGrid" id="shareGrid">
+            <div id="shareLink"></div>
+            <div id="shareQr"></div>
+          </div>
+          <p class="dieRow">${dieLine(r)} <span class="quiet">then it closes itself</span></p>
+          <p class="hint">This page will not pay itself. A different wallet has to open the link.</p>
+        </div>`;
+      }
+
+      function payerView(r) {
+        const onPayNet = st?.session?.network === payNet();
+        return `<div class="ticket">
+          <span class="seal">request</span>
+          <div class="label">someone is asking for</div>
+          <div class="amount">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+          ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
+          <dl class="terms">
+            <div><dt>pay to</dt><dd>${esc(r.to)}</dd></div>
+            <div><dt>asked</dt><dd>${esc(day(r.created))}</dd></div>
+            <div><dt>closes</dt><dd>${dieLine(r)}</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="pay" class="primary" ${onPayNet ? "" : "disabled"}>${onPayNet ? "Pay with my wallet" : `Move the switch to ${payNet()}`}</button>
+          </div>
+          <p class="hint" id="payHint">${
+            onPayNet
+              ? `Your wallet decides. Nothing moves until you approve it there${payNet() === "mainnet" ? ", and on mainnet that is real money" : ""}.`
+              : `Request links are paid on ${payNet()} only, and this page is reading ${st?.session?.network ?? "the other ledger"}.`
+          }</p>
+        </div>`;
+      }
+
+      function createView() {
+        const demo = st?.session?.source !== "wallet";
+        return `<div class="reqHero">
+            <div class="reqIntro">
+              <span class="seal">ask</span>
+              <h1>Ask for money with a link</h1>
+              <p class="heroLead">Name an amount, add one short line, and set how long the link lives. It opens only inside a connected wallet, shows a QR, and the first payment closes it for good.</p>
+            </div>
+            <aside class="reqScene" aria-label="How a request link travels">
+              <div class="sceneTop"><span>one link, three moves</span><span>${payNet()}</span></div>
+              <div class="sceneBody">
+                <div class="sceneStage" aria-hidden="true">
+                  <div class="sceneTicket">
+                    <span class="sceneMini">request</span>
+                    <b>1.25 <small>USDC</small></b>
+                    <span class="sceneNote">for the cab home</span>
+                    <span class="sceneClock"><i></i> dies in 29:59</span>
+                    <span class="sceneSeal">ask</span>
+                  </div>
+                  <div class="sceneTrack">
+                    <i class="sceneDot"></i>
+                    <svg class="sceneLinkIco" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.2 13.8a4 4 0 0 0 5.6 0l3-3a4 4 0 0 0-5.6-5.6l-1 1 M13.8 10.2a4 4 0 0 0-5.6 0l-3 3a4 4 0 0 0 5.6 5.6l1-1" /></svg>
+                  </div>
+                  <div class="sceneWallet">
+                    <span class="sceneWalletTop">their wallet</span>
+                    <span class="sceneWalletBody">opens only here</span>
+                    <span class="scenePaid">paid</span>
+                  </div>
+                  <span class="sceneMouse"><img src="/assets/cast-four-cut.webp" alt="" /></span>
+                </div>
+                <p class="sceneSay">The link can ask. It cannot take. A different wallet has to open it, and the clock closes it whether it was paid or not.</p>
+              </div>
+              <ol class="sceneSteps">
+                <li><i>1</i><span>You make it</span></li>
+                <li><i>2</i><span>They open it in a wallet</span></li>
+                <li><i>3</i><span>Paid or timed out, it closes</span></li>
+              </ol>
+            </aside>
+            <form class="ticket form" id="askForm">
+              <label class="field">
+                <span>amount</span>
+                <div class="bigMoney"><input type="text" id="amt" inputmode="decimal" value="1" autocomplete="off" /><b>USDC</b></div>
+              </label>
+              <label class="field">
+                <span>what it is for</span>
+                <input type="text" id="note" maxlength="90" placeholder="optional, one short line" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>the link dies after</span>
+                <select id="term">
+                  <option value="30" selected>30 minutes</option>
+                  <option value="120">2 hours</option>
+                  <option value="1440">24 hours</option>
+                </select>
+              </label>
+              <div class="perf"></div>
+              <button type="submit" class="primary" id="make">${demo ? "Connect a wallet to make it" : "Make the link"}</button>
+              <p class="hint" id="makeHint">${demo ? "The link has to point at a wallet you can spend from, so connect one above first." : "The link points at your connected wallet, never at a typed address."}</p>
+            </form>
+          </div>`;
+      }
+
+      function gateView() {
+        return `<div class="ticket">
+          <span class="seal">locked</span>
+          <h2 class="ticketTitle">This link opens with a wallet</h2>
+          <p class="note">A request is addressed to whoever opens it, so this page has to know who that is before it shows the amount.</p>
+          <div class="actions"><button id="gateConnect" class="primary" type="button">Connect a wallet</button></div>
+          <p class="hint">Connecting costs nothing. Nothing moves until you press pay and approve it in the wallet.</p>
+        </div>`;
+      }
+
+      function notFound(message) {
+        return `<div class="none"><h2>That link is not here</h2><p>${esc(message || "The address may be short by a character.")}</p><a href="/request"><button class="primary" type="button">Make a request instead</button></a></div>`;
+      }
+
+      function wireCreate() {
+        const form = $("askForm");
+        if (!form) return;
+        form.onsubmit = (e) => {
+          e.preventDefault();
+          create();
+        };
+      }
+
+      function wireShare(r) {
+        const url = location.origin + r.link;
+        $("shareLink").append(linkBox(url));
+        const fig = qrFigure(url);
+        if (fig) $("shareQr").append(fig);
+        else {
+          $("shareQr").remove();
+          $("shareGrid").classList.add("noQr");
+        }
+        wireDies();
+      }
+
+      function wireReceipt(r) {
+        const copy = $("copyDigest");
+        if (!copy) return;
+        copy.onclick = async () => {
+          const ok = await copyText(r.paid.tx);
+          copy.textContent = ok ? "copied" : "press and hold";
+          setTimeout(() => {
+            copy.textContent = "copy digest";
+          }, 1800);
+        };
+      }
+
+      function wirePay(r) {
+        const btn = $("pay");
+        if (!btn || btn.disabled) return;
+        btn.onclick = async () => {
+          if (st?.session?.source !== "wallet") {
+            $("connect").click();
+            return;
+          }
+          const hint = $("payHint");
+          btn.disabled = true;
+          btn.textContent = "building…";
+          try {
+            const prep = await fetch(`/requests/${r.id}/prepare`, { method: "POST" }).then(async (res) => {
+              const body = await res.json();
+              if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+              return body;
+            });
+            const p = prep.pending;
+            btn.textContent = "check your wallet…";
+            const signed = await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
+            if (!signed.digest) throw new Error("the wallet returned no transaction digest");
+            btn.textContent = "reading the chain…";
+            const settled = await fetch(`/requests/${r.id}/settle`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ digest: signed.digest }),
+            }).then(async (res) => {
+              const body = await res.json();
+              if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+              return body;
+            });
+            draw(paidView(settled.request));
+            wireReceipt(settled.request);
+            loadMeta();
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Pay with my wallet";
+            hint.className = "hint bad";
+            hint.textContent = err.message;
+          }
+        };
+      }
+
+      function draw(html) {
+        clearInterval(ticker);
+        ticker = null;
+        $("root").innerHTML = html;
+      }
+
+      async function mine() {
+        const box = $("mineBox");
+        const list = $("mine");
+        if (!box || !list) return;
+        const body = await fetch("/requests").then((res) => res.json()).catch(() => null);
+        const rows = body?.requests ?? [];
+        if (!rows.length) {
+          box.hidden = st?.session?.source !== "wallet";
+          list.innerHTML = box.hidden ? "" : `<p class="empty">No links yet. The first one appears here with its status.</p>`;
+          return;
+        }
+        box.hidden = false;
+        list.innerHTML = "";
+        for (const r of rows) {
+          const a = document.createElement("a");
+          a.className = "reqRow";
+          a.href = r.link;
+          const amt = document.createElement("b");
+          amt.textContent = `${r.usdc_text} USDC`;
+          const note = document.createElement("span");
+          note.textContent = r.note || "no note";
+          const state = document.createElement("em");
+          if (r.paid) {
+            state.textContent = "paid";
+            state.className = "paid";
+          } else if (r.expired) {
+            state.textContent = "expired";
+            state.className = "expired";
+          } else {
+            const mins = Math.max(1, Math.ceil((Number(r.expires_in) || 0) / 60));
+            state.textContent = mins < 60
+              ? `${mins}m left`
+              : `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ""} left`;
+          }
+          a.append(amt, note, state);
+          list.append(a);
+        }
+      }
+
+      async function create() {
+        const btn = $("make");
+        const hint = $("makeHint");
+        if (!btn) return;
+        if (st?.session?.source !== "wallet") {
+          $("connect").click();
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "making…";
+        try {
+          const res = await fetch("/requests", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              usdc: Number($("amt").value),
+              note: $("note").value,
+              minutes: Number($("term")?.value ?? 30),
+            }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          const r = body.request;
+          draw(`<div class="ticket">
+            <span class="seal">ready to send</span>
+            <div class="label">the link asks for</div>
+            <div class="amount">${esc(spoken(String(r.usdc_text ?? r.usdc)))} <small>USDC</small></div>
+            ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
+            <div class="perf"></div>
+            <div class="shareGrid" id="shareGrid">
+              <div id="shareLink"></div>
+              <div id="shareQr"></div>
+            </div>
+            <p class="dieRow">${dieLine(r)} <span class="quiet">then it closes itself</span></p>
+            <p class="hint">Anyone with this link can pay you. It holds no key, so nobody can take anything with it.</p>
+          </div>`);
+          wireShare(r);
+          $("mineBox").hidden = false;
+          mine();
+          loadMeta();
+        } catch (err) {
+          hint.className = "hint bad";
+          hint.textContent = err.message;
+          btn.disabled = false;
+          btn.textContent = "Make the link";
+        }
+      }
+
+      async function load() {
+        st = await fetch("/state").then((res) => res.json()).catch(() => null);
+        if (id) {
+          $("mineBox").hidden = true;
+          /* The server refuses the link before it looks it up, and the page refuses to
+             ask before a wallet exists. Both halves say the same thing, so a person who
+             lands here with no wallet gets a door rather than a blank price. */
+          if (st?.session?.source !== "wallet") {
+            draw(gateView());
+            $("gateConnect").onclick = () => $("connect").click();
+            return;
+          }
+          const res = await fetch(`/requests/${id}`, { cache: "no-store" });
+          const body = await res.json().catch(() => ({}));
+          if (res.status === 401 && body.needs === "wallet") {
+            draw(gateView());
+            $("gateConnect").onclick = () => $("connect").click();
+            return;
+          }
+          if (!res.ok) {
+            draw(notFound(body.error));
+            return;
+          }
+          const r = body.request;
+          if (r.mine) {
+            draw(r.paid || r.expired ? closedView(r, true) : selfView(r));
+            if (!r.paid && !r.expired) wireShare(r);
+            return;
+          }
+          if (r.paid || r.expired) {
+            draw(closedView(r, false));
+            return;
+          }
+          draw(payerView(r));
+          wirePay(r);
+          wireDies();
+          return;
+        }
+        draw(createView());
+        wireCreate();
+        mountSelect($("term")).catch(() => null);
+        mine();
+      }
+
+      const reload = () => {
+        loadMeta();
+        load();
+      };
+      mountWallet(reload);
+      mountNetwork(reload);
+      loadMeta();
+      load();
+    </script>
+  </body>
+</html>

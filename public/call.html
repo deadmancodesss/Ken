@@ -2,663 +2,1328 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Call · Total Recall</title>
+    <title>Voice · Ken</title>
     <script>
       /* Wallets announce themselves before any module can load, so this captures
          the announcement into a global that public/wallet.js reads later. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
     <link rel="stylesheet" href="/theme.css" />
     <style>
-      /* A fixed height column shrinks its children until they print on top of each
-         other, which is exactly what this page did on a phone. Nothing here is
-         allowed to shrink, and auto margins centre the group only while there is
-         spare room, so a tall page scrolls instead of collapsing. */
-      body { height: auto; min-height: 100%; }
-      main { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 34px var(--pad) 46px; min-height: 0; }
-      main > * { flex: 0 0 auto; }
-      main > :first-child { margin-top: auto; }
-      main > :last-child { margin-bottom: auto; }
+      /* ---------- the voice room ----------
+         The same conversation as the chat page, spoken. The title sits where the chat
+         title sits, the transcript is the same 760px column, and the only new object is
+         one dock at the bottom. There is no second rail, no explainer and no form that
+         is not about the sentence being spoken right now. */
+      :root { --read: 720px; --head: 58px; }
+      body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+      main.voiceRoom { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-      .presence { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
-      /* The ribbon is drawn from real microphone level, so it moves when you do. */
-      .wave { display: block; width: min(560px, 84vw); height: 148px; }
-      .who { font: 400 var(--step-2)/1.3 var(--serif); }
-      .status { font: var(--step--1)/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
-      .status.speaking { color: var(--clay); }
+      .roomHead {
+        flex: 0 0 auto;
+        min-height: var(--head);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 9px 24px;
+        border-bottom: 1px solid var(--rule);
+        background: var(--paper);
+      }
+      .identity { flex: 1; min-width: 0; display: grid; gap: 4px; }
+      .identity h1 { margin: 0; font: 400 var(--step-1)/1.2 var(--serif); letter-spacing: -0.012em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .state { margin: 0; display: flex; align-items: center; gap: 7px; font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); flex: 0 0 auto; }
+      .state[data-tone="live"] .dot { background: var(--moss); }
+      .state[data-tone="live"] #stateText { color: var(--moss); }
+      .state[data-tone="wait"] .dot { background: var(--clay); }
+      .state[data-tone="wait"] #stateText { color: var(--clay); }
+      .state[data-tone="bad"] .dot { background: var(--brick); }
+      .state[data-tone="bad"] #stateText { color: var(--brick); }
 
-      .caps { width: 100%; max-width: 520px; min-height: 132px; display: flex; flex-direction: column; gap: 14px; justify-content: flex-end; }
-      .cap { font: 400 var(--step-1)/1.5 var(--serif); color: var(--ink); }
-      .cap.you { font: var(--step-0)/1.5 var(--sans); color: var(--ink-2); text-align: right; }
-      .cap.pending { color: var(--ink-3); }
-      .cap.tool { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .pick { flex: 0 0 196px; display: flex; align-items: center; gap: 9px; min-width: 0; }
+      .pick > span { font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .pick .paper-select { flex: 1; min-width: 0; }
+      .pick .ts-wrapper { width: 100%; }
+      .closeBtn {
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border: 1px solid transparent;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--ink-3);
+        box-shadow: none;
+      }
+      .closeBtn:hover { border-color: var(--rule-strong); color: var(--ink); background: var(--paper-sunk); }
+      .closeBtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
-      .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
-      .end { border-color: var(--brick); color: var(--brick); }
-      .end:hover { background: var(--brick); color: var(--paper); }
-      .onair { background: var(--clay); border-color: var(--clay); color: var(--paper); min-width: 132px; }
-      .onair.listening { background: var(--ink); border-color: var(--ink); }
+      .log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+      .thread { min-height: 100%; display: flex; flex-direction: column; gap: 26px; width: 100%; max-width: var(--read); margin: 0 auto; padding: 28px 24px 32px; }
 
-      /* The three choices that change how a call sounds read as one settings card,
-         not a wrapping row of loose pills that lands wherever the width allows. */
-      .voice { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; width: min(760px, 100%); }
-      .voice .set { background: var(--paper); padding: 13px 15px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; min-width: 0; }
-      .voice label { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
-      .voice .paceRow { display: flex; align-items: center; gap: 10px; width: 100%; }
-      .voice #audition { align-self: center; }
-      .voice b { color: var(--ink-2); min-width: 34px; font: var(--step--1)/1 var(--mono); }
-      .fineprint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); max-width: 46ch; text-align: center; }
+      /* ---------- messages ----------
+         The same shapes as the chat page. A question is a sheet on the right, an answer
+         is a column of reading on the left, and a sentence that is still arriving grows
+         in place instead of printing one line per packet. */
+      .msg { display: flex; flex-direction: column; min-width: 0; }
+      .msg.you { align-items: flex-end; }
+      .msg .bubble {
+        max-width: 86%;
+        padding: 11px 15px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 16px 16px 5px 16px;
+        background: var(--paper-sunk);
+        color: var(--ink);
+        font: var(--step-1)/1.55 var(--sans);
+        overflow-wrap: anywhere;
+      }
+      .msg.ken { gap: 10px; }
+      .khead { display: flex; align-items: center; gap: 8px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+      .khead img { width: 19px; height: 19px; display: block; }
+      .msg .kbody { font: 400 17px/1.68 var(--serif); color: var(--ink); letter-spacing: -0.004em; overflow-wrap: anywhere; max-width: 66ch; }
+      .msg .kbody:empty { display: none; }
+      .msg.error .kbody { font: var(--step-0)/1.6 var(--mono); color: var(--brick); }
+      .knote { margin: 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); max-width: 66ch; }
+      .knote.bad { color: var(--brick); }
+      .knote a { color: var(--clay); }
 
-      /* The call stays centred on screen and the explanation sits below it, because
-         the honest use of this page is a conversation with the page in front of you,
-         not a document you scroll while it talks. */
-      .explainer { border-top: 1px solid var(--rule); padding: 44px var(--pad) 54px; }
-      .explainer .inner { max-width: 780px; margin: 0 auto; }
-      .explainer h2 { font-size: var(--step-3); margin-bottom: 8px; }
-      .explainer .lead { color: var(--ink-2); max-width: 62ch; margin-bottom: 26px; }
-      .explainer .tail { margin-top: 22px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
-      .beats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
-      .beats b { font-weight: 400; color: var(--ink); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 6px 13px; white-space: nowrap; }
-      .beats i { font-style: normal; color: var(--clay); animation: beat 2.8s steps(1) infinite; }
-      .beats i:nth-of-type(2) { animation-delay: 0.7s }
-      .beats i:nth-of-type(3) { animation-delay: 1.4s }
-      .beats i:nth-of-type(4) { animation-delay: 2.1s }
-      @keyframes beat { 0%, 40% { opacity: 0.2 } 41%, 100% { opacity: 1 } }
-      @media (prefers-reduced-motion: reduce) { .beats i { animation: none; opacity: 1 } }
+      .trace { margin-top: 2px; max-width: 66ch; }
+      .trace summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        list-style: none;
+        cursor: pointer;
+        padding: 4px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 999px;
+        font: 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .trace summary::-webkit-details-marker { display: none; }
+      .trace summary:hover { border-color: var(--rule-strong); color: var(--ink-2); }
+      .trace summary::after { content: "+"; color: var(--clay); margin-left: 2px; }
+      .trace[open] summary::after { content: "−"; }
+      .trace .tlist { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+      .trace .tstep {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border: 1px solid var(--rule);
+        border-radius: 7px;
+        background: var(--paper-sunk);
+        font: var(--step--1)/1 var(--mono);
+        color: var(--ink-2);
+      }
+      .trace .tstep::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--moss); flex: 0 0 auto; }
+      .trace .tstep.bad { color: var(--brick); }
+      .trace .tstep.bad::before { background: var(--brick); }
+
+      .rcpt {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        align-self: flex-start;
+        margin-top: 2px;
+        padding: 8px 12px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 10px;
+        background: var(--paper);
+        color: var(--ink);
+        font: var(--step-0)/1.2 var(--sans);
+      }
+      .rcpt:hover { border-color: var(--ink-3); }
+      .rcpt .seal { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--moss); color: var(--paper); font: 600 11px/1 var(--sans); flex: 0 0 auto; }
+      .rcpt b { font-weight: 600; font-variant-numeric: tabular-nums; }
+      .rcpt .to { color: var(--ink-2); }
+      .rcpt .tx { font: 10px/1 var(--mono); color: var(--ink-3); margin-left: 3px; }
+
+      /* ---------- the three panels ----------
+         An address, a request and a signature are the only things a voice call cannot
+         finish by talking. They share the chat page's sheet, padding and hard offset,
+         because they are the same object in both rooms. */
+      .panel {
+        align-self: stretch;
+        display: grid;
+        gap: 12px;
+        max-width: 100%;
+        padding: 16px;
+        border: var(--edge) solid var(--rule-strong);
+        border-left: 3px solid var(--clay);
+        border-radius: 12px;
+        background: var(--paper);
+        box-shadow: 3px 3px 0 var(--sheet);
+      }
+      .panel.moss { border-left-color: var(--moss); }
+      .panel h4 { margin: 0; font: 400 var(--step-2)/1.3 var(--serif); color: var(--ink); max-width: 46ch; }
+      .panel .hint { margin: 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .panel .hint.bad { color: var(--brick); }
+      .panel .hint.good { color: var(--moss); }
+      .panel .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .panel .row > input { flex: 1 1 240px; min-width: 0; font: var(--step--1)/1.4 var(--mono); padding: 10px 12px; }
+      .panel button { border-radius: 8px; padding: 9px 13px; font: var(--step--1)/1 var(--sans); box-shadow: 2px 2px 0 var(--sheet); }
+      .panel button:hover { box-shadow: 3px 3px 0 var(--sheet); }
+      .panel button:active { box-shadow: none; }
+      .panel .quietBtn { border: 0; background: transparent; color: var(--ink-3); box-shadow: none; padding: 2px 0; }
+      .panel .quietBtn:hover { color: var(--ink); transform: none; box-shadow: none; }
+      .fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+      .fields .wide { grid-column: 1 / -1; }
+      .lf { display: grid; gap: 6px; min-width: 0; }
+      .lf > span { font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .lf input[type="text"] { font: var(--step-0)/1.4 var(--sans); padding: 10px 12px; }
+      .amount { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+      .amount input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        border-bottom: 1px dashed var(--rule-strong);
+        border-radius: 0;
+        background: transparent;
+        font: 400 var(--step-3)/1.05 var(--serif);
+        color: var(--ink);
+        padding: 4px 0 6px;
+      }
+      .amount input:focus-visible { outline: 0; border-bottom-color: var(--clay); }
+      .amount b { font: 10px/1 var(--mono); font-weight: 400; color: var(--ink-2); }
+      .samount { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
+      .samount small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); margin-left: 6px; }
+      .sline { display: flex; gap: 10px; align-items: baseline; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); min-width: 0; }
+      .sline b { font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
+      .receipt { display: grid; gap: 6px; padding-top: 2px; }
+      .receipt code { font: var(--step--1)/1.6 var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+      .receipt a { font: var(--step--1)/1.5 var(--mono); justify-self: start; }
+      .done .rseal { font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--moss); }
+      .done .ramt { font: 400 var(--step-3)/1 var(--serif); letter-spacing: -0.01em; }
+      .done .ramt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 5px; }
+      .done .note { font: var(--step-0)/1.55 var(--sans); color: var(--ink-2); }
+      .done code { font: var(--step--1)/1.55 var(--mono); overflow-wrap: anywhere; }
+
+      /* ---------- the empty room ---------- */
+      .empty { flex: 1; display: grid; align-content: center; justify-items: start; gap: 22px; padding: 26px 0 40px; }
+      .mark { display: grid; place-items: center; width: 58px; height: 58px; }
+      .mark img { width: 58px; height: 58px; display: block; filter: drop-shadow(3px 3px 0 var(--sheet)); }
+      .empty h2 { margin: 0; font: 400 clamp(27px, 4vw, 34px)/1.15 var(--serif); letter-spacing: -0.022em; color: var(--ink); }
+      .empty p { margin: 0; max-width: 46ch; color: var(--ink-2); font: var(--step-1)/1.6 var(--sans); }
+      .empty .rule { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+
+      /* ---------- the dock ----------
+         One object, full width, with the room's only button in it. The scope draws the
+         real microphone and the real voice, so silence looks like silence. */
+      .dock {
+        flex: 0 0 auto;
+        border-top: 1px solid var(--rule);
+        background: var(--paper);
+        padding: 10px 24px calc(14px + env(safe-area-inset-bottom));
+      }
+      .dockIn {
+        width: 100%;
+        max-width: var(--read);
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "wave wave" "hint acts";
+        gap: 8px 16px;
+        align-items: center;
+      }
+      .wave { grid-area: wave; display: block; width: 100%; height: 100px; pointer-events: none; }
+      .hint { grid-area: hint; margin: 0; min-width: 0; font: 11px/1.55 var(--mono); color: var(--ink-3); }
+      .hint.bad { color: var(--brick); }
+      .acts { grid-area: acts; display: flex; gap: 8px; align-items: center; }
+      .acts [hidden] { display: none; }
+      .talk {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 12px 18px;
+        border: var(--edge) solid var(--ink);
+        border-radius: 999px;
+        background: var(--clay);
+        color: var(--paper);
+        font: var(--step--1)/1 var(--mono);
+        letter-spacing: 0.04em;
+        box-shadow: 2px 2px 0 var(--ink);
+      }
+      .talk:hover { background: #8f4420; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--ink); }
+      .talk:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+      .talk:disabled { background: var(--paper-sunk); border-color: var(--rule); color: var(--ink-3); box-shadow: none; transform: none; }
+      .talk svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+      .end {
+        padding: 11px 17px;
+        border: var(--edge) solid var(--brick);
+        border-radius: 999px;
+        background: var(--paper);
+        color: var(--brick);
+        font: var(--step--1)/1 var(--mono);
+        letter-spacing: 0.04em;
+        box-shadow: 2px 2px 0 var(--sheet);
+      }
+      .end:hover { background: var(--brick); color: var(--paper); border-color: var(--brick); }
+
+      @media (max-width: 620px) {
+        :root { --head: 54px; }
+        .roomHead { padding: 8px 14px; gap: 10px; }
+        .pick { flex-basis: 136px; }
+        .pick > span { display: none; }
+        .thread { padding: 20px 14px 24px; gap: 22px; }
+        .dock { padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); }
+        .dockIn { grid-template-columns: minmax(0, 1fr); grid-template-areas: "wave" "acts" "hint"; gap: 7px; }
+        .wave { height: 82px; }
+        .acts { justify-content: stretch; }
+        .talk { flex: 1; justify-content: center; }
+        .hint { text-align: center; }
+        .fields { grid-template-columns: minmax(0, 1fr); }
+        .msg .bubble { max-width: 92%; }
+        .msg .kbody { font-size: var(--step-1); }
+        .panel { padding: 14px; }
+        .state { letter-spacing: 0.06em; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .talk, .end { transition: none; }
+      }
     </style>
   </head>
   <body>
-    <header>
-      <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">hands free, the way you would actually use it</div>
-      </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
-        <a href="/memory">Memory</a>
-        <a href="/call" aria-current="page">Call</a>
-        <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
-    </header>
-
-    <main>
-      <div class="presence">
-        <canvas class="wave" id="wave" aria-hidden="true"></canvas>
-        <div class="who">Total Recall</div>
-        <div class="status" id="status">not connected</div>
-      </div>
-
-      <div class="caps" id="caps"></div>
-
-      <div class="controls">
-        <button class="onair" id="talk">Start call</button>
-        <button class="end" id="stop" disabled>Hang up</button>
-      </div>
-
-      <div class="voice">
-        <div class="set">
-          <label for="lang">speaks</label>
-          <select id="lang"></select>
+    <main class="voiceRoom">
+      <header class="roomHead">
+        <div class="identity">
+          <h1 id="roomTitle">New chat</h1>
+          <p class="state" id="roomState" data-tone=""><span class="dot"></span><span id="stateText">not started</span></p>
         </div>
-        <div class="set">
-          <label for="voices">voice</label>
-          <select id="voices"></select>
-        </div>
-        <div class="set">
-          <label for="pace">pace</label>
-          <div class="paceRow">
-            <input id="pace" type="range" min="0.85" max="1.3" step="0.01" />
-            <b id="paceLabel">1.03x</b>
+        <label class="pick">
+          <span>voice</span>
+          <select id="voice" aria-label="Ken's voice"></select>
+        </label>
+        <button class="closeBtn" id="closeRoom" type="button" aria-label="Close the call sheet">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+
+      <div class="log" id="log"><div class="thread" id="thread"></div></div>
+
+      <footer class="dock">
+        <div class="dockIn">
+          <canvas class="wave" id="wave" aria-hidden="true"></canvas>
+          <p class="hint" id="hint">The microphone opens only when you press start.</p>
+          <div class="acts">
+            <button class="talk" id="talk" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+              <span id="talkLabel">Start the call</span>
+            </button>
+            <button class="end" id="end" type="button" hidden>Hang up</button>
           </div>
         </div>
-        <div class="set">
-          <label for="audition">hearing</label>
-          <button class="chip" id="audition">audition</button>
-        </div>
-        <div class="set">
-          <label for="barge">interrupt</label>
-          <button class="switch off" id="barge" type="button" role="switch" aria-checked="false"><span class="dot"></span><span id="bargeLabel">wait for it to finish</span></button>
-        </div>
-      </div>
-
-      <p class="fineprint" id="fineprint"></p>
+      </footer>
     </main>
 
-    <section class="explainer">
-      <div class="inner">
-        <div class="label">What a call actually does</div>
-        <h2 class="reveal">Same tools, different mouth</h2>
-        <p class="lead reveal">
-          Nothing on this page is a second agent. The microphone streams into one open call, that speech goes through
-          the same tools the Talk page uses, and the answer comes back as audio you can interrupt by talking over it.
-          The transcript stays on screen so you can check a number before you act on it.
-        </p>
-        <div class="beats reveal">
-          <b>you speak</b><i>&rarr;</i><b>the model closes the sentence</b><i>&rarr;</i><b>memory answers first</b><i>&rarr;</i><b>the answer is spoken</b>
-        </div>
-        <figure class="plate">
-          <img src="/assets/call-live.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man walking along a street carrying two full shopping bags and a bunch of greens, speaking aloud, with sound arcs crossing to a woman seated far away at her desk who answers him" />
-          <figcaption>What a call is on this build. Your hands stay full, you say the sentence into the air, and she answers from the page she already wrote on. The arcs are the only part that travels, and nothing you have to say twice.</figcaption>
-        </figure>
-        <div class="steps reveal" style="margin-top:30px">
-          <div><span class="num">1</span><div><h4>What the pickers do on a live call</h4><p>A live call hears whatever language you speak in and answers in it, so the three pickers below govern the turn by turn path that runs when the server has no live key. On that path the first sets the language the microphone listens for, the second lists the voices this browser has for it, the slider sets how fast it talks, and all three are remembered for next time. Audition says one sentence so you can hear it before a call.</p></div></div>
-          <div><span class="num">2</span><div><h4>The ribbon is your real voice</h4><p>Four curves drift against each other and their height comes from the microphone, so it swells when you do and settles when you stop. Nothing on it runs on a timer, and when the agent speaks each word pushes a swell through it.</p></div></div>
-          <div><span class="num">3</span><div><h4>A payment is never signed by voice</h4><p>If the answer needs money, the call stops and points you at the Pay page, where your own wallet has to approve it.</p></div></div>
-          <div><span class="num">4</span><div><h4>A misheard name is not the wrong person</h4><p>A microphone writes Sana as Sauna often enough to matter. Reading memory corrects the one letter and says the stored name back to you. Moving money refuses the correction and asks for an address, because a guess there spends real USDC on the wrong stranger.</p></div></div>
-        </div>
-        <figure class="plate" style="margin-top:34px">
-          <img src="/assets/call-path.webp" width="1100" height="733" loading="lazy" decoding="async" alt="The inside of a wooden machine with two turning reels, a row of round jacks and coiled leads, a brass horn on top pointed at a man speaking into a standing microphone, and a thread running up to an ink drawn cloud held by two operators at the side" />
-          <figcaption>What the call is wired as, drawn honestly. Your microphone is the only thing that goes upstream, a small box on this server holds the open line to the model, and the horn is the answer coming back down the same line. It is not a WebRTC call, so the box has to do the work a browser would normally do for free: decide when your sentence ends, and stop the horn the moment you start talking over it.</figcaption>
-        </figure>
-        <p class="tail reveal">the voice below is the model's own when a key is set, and this browser's when it is not. <a href="/how">What is finished and what is not</a></p>
-      </div>
-    </section>
-
     <script type="module">
-      import { $, mountWallet, loadMeta, voicesWorthHearing, spokenLanguages, langSetting, setLang, tidyVoice, paceSetting, buildSpeech, startMic, reveal, remoteSpeech, noteSpeech, gvoiceSetting, setGvoice, speakRemote } from "./shared.js";
+      import { $, spoken, shortAddr, plain, copyText, explorerTx, addressNeed, requestNeed, SUI_ADDRESS } from "./shared.js";
+      import { signAndExecute, signX402 } from "./wallet.js";
       import { createWave } from "./wave.js";
-      import { captureMic, createPlayer, openLive, upstream, floorIsMine } from "./live.js";
-      reveal();
+      import { captureMic, createPlayer, openLive, upstream, floorIsMine, mergeHeard } from "./live.js";
+      import { mountSelect } from "./ui.js";
 
-      const wave = createWave($("wave"));
-      wave.idle();
+      const thread = $("thread");
+      const log = $("log");
+      const inputVoice = $("voice");
+      const talk = $("talk");
+      const talkLabel = $("talkLabel");
+      const end = $("end");
+      const hint = $("hint");
+      const stateText = $("stateText");
+      const stateBox = $("roomState");
 
-      const status = (text, speaking) => {
-        $("status").textContent = text;
-        $("status").classList.toggle("speaking", !!speaking);
-      };
-
-      function caption(kind, text) {
-        const div = document.createElement("div");
-        div.className = "cap " + kind;
-        div.textContent = text;
-        $("caps").appendChild(div);
-        while ($("caps").children.length > 4) $("caps").firstChild.remove();
-        return div;
-      }
+      const params = new URLSearchParams(location.search);
+      const embed = params.get("embed") === "1";
+      let session = params.get("session") || "";
 
       /*
-       * Two transports, one tool layer. Live carries audio both ways through the
-       * server and needs no recognition of its own. The turn path is what runs when
-       * the server has no realtime key, and every page above works either way.
+       * The voice room is the call half of one chat, so it is only ever opened on top of
+       * one. A direct visit carries no conversation to draw or write, and is sent to the
+       * chat page with the sheet already open rather than showing an empty second app.
        */
-      const transport = {
-        live: false,
-        async ask(text) {
-          const res = await fetch("/turn", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text }),
-          });
-          const body = await res.json();
-          if (!res.ok) throw new Error(body.error || "http " + res.status);
-          return body.text;
-        },
-      };
-
-      let chosen = null;
-      /** Which vendor produced the last spoken sentence, read from the response header. */
-      let lastMouth = null;
-      /**
-       * The live gate. `barge` hands the microphone back while the agent speaks, which is
-       * only safe on headphones, so it starts shut. `tailUntil` is the moment the room is
-       * quiet enough to trust again, and `liveVoice` is the name the socket answered with.
-       */
-      let barge = false;
-      let tailUntil = 0;
-      let liveVoice = "";
-      function fillLangs() {
-        const langs = spokenLanguages();
-        const sel = $("lang");
-        if (!langs.length) {
-          sel.innerHTML = '<option value="en-US">english</option>';
-          sel.disabled = true;
-          return;
-        }
-        const want = langSetting();
-        sel.disabled = false;
-        sel.innerHTML = langs.map((l) => `<option value="${l.code}">${l.name}</option>`).join("");
-        sel.value = langs.some((l) => l.code === want) ? want : langs[0].code;
-        setLang(sel.value);
-      }
-      function fillVoices() {
-        const sel = $("voices");
-        const remote = remoteSpeech();
-        // Three vendors answer for the agent's voice and their names are not the same
-        // kind of thing, so the picker groups them and labels what each one is and where
-        // it sits in the order they get asked.
-        const GROUP = { fish: "Fish Audio, asked first", openrouter: "HeyGen, asked second", gemini: "Google Gemini, asked last" };
-        if (remote.enabled) {
-          const saved = gvoiceSetting();
-          // A vendor can hold a key and still be out of sentences, and listing its
-          // voices as if they worked is the difference between a picker and a promise.
-          const resting = new Map((remote.providers ?? []).map((p) => [p.id, p.resting || ""]));
-          const groups = new Map();
-          for (const v of remote.voices) {
-            if (!groups.has(v.provider)) groups.set(v.provider, []);
-            groups.get(v.provider).push(v);
-          }
-          sel.innerHTML = [...groups]
-            .map(([p, list]) => {
-              const why = resting.get(p) ?? "";
-              return (
-                `<optgroup label="${GROUP[p] ?? p}${why ? ", resting" : ""}">` +
-                list.map((v) => `<option value="${v.id}" title="${v.note}${why ? `, ${why}` : ""}">${v.label}</option>`).join("") +
-                "</optgroup>"
-              );
-            })
-            .join("");
-          sel.value = remote.voices.some((v) => v.id === saved) ? saved : remote.voice;
-          setGvoice(sel.value);
-          return;
-        }
-        const list = voicesWorthHearing();
-        sel.innerHTML = list.length
-          ? list.map((v, i) => `<option value="${i}">${tidyVoice(v)}</option>`).join("")
-          : '<option value="0">no voice for this language</option>';
-        const savedLocal = localStorage.getItem("tr.voice");
-        chosen = list.find((v) => tidyVoice(v) === savedLocal) ?? list[0] ?? null;
-        if (chosen) sel.value = String(list.indexOf(chosen));
-      }
-      function fillBoth() {
-        fillLangs();
-        fillVoices();
-      }
-      if (window.speechSynthesis) {
-        fillBoth();
-        speechSynthesis.onvoiceschanged = fillBoth;
-        $("lang").onchange = (e) => {
-          setLang(e.target.value);
-          // A saved English name is meaningless in another language, so start from the best voice there.
-          localStorage.removeItem("tr.voice");
-          fillVoices();
-          restartRec();
-          fineprint();
-        };
-      }
-      $("voices").onchange = (e) => {
-        if (remoteSpeech().enabled) {
-          setGvoice(e.target.value);
-          fineprint();
-          return;
-        }
-        chosen = voicesWorthHearing()[Number(e.target.value)] ?? null;
-        if (chosen) localStorage.setItem("tr.voice", tidyVoice(chosen));
-      };
-      $("pace").value = String(paceSetting());
-      $("paceLabel").textContent = paceSetting().toFixed(2) + "x";
-      $("pace").oninput = (e) => {
-        const pace = Number(e.target.value);
-        $("paceLabel").textContent = pace.toFixed(2) + "x";
-        localStorage.setItem("tr.pace", String(pace));
-      };
-      /*
-       * Two mouths, one promise. The model's audio drives the ribbon from the sound
-       * itself; the browser's speech has no tap on its output, so each spoken word
-       * pushes the swell instead. Whichever runs, the ribbon is reporting something real.
-       */
-      let stopAudio = null;
-      let said = 0;
-      function say(text) {
-        const mine = ++said;
-        stopAudio?.();
-        stopAudio = null;
-        speechSynthesis?.cancel();
-        const done = () => {
-          if (mine !== said) return;
-          status(open ? "listening" : "not connected", open);
-          wave.idle();
-        };
-        const local = () => {
-          const u = buildSpeech(text);
-          if (!u) {
-            status("this browser has no speech", false);
-            wave.idle();
-            return;
-          }
-          u.onstart = () => status("speaking", true);
-          u.onboundary = () => wave.pulse(0.72);
-          u.onend = done;
-          speechSynthesis.speak(u);
-        };
-        if (!remoteSpeech().enabled) {
-          local();
-          return;
-        }
-        status("speaking", true);
-        speakRemote(text, {
-          onLevel: (level) => {
-            if (mine === said) wave.push(level);
-          },
-          // The server names the vendor that produced these bytes, which is the only
-          // honest way to say who spoke when one of them is out of quota.
-          onVoice: (v) => {
-            lastMouth = v;
-            fineprint();
-          },
-          onEnd: done,
-        })
-          .then((stop) => {
-            if (mine === said) stopAudio = stop;
-            else stop();
-          })
-          .catch((err) => {
-            if (mine !== said) return;
-            fineprint(`model voice failed, so this browser spoke it instead. ${err.message}`);
-            local();
-          });
-      }
-      $("audition").onclick = () => say("Sana, one point three three USDC over four payments, most recently today.");
-
-      // The one control on this page that decides who the model gets to hear.
-      $("barge").onclick = () => {
-        barge = !barge;
-        $("barge").classList.toggle("off", !barge);
-        $("barge").setAttribute("aria-checked", String(barge));
-        $("bargeLabel").textContent = barge ? "talk over it, headphones on" : "wait for it to finish";
-        fineprint();
-      };
-
-      function hush() {
-        speechSynthesis?.cancel();
-        stopAudio?.();
-        stopAudio = null;
+      if (!embed) {
+        location.replace(`/app?voice=1${session ? `&session=${encodeURIComponent(session)}` : ""}`);
       }
 
-      let stopMic = null;
-      async function meter() {
-        stopMic = await startMic((level) => wave.push(level));
-      }
-      function stopMeter() {
-        stopMic?.();
-        stopMic = null;
-        wave.idle();
-      }
-
-      /*
-       * A live call has no record button and no per-turn round trip. The microphone
-       * streams continuously, the model decides when a sentence has ended, and its
-       * answer arrives as audio you can talk over. The turn-based path below is what
-       * runs when the server has no realtime key.
-       */
+      let network = "mainnet";
+      /* Which ledger a payment is prepared on is the server's answer, not this page's
+         guess, so a mainnet build cannot end up calling the money dust. */
+      let payNet = "mainnet";
+      let liveReady = true;
       let call = null;
       let player = null;
-      let stopLiveMic = null;
-      let lineYou = null;
-      let lineIt = null;
+      let stopMic = null;
+      let starting = false;
+      let ending = false;
+      let epoch = 0;
+      let tailUntil = 0;
+      let busyState = "";
+      let wave = null;
+      let spokenAs = "";
+      const writes = new Set();
 
-      /*
-       * Transcripts arrive in pieces, so each side of the conversation keeps one line
-       * on screen that grows rather than one line per packet.
-       */
-      function liveLine(kind, text) {
-        const fresh = !($("caps").contains(kind === "you" ? lineYou : lineIt));
-        const el = fresh ? caption(kind, text) : (kind === "you" ? lineYou : lineIt);
-        if (fresh) el.textContent = text;
-        else el.textContent += text;
-        if (kind === "you") lineYou = el;
-        else lineIt = el;
-        return el;
-      }
-      function resetLines() {
-        lineYou = null;
-        lineIt = null;
+      const say = (text, tone) => {
+        stateText.textContent = text;
+        stateBox.dataset.tone = tone || "";
+      };
+      const note = (text, bad) => {
+        hint.textContent = text;
+        hint.classList.toggle("bad", !!bad);
+      };
+      const scroll = () => { log.scrollTop = log.scrollHeight; stick = true; };
+      let stick = true;
+      log.addEventListener("scroll", () => {
+        stick = log.scrollHeight - log.scrollTop - log.clientHeight < 64;
+      }, { passive: true });
+      const follow = () => { if (stick) log.scrollTop = log.scrollHeight; };
+
+      function paintTitle(title) {
+        $("roomTitle").textContent = title || "New chat";
+        document.title = `${title || "New chat"} · Ken`;
       }
 
-      async function liveCall() {
-        // The microphone is asked for first, because a browser that refuses it should
-        // not cost a live socket that was never going to hear anything.
-        player = createPlayer((level) => wave.push(level));
-        stopLiveMic = await captureMic(
-          (frame) => {
-            const floor = floorIsMine({ barge, speaking: player?.speaking, now: Date.now(), tailUntil });
-            tailUntil = floor.tailUntil;
-            call?.push(upstream(frame, floor.open));
-          },
-          (level) => {
-            if (!player?.speaking) wave.push(level);
-          },
+      /* ---------- messages ---------- */
+      function userMessage(text) {
+        const wrap = document.createElement("div");
+        wrap.className = "msg you";
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = text;
+        wrap.appendChild(bubble);
+        return wrap;
+      }
+
+      function kenMessage(text) {
+        const wrap = document.createElement("div");
+        wrap.className = "msg ken";
+        const head = document.createElement("div");
+        head.className = "khead";
+        const img = document.createElement("img");
+        img.src = "/assets/ken-mark.svg";
+        img.alt = "";
+        const who = document.createElement("span");
+        who.textContent = "Ken";
+        head.append(img, who);
+        const body = document.createElement("div");
+        body.className = "kbody";
+        if (text != null) body.textContent = text;
+        wrap.append(head, body);
+        return wrap;
+      }
+
+      function panelMessage(panel) {
+        const wrap = kenMessage("");
+        wrap.querySelector(".kbody")?.remove();
+        wrap.appendChild(panel);
+        return wrap;
+      }
+
+      function noteLine(text, bad) {
+        const row = document.createElement("p");
+        row.className = "knote" + (bad ? " bad" : "");
+        row.textContent = text;
+        return row;
+      }
+
+      const LABELS = {
+        people_you_know: "who you have named",
+        who_is_this: "looking up an address",
+        money_history: "reading the chain",
+        monthly_summary: "month by month",
+        what_is_due: "reading the rhythm",
+        name_a_person: "writing a name to Walrus",
+        find_person: "finding a name",
+        remember_this: "writing to Walrus",
+        what_do_i_remember: "searching memory",
+        memory_stats: "counting memories",
+        wallet_balance: "reading the balance",
+        how_money_came: "walking the history back",
+        address_activity: "reading an address",
+        make_report: "typesetting the statement",
+        set_monthly_limit: "the monthly limit",
+        request_money: "opening the request form",
+        pay_usdc: "holding it for your sign",
+        paid_lookup: "buying a profile",
+        verify_payment: "checking a claim",
+      };
+
+      const stepLabel = (s) => {
+        const label = LABELS[s.name] || String(s.name || "a step").replaceAll("_", " ");
+        if (s.ok) {
+          if (s.result?.needs_address) return "waiting for a typed address";
+          if (s.result?.needs_request_fields) return "waiting for the request form";
+          if (s.result?.link) return "the request link is made";
+          if (s.result?.digest) return "settled on chain";
+        }
+        if (!s.ok) return s.error ? String(s.error) : `${label} failed`;
+        return label;
+      };
+
+      function receiptLink(step) {
+        const digest = step.result?.digest;
+        if (!digest) return null;
+        const net = String(step.result?.chain ?? network).split(":").pop();
+        const a = document.createElement("a");
+        a.className = "rcpt";
+        a.href = explorerTx(net, digest);
+        a.target = "_blank";
+        a.rel = "noreferrer";
+        const seal = document.createElement("span");
+        seal.className = "seal";
+        seal.textContent = "✓";
+        const mid = document.createElement("span");
+        const amt = document.createElement("b");
+        amt.textContent = `${step.result?.usdc ?? ""} USDC`;
+        const to = document.createElement("span");
+        to.className = "to";
+        to.textContent = step.result?.named_as ? ` to ${step.result.named_as}` : step.result?.to ? ` to ${shortAddr(step.result.to)}` : "";
+        mid.append(amt, to);
+        const tx = document.createElement("span");
+        tx.className = "tx";
+        tx.textContent = `${String(digest).slice(0, 6)}…${String(digest).slice(-4)} ↗`;
+        a.append(seal, mid, tx);
+        return a;
+      }
+
+      function traceInto(host, steps) {
+        const list = (steps || []).filter((s) => s && s.name);
+        if (!list.length) return;
+        const details = document.createElement("details");
+        details.className = "trace";
+        const summary = document.createElement("summary");
+        summary.textContent = `${list.length} ${list.length === 1 ? "step" : "steps"}`;
+        const box = document.createElement("div");
+        box.className = "tlist";
+        for (const s of list) {
+          const el = document.createElement("span");
+          el.className = "tstep" + (s.ok ? "" : " bad");
+          el.textContent = stepLabel(s);
+          box.appendChild(el);
+        }
+        details.append(summary, box);
+        host.appendChild(details);
+      }
+
+      /* ---------- the request link a call can make ---------- */
+      function requestDone(r) {
+        const card = document.createElement("div");
+        card.className = "panel done moss";
+        const seal = document.createElement("span");
+        seal.className = "rseal";
+        seal.textContent = "ready to send";
+        const amount = document.createElement("div");
+        amount.className = "ramt";
+        amount.textContent = spoken(String(r.usdc_text ?? r.usdc));
+        const unit = document.createElement("small");
+        unit.textContent = "USDC";
+        amount.append(unit);
+        card.append(seal, amount);
+        if (r.note) {
+          const line = document.createElement("p");
+          line.className = "note";
+          line.textContent = `“${plain(r.note)}”`;
+          card.append(line);
+        }
+        const url = location.origin + r.link;
+        const code = document.createElement("code");
+        code.textContent = url;
+        const row = document.createElement("div");
+        row.className = "row";
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.textContent = "copy the link";
+        copy.onclick = async () => {
+          const ok = await copyText(url);
+          copy.textContent = ok ? "copied" : "press and hold to copy";
+          setTimeout(() => (copy.textContent = "copy the link"), 1800);
+        };
+        const open = document.createElement("a");
+        open.href = r.link;
+        open.target = "_blank";
+        open.rel = "noopener";
+        open.textContent = "open it";
+        row.append(copy, open);
+        const mins = Math.max(1, Math.round(Number(r.expires_in || 0) / 60));
+        const lives = mins < 60 ? `${mins} minutes` : `${Math.round(mins / 60)} hours`;
+        const line = document.createElement("p");
+        line.className = "hint";
+        line.textContent = `This link has not been sent to anyone. Copy it and send it yourself. It closes in ${lives}.`;
+        card.append(code, row, line);
+        return card;
+      }
+
+      /* ---------- the three panels ---------- */
+      function addressCard(need) {
+        document.querySelectorAll("form.addrPanel").forEach((el) => el.closest(".msg")?.remove());
+        const form = document.createElement("form");
+        form.className = "panel addrPanel";
+        const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
+        form.innerHTML = `<h4></h4>
+          <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
+          <p class="hint">The address is the one thing a microphone cannot carry. Type or paste it here. Ken will not guess one.</p>
+          <button class="quietBtn" type="button">not now</button>`;
+        const title = form.querySelector("h4");
+        const field = form.querySelector("input");
+        const go = form.querySelector("button.primary");
+        const line = form.querySelector(".hint");
+        title.textContent = need.looksLikeAddress
+          ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
+          : amount
+            ? `keep ${need.who} and send ${amount}`
+            : `the address for ${need.who}`;
+        go.textContent = amount ? `keep it and send ${amount}` : "keep this address";
+        form.querySelector(".quietBtn").onclick = () => {
+          form.closest(".msg")?.remove();
+          call?.say("The user did not type an address, so nothing was kept and no money was sent. Do not pay that person and do not ask again unless they bring it up.");
+        };
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const address = field.value.trim();
+          if (!SUI_ADDRESS.test(address)) {
+            line.textContent = "That is not a full Sui address. A Sui address is 0x followed by 64 hex characters.";
+            line.classList.add("bad");
+            field.focus();
+            return;
+          }
+          go.disabled = true;
+          line.classList.remove("bad");
+          line.textContent = "keeping it…";
+          try {
+            const res = await fetch("/address", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                name: need.looksLikeAddress ? "" : need.who,
+                address,
+                usdc: need.amount ?? undefined,
+                session,
+              }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+            const label = body.named?.alias || "this person";
+            form.closest(".msg")?.remove();
+            const said = body.note || "the address is kept.";
+            if (!call) {
+              const msg = kenMessage(said);
+              const steps = [{ name: "name_a_person", ok: true }];
+              if (body.payment) steps.push({ name: "pay_usdc", ok: true, result: body.payment });
+              else if (body.payment_error) steps.push({ name: "pay_usdc", ok: false, error: body.payment_error });
+              traceInto(msg, steps);
+              thread.appendChild(msg);
+              scroll();
+            }
+            if (body.payment?.awaiting_signature) {
+              signCard();
+              call?.say(`The address for ${label} was typed into the form, the name is saved, and the transfer is now waiting in the ticket under this transcript. Do not call name_a_person, find_person or pay_usdc again. Say one short sentence that it is waiting for their signature.`);
+            } else if (body.payment) {
+              call?.say(`The address for ${label} was typed into the form, the name is saved, and ${body.payment.usdc} USDC was sent and settled on chain. Do not call name_a_person, find_person or pay_usdc again. Say one short sentence that it was sent.`);
+            } else {
+              call?.say(`The address for ${label} was typed into the form and is kept. The name is saved, so do not call name_a_person or find_person for it. Do not ask for it again. Say one short sentence that it is kept.`);
+            }
+          } catch (err) {
+            line.textContent = err.message;
+            line.classList.add("bad");
+            go.disabled = false;
+          }
+        };
+        thread.appendChild(panelMessage(form));
+        scroll();
+        field.focus();
+      }
+
+      function requestCard(need) {
+        document.querySelectorAll("form.reqPanel").forEach((el) => el.closest(".msg")?.remove());
+        const form = document.createElement("form");
+        form.className = "panel reqPanel";
+        form.innerHTML = `<h4></h4>
+          <div class="fields">
+            <label class="lf"><span>amount</span><div class="amount"><input type="text" inputmode="decimal" autocomplete="off" aria-label="amount in USDC"><b>USDC</b></div></label>
+            <label class="lf"><span>the link dies after</span><select aria-label="how long the link lives">
+              <option value="30">30 minutes</option>
+              <option value="120">2 hours</option>
+              <option value="1440">24 hours</option>
+            </select></label>
+            <label class="lf wide"><span>what it is for</span><input type="text" maxlength="90" autocomplete="off" placeholder="optional, one short line" aria-label="what the money is for"></label>
+          </div>
+          <p class="hint">Nothing is made until you press this. The link points at this wallet and only a ${payNet} wallet can pay it${payNet === "mainnet" ? ", in real money" : ", in dust that is worth nothing"}.</p>
+          <div class="row"><button class="primary" type="submit">make the link</button><button class="quietBtn" type="button">not now</button></div>`;
+        const title = form.querySelector("h4");
+        const amount = form.querySelector(".amount input");
+        const term = form.querySelector("select");
+        const whatFor = form.querySelector(".wide input");
+        const go = form.querySelector("button.primary");
+        const line = form.querySelector(".hint");
+        title.textContent = need.usdc ? `a link asking for ${spoken(`${need.usdc} USDC`)}` : "a link asking to be paid";
+        amount.value = need.usdc != null ? String(need.usdc) : "";
+        term.value = String(need.minutes);
+        whatFor.value = need.whatFor;
+        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const usdc = Number(String(amount.value).replace(",", "."));
+          if (!Number.isFinite(usdc) || usdc <= 0) {
+            line.textContent = "A request needs an amount above zero.";
+            line.classList.add("bad");
+            amount.focus();
+            return;
+          }
+          if (usdc > need.maxUsdc) {
+            line.textContent = `One signature here can pay at most ${spoken(`${need.maxUsdc} USDC`)}, so a link above that could never be paid.`;
+            line.classList.add("bad");
+            amount.focus();
+            return;
+          }
+          go.disabled = true;
+          line.classList.remove("bad");
+          line.textContent = "making the link…";
+          try {
+            const res = await fetch("/requests", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ usdc, note: whatFor.value, minutes: Number(term.value), from: "chat", session }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+            const made = body.request;
+            form.closest(".msg")?.remove();
+            const card = panelMessage(requestDone(made));
+            thread.appendChild(card);
+            scroll();
+            call?.say(`A request link was made in the form for ${made.usdc_text} USDC. It has not been sent to anyone, and the person has to copy it and send it. Do not call request_money again. Say one short sentence that the link is ready.`);
+          } catch (err) {
+            line.textContent = err.message;
+            line.classList.add("bad");
+            go.disabled = false;
+          }
+        };
+        thread.appendChild(panelMessage(form));
+        scroll();
+        mountSelect(term).catch(() => null);
+        if (!need.usdc) amount.focus();
+        else whatFor.focus();
+      }
+
+      function signCard() {
+        document.querySelectorAll("form.signPanel").forEach((el) => el.closest(".msg")?.remove());
+        fetch("/pending", { cache: "no-store" })
+          .then((r) => r.json())
+          .then(({ pending }) => {
+            if (!pending) {
+              const msg = kenMessage("the payment is no longer waiting, so there is nothing to sign.");
+              thread.appendChild(msg);
+              scroll();
+              return;
+            }
+            const form = document.createElement("form");
+            form.className = "panel signPanel moss";
+            const amount = document.createElement("div");
+            amount.className = "samount";
+            amount.textContent = spoken(String(pending.usdc));
+            const unit = document.createElement("small");
+            unit.textContent = "USDC";
+            amount.append(unit);
+            form.appendChild(amount);
+
+            if (pending.digest) {
+              const receipt = document.createElement("div");
+              receipt.className = "receipt";
+              const top = document.createElement("div");
+              top.className = "sline";
+              const seal = document.createElement("b");
+              seal.textContent = "settled and read back from the chain";
+              top.append(seal);
+              const code = document.createElement("code");
+              code.textContent = pending.digest;
+              const link = document.createElement("a");
+              const net = String(pending.chain ?? `sui:${payNet}`).split(":").pop();
+              link.href = explorerTx(net, pending.digest);
+              link.target = "_blank";
+              link.rel = "noreferrer";
+              link.textContent = "open on Suiscan ↗";
+              receipt.append(top, code, link);
+              form.append(receipt);
+              thread.appendChild(panelMessage(form));
+              scroll();
+              return;
+            }
+
+            const to = document.createElement("div");
+            to.className = "sline";
+            const toLabel = document.createElement("span");
+            toLabel.textContent = "to";
+            const toWho = document.createElement("b");
+            toWho.textContent = pending.name || shortAddr(pending.to);
+            to.append(toLabel, toWho);
+
+            const from = document.createElement("div");
+            from.className = "sline";
+            const fromLabel = document.createElement("span");
+            fromLabel.textContent = "from";
+            const fromWho = document.createElement("b");
+            fromWho.textContent = shortAddr(pending.sender);
+            from.append(fromLabel, fromWho);
+
+            const acts = document.createElement("div");
+            acts.className = "row";
+            const sign = document.createElement("button");
+            sign.type = "submit";
+            sign.className = "primary";
+            sign.textContent = "Sign in wallet";
+            const elsewhere = document.createElement("a");
+            elsewhere.href = "/pay";
+            elsewhere.className = "quietBtn";
+            elsewhere.textContent = "open the Pay page";
+            const later = document.createElement("button");
+            later.type = "button";
+            later.className = "quietBtn";
+            later.textContent = "not now";
+            later.onclick = () => {
+              form.closest(".msg")?.remove();
+              call?.say("The payment was left unsigned, so no money moved. Do not call pay_usdc again unless they ask for that payment again.");
+            };
+            acts.append(sign, elsewhere, later);
+
+            const line = document.createElement("p");
+            line.className = "hint";
+            line.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
+
+            form.append(to, from, acts, line);
+            form.onsubmit = async (e) => {
+              e.preventDefault();
+              sign.disabled = true;
+              sign.textContent = "check your wallet…";
+              line.className = "hint";
+              line.textContent = "asking the wallet for the account that started this payment";
+              try {
+                const buysFact = !!pending.resource;
+                const signed = buysFact
+                  ? await signX402({
+                      address: pending.sender,
+                      chain: pending.chain,
+                      bytesBase64: pending.bytes,
+                      onStatus: (s) => { line.textContent = s; },
+                    })
+                  : await signAndExecute({
+                      address: pending.sender,
+                      chain: pending.chain,
+                      bytesBase64: pending.bytes,
+                      onStatus: (s) => { line.textContent = s; },
+                    });
+                if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+                line.textContent = buysFact
+                  ? "the wallet signed it. The seller is checking and settling the exact signed payment"
+                  : "the wallet signed it. Reading the chain to check the money arrived";
+                const settledRequest = await fetch("/pending/settle", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify(buysFact ? { bytes: signed.bytes, signature: signed.signature } : { digest: signed.digest }),
+                });
+                const settled = await settledRequest.json();
+                if (!settledRequest.ok) throw new Error(settled.error || `the server answered ${settledRequest.status}`);
+                const done = settled.pending ?? { ...pending, digest: buysFact ? settled.tx : signed.digest };
+                const net = String(done.chain ?? pending.chain ?? `sui:${payNet}`).split(":").pop();
+                const receipt = document.createElement("div");
+                receipt.className = "receipt";
+                const top = document.createElement("div");
+                top.className = "sline";
+                const seal = document.createElement("b");
+                seal.textContent = buysFact ? "paid, and the answer was released" : "settled and read back from the chain";
+                top.append(seal);
+                const code = document.createElement("code");
+                code.textContent = done.digest;
+                const link = document.createElement("a");
+                link.href = explorerTx(net, done.digest);
+                link.target = "_blank";
+                link.rel = "noreferrer";
+                link.textContent = "open on Suiscan ↗";
+                receipt.append(top, code, link);
+                if (buysFact && settled.learned?.note) {
+                  const answer = document.createElement("p");
+                  answer.className = "hint good";
+                  answer.textContent = settled.learned.note;
+                  receipt.append(answer);
+                }
+                acts.remove();
+                line.className = "hint good";
+                line.textContent = buysFact
+                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered.`
+                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent}.`;
+                form.append(receipt);
+                call?.say(
+                  buysFact
+                    ? `The ${done.usdc} USDC payment for a paid lookup was signed in the browser wallet and settled on chain. The answer was: ${settled.learned?.note ?? "released"}. Do not buy that lookup again. Say one short sentence about what it found.`
+                    : `The ${done.usdc} USDC transfer to ${toWho.textContent} was signed in the browser wallet and settled on chain. Do not call pay_usdc again. Say one short sentence that it was sent.`,
+                );
+              } catch (err) {
+                sign.disabled = false;
+                sign.textContent = "Sign in wallet";
+                line.className = "hint bad";
+                line.textContent = err.message;
+              }
+            };
+            thread.appendChild(panelMessage(form));
+            scroll();
+          })
+          .catch((err) => {
+            const msg = kenMessage("the waiting payment could not be read: " + err.message);
+            msg.classList.add("error");
+            thread.appendChild(msg);
+            scroll();
+          });
+      }
+
+      /* ---------- history draws the same turns as the chat page ---------- */
+      function drawTurn(t) {
+        if (t.asked) thread.appendChild(userMessage(t.asked));
+        const msg = kenMessage(t.said || "");
+        traceInto(msg, t.steps || []);
+        for (const s of t.steps || []) {
+          if (!s.ok || s.name !== "pay_usdc") continue;
+          const receipt = receiptLink(s);
+          if (receipt) msg.appendChild(receipt);
+        }
+        const made = (t.steps || []).find((s) => s.name === "request_money" && s.ok && s.result?.link);
+        if (made) msg.appendChild(requestDone(made.result));
+        const report = (t.steps || []).find((s) => s.name === "make_report" && s.ok);
+        if (report) {
+          const line = noteLine("the statement is ready. ");
+          const link = document.createElement("a");
+          link.href = "/report";
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = "open it to keep or print";
+          line.appendChild(link);
+          msg.appendChild(line);
+        }
+        thread.appendChild(msg);
+      }
+
+      function showEmpty() {
+        thread.innerHTML = "";
+        const box = document.createElement("div");
+        box.className = "empty";
+        box.innerHTML = `<div class="mark"><img src="/assets/ken-mark.svg" alt=""></div>
+          <h2>Say what you need.</h2>
+          <p>Ken listens, answers out loud, and keeps the whole conversation in this chat. When it needs your wallet, the form appears here and the microphone goes quiet.</p>`;
+        thread.appendChild(box);
+      }
+
+      async function loadRoom() {
+        try {
+          const chats = await fetch(`/chats${session ? `?session=${encodeURIComponent(session)}` : ""}`, { cache: "no-store" })
+            .then((r) => r.json());
+          session = chats.session || session;
+          const sessions = await fetch(`/sessions${session ? `?session=${encodeURIComponent(session)}` : ""}`, { cache: "no-store" })
+            .then((r) => r.json())
+            .catch(() => null);
+          const mine = (sessions?.sessions || []).find((s) => s.id === session);
+          paintTitle(mine?.title || "Voice call");
+          thread.innerHTML = "";
+          const turns = chats.turns || [];
+          if (!turns.length) showEmpty();
+          else turns.forEach(drawTurn);
+          const last = turns[turns.length - 1];
+          const need = last ? addressNeed(last.steps || []) : null;
+          if (need) addressCard(need);
+          if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
+            fetch("/pending", { cache: "no-store" })
+              .then((r) => r.json())
+              .then(({ pending }) => { if (pending) signCard(); })
+              .catch(() => {});
+          }
+          scroll();
+        } catch {
+          showEmpty();
+          note("The history for this chat could not be read, so the room opened empty. A new call still works.", true);
+        }
+      }
+
+      /* ---------- a live turn is written back to the same thread ---------- */
+      const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false });
+      let turn = freshTurn();
+
+      function ensureKen() {
+        if (!turn.itEl) {
+          const el = kenMessage("");
+          thread.appendChild(el);
+          turn.itEl = el;
+          turn.body = el.querySelector(".kbody");
+        }
+        return turn.itEl;
+      }
+
+      function lineYou(piece) {
+        if (!turn.youEl) {
+          const el = userMessage("");
+          if (turn.itEl) thread.insertBefore(el, turn.itEl);
+          else thread.appendChild(el);
+          turn.youEl = el.querySelector(".bubble");
+        }
+        turn.youEl.textContent = mergeHeard(turn.youEl.textContent, piece);
+        turn.asked = turn.youEl.textContent;
+        follow();
+      }
+
+      function lineKen(piece) {
+        ensureKen();
+        turn.body.textContent = mergeHeard(turn.body.textContent, piece);
+        turn.said = turn.body.textContent;
+        follow();
+      }
+
+      function sealTurn() {
+        if (!turn.itEl || !turn.steps.length || turn.traced) return;
+        traceInto(turn.itEl, turn.steps);
+        turn.traced = true;
+      }
+
+      function flushTurn() {
+        const work = turn;
+        const asked = work.asked.trim();
+        const said = work.said.trim();
+        if (!asked && !said) {
+          turn = freshTurn();
+          return Promise.resolve();
+        }
+        // The next words belong to a new row, so the pointers are cleared before the
+        // write starts. A turn arriving while this one is still in flight can never be
+        // appended to a row that has already been sent.
+        turn = freshTurn();
+        const write = fetch("/live/turn", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ asked, said, steps: work.steps, session }),
+        })
+          .then((r) => r.json())
+          .then((body) => {
+            if (body?.title) paintTitle(body.title);
+            if (body?.session) session = body.session;
+          })
+          .catch(() => {
+            const msg = kenMessage("this part of the call could not be saved. The words are still on screen, and the next turn starts a new row.");
+            msg.classList.add("error");
+            thread.appendChild(msg);
+            follow();
+          });
+        writes.add(write);
+        write.finally(() => writes.delete(write));
+        return write;
+      }
+
+      function onTool(t) {
+        turn.steps.push({
+          name: t.name,
+          ok: !!t.ok,
+          ...(t.error ? { error: String(t.error).slice(0, 300) } : {}),
+          ...(t.result !== undefined ? { result: t.result } : {}),
+        });
+        const host = ensureKen();
+        if (t.name === "pay_usdc" && t.ok && t.result?.digest) {
+          const receipt = receiptLink({ result: t.result });
+          if (receipt) host.appendChild(receipt);
+          follow();
+        }
+        if (t.name === "request_money" && t.ok && t.result?.link) {
+          host.appendChild(requestDone(t.result));
+          follow();
+        }
+        if (t.name === "make_report" && t.ok) {
+          const line = noteLine("the statement is ready. ");
+          const link = document.createElement("a");
+          link.href = "/report";
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = "open it to keep or print";
+          line.appendChild(link);
+          host.appendChild(line);
+          follow();
+        }
+        const need = addressNeed([{ result: t.result }]);
+        if (need) {
+          addressCard(need);
+          return;
+        }
+        const asked = requestNeed([{ result: t.result }]);
+        if (asked) {
+          requestCard(asked);
+          return;
+        }
+        if (t.result?.awaiting_signature) {
+          signCard();
+          return;
+        }
+        if (!t.ok && t.error) {
+          host.appendChild(noteLine(`${String(t.name).replaceAll("_", " ")} failed: ${t.error}`, true));
+          follow();
+        }
+      }
+
+      /* ---------- the call ---------- */
+      const HANGUP = /\b(?:bye|goodbye|hang\s*up|end (?:the )?call|stop (?:the )?call|abort(?: the call)?|cut (?:the )?call|that'?s all)\b/i;
+
+      async function startCall() {
+        if (call || starting || !liveReady) return;
+        starting = true;
+        busyState = "";
+        wave.live();
+        talk.disabled = true;
+        talkLabel.textContent = "Connecting";
+        end.hidden = false;
+        say("connecting");
+        note("asking for the microphone…");
+        const mine = epoch;
+        player = createPlayer(
+          (level) => wave.push(level, "ken"),
+          (shape) => wave.trace(shape, "ken"),
         );
+        let mic;
+        try {
+          mic = await captureMic(
+            (frame) => {
+              const floor = floorIsMine({ barge: false, speaking: player?.speaking, now: Date.now(), tailUntil });
+              tailUntil = floor.tailUntil;
+              // An open form means a keyboard is in use, so the microphone is handed
+              // silence rather than a room that would hear the keys as speech.
+              const typing = !!thread.querySelector("form.panel");
+              call?.push(upstream(frame, floor.open && !typing));
+            },
+            (level) => {
+              // While Ken's own audio is playing the microphone is not the voice
+              // on this strip, so it is dropped to silence rather than left at
+              // whatever level it had when the answer started.
+              wave.push(player?.speaking ? 0 : level, "you");
+            },
+            (shape) => {
+              if (!player?.speaking) wave.trace(shape, "you");
+            },
+          );
+        } catch (err) {
+          player?.close();
+          player = null;
+          starting = false;
+          wave.idle();
+          talk.disabled = false;
+          talkLabel.textContent = "Start the call";
+          end.hidden = true;
+          say("no microphone", "bad");
+          note(err?.name === "NotAllowedError" ? "The microphone was declined. Allow it in the browser and press start again." : err.message, true);
+          return;
+        }
+        // A hang up pressed while the permission prompt was still up has already
+        // ended this attempt, so the stream is handed straight back.
+        if (mine !== epoch) {
+          mic();
+          player?.close();
+          player = null;
+          starting = false;
+          wave.idle();
+          return;
+        }
+        stopMic = mic;
         call = openLive({
-          voice: $("voices").value,
+          voice: inputVoice.value,
+          session,
           onOpen: (model, voice) => {
-            status("on a live call", true);
-            $("talk").textContent = "On the line";
-            $("talk").classList.add("listening");
-            // Named out loud because the picker above lists three vendors and this socket
-            // can only ever speak as one of Google's names. Saying which one is in charge
-            // is the difference between a labelled product and a mystery.
-            liveVoice = voice || "its own";
-            fineprint(`the call runs on ${model}, speaking as ${liveVoice}`);
+            starting = false;
+            spokenAs = voice || "";
+            wave.live();
+            say("listening", "live");
+            talk.hidden = true;
+            talk.disabled = false;
+            end.hidden = false;
+            note(`${model || "the live model"}, speaking as ${voice || "its own voice"}. Speak normally.`);
           },
           onHeard: (piece) => {
-            liveLine("you", piece);
-            status("hearing you", true);
+            busyState = "";
+            lineYou(piece);
+            if (HANGUP.test(turn.asked)) {
+              note("You said goodbye, so the call ended.");
+              endCall();
+            }
           },
-          onSaid: (piece) => liveLine("it", piece),
-          onTool: (t) => {
-            caption("tool", `${t.name} ${t.ok ? "answered" : `failed, ${t.error}`}`);
-            status(t.ok ? `reading ${t.name}` : "a tool failed", false);
+          onSaid: (piece) => {
+            busyState = "";
+            lineKen(piece);
           },
-          onActivity: (type) => {
-            if (type !== "ACTIVITY_START") return;
-            if (!barge) return;
-            // Only a caller who is actually upstream can have started this. With the gate
-            // shut the model is being handed silence, so an activity event here would be
-            // its own voice coming back through the room, and cutting the answer off for
-            // that is how the call ended up arguing with itself.
-            player?.interrupt();
-            call?.hold();
-            lineIt = null;
-            status("you have the floor", true);
+          onAudio: (pcm, rate) => {
+            player?.feed(pcm, rate);
           },
+          onToolStart: (t) => {
+            if (!["pay_usdc", "paid_lookup", "open_paid_link", "verify_payment"].includes(t.name)) return;
+            busyState = t.name === "pay_usdc" || t.name === "paid_lookup" ? "waiting for the chain" : "checking the chain";
+            say(busyState, "wait");
+          },
+          onTool,
           onTurn: () => {
-            resetLines();
-            status("listening", true);
+            busyState = "";
+            sealTurn();
+            flushTurn();
+            say("listening", "live");
           },
           onError: (message) => {
-            status("the call had a problem", false);
-            fineprint(message);
+            say("the call had a problem", "bad");
+            note(message, true);
           },
           onClose: (reason) => {
-            status("the call ended", false);
-            fineprint(`the live socket closed, ${reason}`);
+            note(reason ? `The call closed: ${reason}. The transcript is still here.` : "The call closed. The transcript is still here.");
+            endCall(true);
           },
         });
       }
 
-      function endLive() {
-        stopLiveMic?.();
-        stopLiveMic = null;
-        call?.hangup();
+      async function endCall(stay) {
+        if (ending) return;
+        ending = true;
+        epoch++;
+        const socket = call;
         call = null;
+        stopMic?.();
+        stopMic = null;
         player?.close();
         player = null;
-        resetLines();
+        wave?.idle();
+        starting = false;
+        busyState = "";
+        spokenAs = "";
+        talk.hidden = false;
+        talk.disabled = false;
+        talkLabel.textContent = "Start the call";
+        end.hidden = true;
+        say("not started");
+        sealTurn();
+        await flushTurn();
+        // A finished turn is written by a request that may still be in flight when the
+        // call ends, so the room waits for those rows before it tells the parent to go.
+        await Promise.allSettled([...writes]);
+        await socket?.hangup();
+        ending = false;
+        if (embed && !stay) parent.postMessage({ type: "ken:voice-closed" }, location.origin);
       }
 
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      let rec = null;
-      let open = false;
-
-      function listen() {
-        if (!rec) return;
-        try {
-          rec.start();
-        } catch {
-          /* already running */
-        }
-      }
-
-      function buildRec() {
-        rec = new SR();
-        rec.lang = langSetting();
-        rec.continuous = false;
-        rec.interimResults = false;
-        rec.onresult = async (e) => {
-          const heard = e.results[0][0].transcript;
-          caption("you", heard);
-          status("thinking", false);
-          const pending = caption("it pending", "…");
-          try {
-            const answer = await transport.ask(heard);
-            pending.textContent = answer;
-            pending.classList.remove("pending");
-            say(answer);
-          } catch (err) {
-            pending.className = "cap";
-            pending.textContent = err.message;
-            status("stuck", false);
-          }
-          if (open) setTimeout(listen, 900);
-        };
-        rec.onerror = (e) => {
-          if (e.error !== "no-speech") status("microphone: " + e.error, false);
-        };
-        rec.onend = () => {
-          if (open) status("listening", true);
-        };
-      }
-
-      // Picking a language during a call has to reach the microphone now, not the next one.
-      function restartRec() {
-        if (!open || !SR || transport.live) return;
-        try {
-          rec?.abort();
-        } catch {
-          /* not running */
-        }
-        buildRec();
-        listen();
-      }
-
-      $("talk").onclick = async () => {
-        if (transport.live) {
-          if (!call) {
-            open = true;
-            $("stop").disabled = false;
-            status("connecting", true);
-            try {
-              await liveCall();
-            } catch (err) {
-              endLive();
-              transport.live = false;
-              open = false;
-              $("stop").disabled = true;
-              status("no live call", false);
-              const why = err?.name === "NotAllowedError" ? "the microphone was declined" : err.message;
-              fineprint(`${why}, so this page fell back to one turn at a time`);
-            }
-            return;
-          }
-          // Tapping the button on a live call is the manual version of talking over it.
-          player?.interrupt();
-          return;
-        }
-        if (!SR) {
-          status("this browser has no speech recognition");
-          return;
-        }
-        if (!open) {
-          open = true;
-          $("stop").disabled = false;
-          $("talk").textContent = "Listening";
-          $("talk").classList.add("listening");
-          status("connected", true);
-          await meter().catch(() => status("microphone blocked", false));
-          buildRec();
-          listen();
-        } else {
-          const barge = $("talk").classList.contains("listening");
-          if (barge) {
-            rec.stop();
-            $("talk").textContent = "Tap to speak";
-          } else {
-            // Talking over the agent has to silence it now, or the microphone hears
-            // its own answer and the turn comes back garbled.
-            hush();
-            wave.idle();
-            listen();
-            $("talk").textContent = "Listening";
-          }
-          $("talk").classList.toggle("listening", !barge);
-        }
+      talk.onclick = () => startCall();
+      $("closeRoom").onclick = () => endCall();
+      end.onclick = () => {
+        note("The call ended. Every finished turn is saved in this chat.");
+        endCall();
       };
 
-      $("stop").onclick = () => {
-        open = false;
-        if (transport.live) endLive();
-        else {
-          rec?.abort?.();
-          hush();
-          stopMeter();
-        }
-        $("talk").textContent = "Start call";
-        $("talk").classList.remove("listening");
-        $("stop").disabled = true;
-        status("not connected", false);
-      };
+      // The parent closes this sheet, and it asks first so the last words are written
+      // before the document goes away. The parent waits on the answer and keeps a timer.
+      window.addEventListener("message", (e) => {
+        if (e.origin !== location.origin) return;
+        if (e.data?.type === "ken:voice-close") endCall();
+      });
 
-      mountWallet(loadMeta);
+      /*
+       * A tab closed from the browser's own chrome gets no chance to await a write, so
+       * the unfinished turn is handed to the beacon queue, which outlives the page.
+       */
+      window.addEventListener("pagehide", () => {
+        const asked = turn.asked.trim();
+        const said = turn.said.trim();
+        if (!asked && !said) return;
+        const blob = new Blob([JSON.stringify({ asked, said, steps: turn.steps, session })], { type: "application/json" });
+        navigator.sendBeacon("/live/turn", blob);
+        turn = freshTurn();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && call) {
+          note("The call ended. Every finished turn is saved in this chat.");
+          endCall();
+        }
+      });
+
+      // The state line follows the room, not a timer, so "speaking" appears when there
+      // is audio and "listening" appears when there is not.
+      setInterval(() => {
+        if (!call || busyState) return;
+        say(player?.speaking ? "speaking" : "listening", "live");
+      }, 400);
+
+      /* ---------- boot ---------- */
+      const VOICES = ["Kore", "Puck", "Charon", "Fenrir", "Leda"];
+
+      function fillVoices(defaultName) {
+        inputVoice.innerHTML = VOICES.map((v) => `<option value="${v}">${v}</option>`).join("");
+        const saved = localStorage.getItem("tr.liveVoice") || "";
+        inputVoice.value = VOICES.includes(saved)
+          ? saved
+          : VOICES.includes(defaultName)
+            ? defaultName
+            : "Kore";
+      }
+
+      /**
+       * The widget copies the options when it mounts, so a server default that arrives
+       * later would otherwise be pushed onto a select that already holds a copy. A
+       * rebuild is the only sync that leaves exactly one option per voice.
+       */
+      async function resetVoices(defaultName) {
+        inputVoice.__paper?.destroy();
+        delete inputVoice.__paper;
+        fillVoices(defaultName);
+        await mountSelect(inputVoice).catch(() => null);
+      }
+
+      inputVoice.addEventListener("change", () => {
+        localStorage.setItem("tr.liveVoice", inputVoice.value);
+        note(call ? `The voice changes on the next call. This one is speaking as ${spokenAs || "its own voice"}.` : `Ken will speak as ${inputVoice.value}.`);
+      });
+
       async function boot() {
-        // The server answers whether it has a model voice and whether it can hold a
-        // live socket, and both decide what the call button actually starts.
-        const body = await loadMeta();
-        transport.live = !!body?.live?.enabled;
-        // Named before the call even opens, so the page states the voice it is going to
-        // pin rather than leaving it as a surprise the first time it speaks.
-        liveVoice = body?.live?.voice || "";
-        fillVoices();
-        fineprint(transport.live || !body?.live?.why ? "" : `${body.live.why}, so this call runs one turn at a time`);
+        wave = createWave($("wave"));
+        wave.idle();
+        fillVoices("Kore");
+        await mountSelect(inputVoice).catch(() => null);
+        let meta = null;
+        try {
+          meta = await fetch("/state", { cache: "no-store" }).then((r) => r.json());
+          network = meta?.session?.network || "mainnet";
+          payNet = meta?.pay_network === "testnet" ? "testnet" : "mainnet";
+          const live = meta?.live;
+          await resetVoices(live?.voice || "Kore");
+          liveReady = !!live?.enabled;
+          if (!liveReady) {
+            talk.disabled = true;
+            talkLabel.textContent = "Voice is off";
+            say("voice is off", "bad");
+            note(live?.why ? `${live.why}. The chat page still works.` : "The server has no live voice key, so this room cannot open a call.", true);
+          }
+        } catch {
+          note("The server could not be read, so the call may not open. Starting it will try anyway.", true);
+        }
+        await loadRoom();
+        if (!liveReady) return;
+        note("The microphone opens only when you press start.");
       }
-      boot();
-      function fineprint(note) {
-        const name = $("lang").selectedOptions[0]?.textContent ?? "English";
-        const r = remoteSpeech();
-        const picked = r.voices.find((v) => v.id === gvoiceSetting());
-        const said = lastMouth?.id ? r.voices.find((v) => v.id === lastMouth.id) : null;
-        const out = (r.providers ?? []).find((p) => p.id === picked?.provider && p.resting);
-        const mouth = transport.live
-          ? `on a live call it speaks as ${liveVoice || "one pinned voice"}, and ${
-              barge
-                ? "you can talk over it. That only works on headphones, because on a speaker its own sentence comes back as your voice"
-                : "it is deaf while it talks, on purpose, so its own voice cannot come back to it as yours"
-            }. These pickers govern the turn by turn path`
-          : r.enabled
-            ? lastMouth?.id
-              ? `last sentence spoken by ${lastMouth.id.split(":")[0]}${said ? ` (${said.label})` : ""} in ${lastMouth.ms} ms`
-              : out
-                ? `voice set to ${picked.label}, but ${out.id} is resting, ${out.resting}, so the next sentence comes from whoever answers`
-                : `voice set to ${picked?.label ?? gvoiceSetting()} on ${r.model}, waiting for a sentence`
-            : "the voice is this browser's own, because no model voice key is set";
-        const mode = transport.live
-          ? barge
-            ? "live audio, talk over it whenever you want"
-            : "live audio, and it waits for you to finish"
-          : "one turn at a time, because this server has no live call key";
-        $("fineprint").textContent = note
-          ? `${note}. ${mouth}. listening in ${name.toLowerCase()}`
-          : `${mode}. ${mouth}. listening in ${name.toLowerCase()}, and the sentences it says back are written in english until the model writes otherwise`;
-      }
-      fineprint();
+
+      if (embed) boot();
     </script>
   </body>
 </html>

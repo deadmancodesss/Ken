@@ -2,133 +2,323 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pay · Total Recall</title>
+    <title>Pay · Ken</title>
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <link rel="stylesheet" href="/theme.css" />
     <style>
-      main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
-      .wrap { max-width: 520px; margin: 0 auto; }
-      h1 { font-size: var(--step-3); margin-bottom: 8px; }
-      .intro { color: var(--ink-2); margin-bottom: 30px; }
+      /* One shell with the masthead and the landing, and the work laid out in rows of
+         two. The page used to be a single 520px column carrying a ticket, two forms, a
+         drawing and two explanations one under the other, so the thing you were there
+         to do sat at the top and everything that explained it was forty scrolls down. */
+      main { flex: 1; overflow-y: auto; }
+      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad) clamp(34px, 6vh, 70px); }
+      .band { position: relative; padding: clamp(28px, 3vw, 44px) 0; }
+      .band::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
+      .band:last-of-type::after { display: none; }
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 14px; }
+      h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.02em; margin: 0 0 10px; max-width: 22ch; }
+      h1 { font-size: clamp(28px, 3.4vw, 36px); line-height: 1.08; }
+      h2 { font-size: clamp(24px, 2.5vw, 30px); line-height: 1.1; }
+      .lead { color: var(--ink-2); max-width: 52ch; margin: 0 0 22px; }
+      .note { margin-top: 16px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
 
-      .amount { font: 400 var(--step-6)/1.05 var(--serif); letter-spacing: -0.02em; }
-      .amount small { font-size: var(--step-2); color: var(--ink-2); }
-      .ticket { border: 1px solid var(--rule-strong); border-radius: 10px; padding: 26px; }
-      .ticket .to { margin-top: 14px; }
-      .ticket .to b { font-weight: 400; }
-      .terms { margin: 22px 0 0; padding: 18px 0 0; border-top: 1px solid var(--rule); display: grid; gap: 12px; }
+      /* ---------- the ticket ----------
+         The live object, and the only thing on this page that can be true or false. It
+         gets the wider leaf of the opening spread and the largest number on the page. */
+      .pane { border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 18px 20px 20px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .pane > .label { margin-bottom: 14px; }
+      .amount { font: 400 clamp(34px, 4vw, 50px)/1.02 var(--serif); letter-spacing: -0.02em; }
+      .amount small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .ticket .to { margin-top: 8px; font-size: var(--step-1); color: var(--ink-2); }
+      .ticket .to b { font-weight: 400; color: var(--ink); }
+      .terms { margin: 18px 0 0; padding: 14px 0 0; border-top: 1px solid var(--rule); display: grid; gap: 9px; }
       .terms div { display: flex; gap: 14px; align-items: baseline; }
-      .terms dt { flex: 0 0 108px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
-      .terms dd { font: var(--step-0)/1.5 var(--mono); color: var(--ink); word-break: break-all; }
-      .warn { margin-top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--brick); }
-      .actions { display: flex; gap: 12px; margin-top: 26px; }
-      .actions button { flex: 1; }
+      .terms dt { flex: 0 0 96px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .terms dd { font: var(--step--1)/1.6 var(--mono); color: var(--ink); word-break: break-all; margin: 0; min-width: 0; }
+      .warn { margin-top: 16px; padding-left: 12px; border-left: 3px solid var(--brick); font: var(--step--1)/1.6 var(--mono); color: var(--brick); }
+      /* A cancel is a small act and a signature is the large one, so they are not the
+         same width. Stretching both to fill the pane is how a page ends up with two
+         identical buttons doing opposite things. */
+      .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+      .actions button { font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; padding: 12px 16px; }
+      .actions button.primary { flex: 1 1 170px; max-width: 260px; }
+      .actions button:not(.primary) { flex: 0 0 auto; }
       .done { color: var(--moss); }
-      .none { border: 1px dashed var(--rule-strong); border-radius: 10px; padding: 30px; text-align: center; color: var(--ink-3); }
-      .none h2 { font-size: var(--step-2); color: var(--ink); margin-bottom: 10px; }
-      .none p { color: var(--ink-2); max-width: 44ch; margin: 0 auto 20px; }
+
+      /* The ticket always lives inside a pane, so the empty state is the pane's own
+         content rather than a second box drawn inside the first. */
+      .none { padding: 4px 0 0; }
+      .none h2 { font-size: var(--step-2); color: var(--ink); margin-bottom: 8px; max-width: none; }
+      .none p { color: var(--ink-2); max-width: 46ch; margin: 0 0 18px; font-size: var(--step-0); }
+      .none button { font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; }
+
+      /* The receipt is the paper after the signature. It keeps the full digest, because
+         fourteen characters is enough to recognise a payment and useless for checking
+         one, and it hands over both the copy and the explorer so a person can choose. */
+      .rcp { margin-top: 20px; border-top: 1px dashed var(--rule-strong); padding-top: 18px; }
+      .rcp-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+      .rcp-seal { display: inline-block; padding: 6px 12px; border: 2px solid var(--moss); border-radius: 5px; color: var(--moss); font: var(--step--1)/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; transform: rotate(-4deg); }
+      .rcp-amt { font: 400 var(--step-3)/1 var(--serif); letter-spacing: -0.02em; }
+      .rcp-amt small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
+      .rcp-to { margin: 6px 0 14px; color: var(--ink-2); font-size: var(--step-0); }
+      .rcp-digest { background: var(--paper-sunk); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 13px 14px; display: grid; gap: 8px; }
+      .rcp-digest code { font: var(--step--1)/1.65 var(--mono); word-break: break-all; color: var(--ink); }
+      .rcp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+      .rcp-actions .chip { display: inline-flex; align-items: center; padding: 7px 12px; color: var(--ink-2); border-bottom: 0; }
+      .rcp-actions .chip:hover { color: var(--ink); border-bottom: 0; }
+
+      /* ---------- the two ways to make a ticket ----------
+         Side by side because they are alternatives, not steps. Each one is a pane with
+         its own heading, so neither reads as a continuation of the other. */
+      .forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+      @media (max-width: 900px) { .forms { grid-template-columns: minmax(0, 1fr); } }
+      .field { display: grid; gap: 7px; margin-bottom: 14px; }
+      .field > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .money { display: flex; align-items: baseline; gap: 8px; }
+      .money input { flex: 1; min-width: 0; }
+      .money b { font: var(--step-0)/1 var(--mono); color: var(--ink-2); font-weight: 400; }
+      .hint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); margin: 0 0 14px; }
+      .hint.bad { color: var(--brick); }
+      .hint.good { color: var(--moss); }
+      .pane form > button { font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; }
+      .fine { margin: 14px 0 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); max-width: 62ch; }
+
+      /* The five places a payment can be. Only one frame is ever shown, and the page
+         puts it there from the real ticket, so the bars are a readout rather than a
+         control you are expected to play with. */
+      .flow .frame .label { margin-bottom: 8px; }
+      .flow .frame p { color: var(--ink-2); font-size: var(--step-0); max-width: 46ch; }
+      .rules { margin-top: 20px; }
+      @media (max-width: 960px) { .split .rules { margin-top: 0; } }
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">nothing leaves until you sign it</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay" aria-current="page">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
-      <div class="wrap" id="root"><div class="none">reading…</div></div>
-
-      <div class="wrap" style="padding-bottom:60px">
-        <figure class="plate narrow">
-          <img src="/assets/wallet-seal.webp" width="900" height="900" loading="lazy" decoding="async" alt="A woman pressing a wax seal onto a document while a small robot stands back with both hands raised and a purse hangs out of reach" />
-          <figcaption>The robot has both hands where she can see them and the purse is out of reach, which is the whole security model of this page drawn once instead of explained four times.</figcaption>
-        </figure>
-        <div class="band" style="border-top:1px solid var(--rule);padding-top:30px">
-          <div class="label">Where this payment actually is</div>
-          <div class="cycle" data-manual id="flow">
-            <div class="frames">
-              <div class="frame on">
-                <div class="label">Nothing has been asked</div>
-                <p>Ask for a payment on the Talk page and the agent builds the transaction here, then stops. There is
-                no queue and no retry. If you never sign, nothing left your wallet and nothing was written down.</p>
-              </div>
-              <div class="frame">
-                <div class="label">Held on this page</div>
-                <p>A complete Sui transaction, waiting in one slot. Asking for a second payment replaces this one
-                rather than leaving two unsigned tickets stacked up for you to sign by accident.</p>
-              </div>
-              <div class="frame">
-                <div class="label">In your wallet now</div>
-                <p>The extension, not this page, is showing the amount and the address. This server holds the bytes
-                and never your key, so cancelling there is the same as cancelling here.</p>
-              </div>
-              <div class="frame">
-                <div class="label">Being read off the chain</div>
-                <p>The digest your wallet reports is re-read from the network and checked for exactly that amount
-                leaving your address and arriving at that one. This page does not get to decide that it worked.</p>
-              </div>
-              <div class="frame">
-                <div class="label">Written to memory</div>
-                <p>Only after the chain agrees does the payment become a line on the Memory page. From then on the
-                agent answers about it from Walrus, and the chain is not read again for the same question.</p>
-              </div>
+      <div class="wrap">
+        <div class="band">
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">Pay</div>
+              <h1>Nothing leaves until your own wallet signs</h1>
+              <p class="lead">
+                This page can build a complete Sui transaction and it can wait. It cannot finish one. Your key never
+                comes near this server, so refusing is always available and always final.
+              </p>
+              <p class="note">the ticket on the right is the real pending payment for this seat, read from the server the agent answers from.</p>
             </div>
-            <div class="bars"><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="split-visual">
+              <div class="pane" id="root"><div class="none">reading…</div></div>
+            </div>
           </div>
-          <p class="quiet" style="margin:14px 0 0">this panel moves with the real ticket on this page, and nothing else.</p>
         </div>
 
-        <div class="band" style="border-top:1px solid var(--rule);padding-top:30px">
-          <div class="label">What this page does and does not do</div>
-          <div class="steps reveal" style="margin-bottom:20px">
-            <div><span class="num">1</span><div><h4>The agent prepares, it does not send</h4><p>The bytes on this ticket are a complete transaction. Nothing has left your wallet until you sign.</p></div></div>
-            <div><span class="num">2</span><div><h4>Your extension signs, or nothing happens</h4><p>Cancel and the ticket empties. No memory is written, no money moves, and the agent is told you refused.</p></div></div>
-            <div><span class="num">3</span><div><h4>The chain decides whether it counts</h4><p>The digest you report is re-read from the network. If the amount did not arrive at that address, the page says so rather than pretending.</p></div></div>
-            <div><span class="num">4</span><div><h4>A payment that bought a name is journalled</h4><p>If money moves and the index does not hand the fact over, the next ask retries that same receipt instead of sending you after a second payment.</p></div></div>
+        <div class="band">
+          <div class="label">Two ways to make a ticket, and neither one sends anything</div>
+          <div class="forms">
+            <div class="pane">
+              <div class="label">Send to a person</div>
+              <form id="sendForm">
+                <label class="field">
+                  <span>To</span>
+                  <input type="text" id="to" list="people" placeholder="a name you have taught, or a full 0x address" autocomplete="off" spellcheck="false" />
+                  <datalist id="people"></datalist>
+                </label>
+                <label class="field">
+                  <span>Amount</span>
+                  <div class="money">
+                    <input type="text" id="amt" inputmode="decimal" value="1" autocomplete="off" />
+                    <b>USDC</b>
+                  </div>
+                </label>
+                <p class="hint" id="sendHint">reading your balance…</p>
+                <button type="submit" class="primary" id="sendGo">Prepare the payment</button>
+              </form>
+              <p class="fine">A name that has never been taught is refused rather than guessed at.</p>
+            </div>
+
+            <div class="pane">
+              <div class="label">Check a payment somebody claims</div>
+              <form id="verifyForm">
+                <label class="field">
+                  <span>Digest</span>
+                  <input type="text" id="digest" placeholder="the base58 transaction digest you were handed" autocomplete="off" spellcheck="false" />
+                </label>
+                <p class="hint" id="verifyHint">reading the price…</p>
+                <button type="submit" class="primary" id="verifyGo">Ask the chain</button>
+              </form>
+              <p class="hint good" id="verifyAnswer" hidden></p>
+              <p class="fine">Nothing here is looked up in this server's own records. The question goes to the chain, and the cent you sign pays for that read. A digest that never settled is an answer rather than an error, because "nothing with that digest exists" is the thing you paid to find out.</p>
+            </div>
           </div>
-          <div class="traffic"><i></i><i></i></div>
-          <div class="ends"><div><b>this page</b><span>holds the bytes</span></div><div style="text-align:right"><b>your wallet</b><span>holds the key</span></div></div>
-          <p class="quiet" style="margin-top:20px">no secret of yours is stored on this server, and the demo wallet is a scripted stand-in. <a href="/how">The safety rules in full</a></p>
+        </div>
+
+        <div class="band">
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">The trail</div>
+              <h2>Where this payment actually is</h2>
+              <p class="lead">Five places, and this panel sits on the right one because it is read from the ticket, not from a timer.</p>
+              <p class="note">ask for a second payment and it replaces the one held here rather than stacking a second unsigned ticket behind it.</p>
+            </div>
+            <div class="split-visual flow">
+              <div class="cycle" data-manual id="flow">
+                <div class="frames">
+                  <div class="frame on">
+                    <div class="label">Nothing has been asked</div>
+                    <p>Ask for a payment on the Chat page and the agent builds it here, then stops. If you never sign, nothing left your wallet and nothing was written down.</p>
+                  </div>
+                  <div class="frame">
+                    <div class="label">Held on this page</div>
+                    <p>A complete transaction waiting in one slot, with your address on it and no signature.</p>
+                  </div>
+                  <div class="frame">
+                    <div class="label">In your wallet now</div>
+                    <p>The extension, not this page, is showing the amount and the address. Cancelling there is the same as cancelling here.</p>
+                  </div>
+                  <div class="frame">
+                    <div class="label">Being read off the chain</div>
+                    <p>The digest is re-read from the network and checked for that amount leaving your address and arriving at that one. This page does not get to decide it worked.</p>
+                  </div>
+                  <div class="frame">
+                    <div class="label">Written to memory</div>
+                    <p>Only after the chain agrees does the payment become a line on the Memory page, and the same question never reads the chain again.</p>
+                  </div>
+                </div>
+                <div class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="band">
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">The rules</div>
+              <h2>What this page does and does not do</h2>
+              <div class="steps reveal rules">
+                <div><span class="num">1</span><div><h4>Prepares, never sends</h4><p>Nothing has left your wallet until you sign.</p></div></div>
+                <div><span class="num">2</span><div><h4>Your extension signs, or nothing happens</h4><p>Cancel and the ticket empties. The agent is told you refused.</p></div></div>
+                <div><span class="num">3</span><div><h4>The chain decides whether it counts</h4><p>If the amount did not arrive at that address, the page says so.</p></div></div>
+                <div><span class="num">4</span><div><h4>A payment that bought a name is journalled</h4><p>The next ask retries the same receipt instead of chasing a second payment.</p></div></div>
+              </div>
+              <div class="traffic"><i></i><i></i></div>
+              <div class="ends"><div><b>this page</b><span>holds the bytes</span></div><div style="text-align:right"><b>your wallet</b><span>holds the key</span></div></div>
+              <p class="note">no secret of yours is stored on this server, and the demo wallet is a scripted stand-in. <a href="/how">The safety rules in full</a></p>
+            </div>
+            <figure class="plate narrow split-visual">
+              <img src="/assets/wallet-seal.webp" width="900" height="900" loading="lazy" decoding="async" alt="A woman pressing a wax seal onto a document while a small robot stands back with both hands raised and a purse hangs out of reach" />
+              <figcaption>Both hands where she can see them, and the purse out of reach. That is the whole security model, drawn once instead of explained four times.</figcaption>
+            </figure>
+          </div>
         </div>
       </div>
     </main>
 
     <script type="module">
-      import { $, mountWallet, loadMeta, shortAddr, spoken, plain, reveal, pinCycle } from "./shared.js";
+      import { $, mountWallet, mountNetwork, loadMeta, shortAddr, spoken, plain, reveal, pinCycle, explorerTx, copyText, payChain, payNetwork } from "./shared.js";
       reveal();
-      import { signAndExecute } from "./wallet.js";
+      import { signAndExecute, signX402 } from "./wallet.js";
 
       const flow = () => document.getElementById("flow");
 
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+      let priced = false;
+
+      /**
+       * The one thing this page can hand a person after a payment: a string the chain
+       * knows and a door to the page that shows it. The amount and the recipient are
+       * repeated here rather than left in the ticket above, so a screenshot of the
+       * receipt is a complete record and not half of one.
+       */
+      function receipt(p, person) {
+        const net = String(p.chain ?? payChain()).split(":").pop();
+        return `<div class="rcp">
+          <div class="rcp-top"><span class="rcp-seal">paid</span><span class="quiet">settled and read back from the chain</span></div>
+          <div class="rcp-amt">${esc(spoken(String(p.usdc)))} <small>USDC</small></div>
+          <div class="rcp-to">to ${esc(person?.alias ?? shortAddr(p.to))} · ${esc(shortAddr(p.to))}</div>
+          <div class="rcp-digest">
+            <div class="quiet">transaction digest</div>
+            <code>${esc(p.digest)}</code>
+            <div class="rcp-actions">
+              <button class="chip" id="copyDigest" type="button">copy digest</button>
+              <a class="chip" href="${explorerTx(net, p.digest)}" target="_blank" rel="noopener">open on Suiscan ↗</a>
+            </div>
+          </div>
+        </div>`;
+      }
 
       async function state() {
         const [pend, st] = await Promise.all([
@@ -146,9 +336,11 @@
           root.innerHTML =
             `<div class="none"><h2>Nothing waiting for a signature</h2>` +
             `<p>${demo
-              ? "Right now the agent is narrating its own demo wallet, which spends without asking because the money is worthless testnet dust. Connect a wallet above and every payment starts here instead."
-              : "Ask the agent for a payment on the Talk page and it lands here for you to sign."}</p>` +
-            `<a href="/app"><button class="primary">Go to Talk</button></a></div>`;
+              ? payNetwork() === "testnet"
+                ? "Right now the agent is narrating its own demo wallet, which spends without asking because the money is worthless testnet dust. Connect a wallet above and every payment starts here instead."
+                : "Right now the agent is narrating its own demo wallet, and on mainnet it will not sign a payment of its own because that money is real. Connect a wallet above and every payment starts here instead."
+              : "Say it to the agent on the Chat page, or fill the box under this one. Either way the payment lands here first and waits for your signature."}</p>` +
+            `<a href="/app"><button class="primary">Go to Chat</button></a></div>`;
           return;
         }
 
@@ -156,7 +348,7 @@
         const party = st.parties?.find((x) => x.address.toLowerCase() === p.to.toLowerCase());
         root.innerHTML =
           `<div class="ticket">
-             <div class="label">Waiting for your signature</div>
+             <div class="label">${p.digest ? "Settled on chain" : "Waiting for your signature"}</div>
              <div class="amount">${esc(spoken(String(p.usdc)))} <small>USDC</small></div>
              <div class="to">to <b>${esc(person?.alias ?? shortAddr(p.to))}</b>${person?.note ? ` <span class="quiet">${esc(plain(person.note))}</span>` : ""}</div>
              <dl class="terms">
@@ -164,13 +356,25 @@
                <div><dt>from</dt><dd>${esc(shortAddr(p.sender))}</dd></div>
                <div><dt>paid before</dt><dd>${party ? esc(spoken(party.net + " " + party.asset) + " over " + party.flows + " payments") : "never, this is the first"}</dd></div>
              </dl>
-             ${p.digest ? `<div class="warn done">settled ${esc(p.digest.slice(0, 14))}…</div>` : ""}
+             ${p.digest ? receipt(p, person) : ""}
              ${!person ? '<div class="warn">you have never named this address. If you do not recognise it, cancel.</div>' : ""}
            </div>
            <div class="actions">
              <button id="cancel">Cancel</button>
              <button id="sign" class="primary" ${p.digest ? "disabled" : ""}>${p.digest ? "Settled" : "Sign in wallet"}</button>
-           </div>`;
+           </div>
+           <div class="warn" id="signWarn" hidden></div>`;
+
+        const copy = $("copyDigest");
+        if (copy) {
+          copy.onclick = async () => {
+            const ok = await copyText(p.digest);
+            copy.textContent = ok ? "copied" : "press and hold the digest";
+            setTimeout(() => {
+              copy.textContent = "copy digest";
+            }, 1800);
+          };
+        }
 
         // Cancelling only empties this ticket, and render() already has the state it
         // needs, so it redraws from what is in hand. Re-reading /state made the page
@@ -183,31 +387,53 @@
         };
         $("sign").onclick = async () => {
           const btn = $("sign");
+          const warn = $("signWarn");
+          // One place for the reason, emptied before every attempt, so pressing again
+          // rewrites the sentence instead of stacking a column of them under the ticket.
+          warn.hidden = true;
+          warn.textContent = "";
           btn.disabled = true;
           btn.textContent = "check your wallet…";
           pinCycle(flow(), 2);
           try {
-            const res = await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
-            if (!res.digest) throw new Error("the wallet returned no transaction digest");
+            // A receipt check is a paid fact, so the wallet signs and stops. The
+            // index's facilitator settles the exact bytes it was shown.
+            const buysFact = !!p.resource;
+            const signed = buysFact
+              ? await signX402({ address: p.sender, chain: p.chain, bytesBase64: p.bytes })
+              : await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
+            if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
             pinCycle(flow(), 3);
             const settled = await fetch("/pending/settle", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ digest: res.digest }),
+              body: JSON.stringify(buysFact ? { bytes: signed.bytes, signature: signed.signature } : { digest: signed.digest }),
             }).then((r) => r.json());
             // The answer already says whether the chain agreed, so show that at once
             // instead of waiting on a full re-read to notice the ticket changed.
             if (settled.error) throw new Error(settled.error);
             render(settled.pending ?? p, st);
             loadMeta();
+            // The signature moved coins in this very wallet, so the amount printed
+            // under the ticket has to be read again or it shows the balance from
+            // before the transfer the person just approved.
+            balance();
+            // A ticket that bought an answer from the paid index has to show that
+            // answer where it was asked for, or the cent looks like it bought nothing.
+            // Only for this panel's own ticket, or a name bought by the agent would
+            // print under a question about a transaction.
+            const box = $("verifyAnswer");
+            if (box && p.resource?.startsWith("receipt:") && settled.learned?.note) {
+              box.hidden = false;
+              box.className = "hint good";
+              box.textContent = settled.learned.note;
+            }
           } catch (err) {
             pinCycle(flow(), 1);
             btn.disabled = false;
             btn.textContent = "Sign in wallet";
-            root.insertAdjacentHTML(
-              "beforeend",
-              `<div class="warn" style="margin-top:16px">${esc(err.message)}</div>`,
-            );
+            warn.hidden = false;
+            warn.textContent = err.message;
           }
         };
       }
@@ -215,18 +441,140 @@
       async function show() {
         try {
           const { p, st } = await state();
+          const dl = $("people");
+          if (dl) dl.innerHTML = (st.roster ?? []).map((r) => `<option value="${esc(r.alias)}"></option>`).join("");
+          // Stated once, from the same figure the rest of the page uses, so the box
+          // never advertises a price the index is not actually charging.
+          if (!priced && st.spend?.price) {
+            priced = true;
+            const cost = `one check costs ${spoken(`${st.spend.price} USDC`)} the first time a digest is asked about, and nothing after`;
+            $("verifyHint").textContent =
+              st.session?.source === "wallet"
+                ? cost
+                : `${cost}. On the demo story the agent pays for this itself on the Chat page, so connect a wallet to sign one here`;
+          }
           render(p, st);
         } catch (err) {
           $("root").innerHTML = `<div class="none"><h2>Could not read</h2><p>${esc(err.message)}</p></div>`;
         }
       }
 
-      mountWallet(() => {
+      // A person decides how much to send knowing what is in the wallet, so the number
+      // that is about to leave is shown next to the box that asks for it.
+      async function balance() {
+        const hint = $("sendHint");
+        if (!hint) return;
+        try {
+          const b = await fetch("/balance").then((r) => r.json());
+          const usdc = (b.holdings ?? []).find((h) => /usdc/i.test(h.symbol ?? ""));
+          const sui = (b.holdings ?? []).find((h) => h.symbol === "SUI");
+          hint.className = "hint";
+          const where = b.address ? ` at ${shortAddr(b.address)}` : "";
+          hint.textContent = usdc
+            ? `this wallet${where} holds ${esc(spoken(String(usdc.amount)))} USDC on ${esc(b.network)} and ${esc(spoken(String(sui?.amount ?? 0)))} SUI for the gas`
+            : `no USDC${where} on ${esc(b.network ?? "this network")}, so a payment here has nothing to sign. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`;
+        } catch {
+          hint.textContent = "the balance could not be read just now. The payment is still prepared and checked on the chain.";
+        }
+      }
+
+      $("sendForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = $("sendGo");
+        const hint = $("sendHint");
+        btn.disabled = true;
+        btn.textContent = "building…";
+        try {
+          const res = await fetch("/send", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ to: $("to").value, usdc: Number($("amt").value) }),
+          });
+          const back = await res.json();
+          if (!res.ok) {
+            // The chat warns in words before it builds. This page reaches the same
+            // builder without a model, so the mark has to stop it here too.
+            if (back.marked_spam && window.confirm(`${back.error}\n\nSend anyway?`)) {
+              const again = await fetch("/send", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ to: $("to").value, usdc: Number($("amt").value), confirm_spam: true }),
+              });
+              const second = await again.json();
+              if (!again.ok) throw new Error(second.error || `the server answered ${again.status}`);
+              await show();
+              $("root").scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
+            throw new Error(back.error || `the server answered ${res.status}`);
+          }
+          await show();
+          $("root").scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (err) {
+          hint.className = "hint bad";
+          hint.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Prepare the payment";
+        }
+      };
+
+      $("verifyForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = $("verifyGo");
+        const hint = $("verifyHint");
+        const box = $("verifyAnswer");
+        btn.disabled = true;
+        btn.textContent = "asking the index…";
+        try {
+          const res = await fetch("/verify", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ digest: $("digest").value }),
+          });
+          const back = await res.json();
+          if (!res.ok) throw new Error(back.error || `the server answered ${res.status}`);
+          if (back.refused) {
+            // The index quoted above the ceiling, and the refusal is a decision rather
+            // than a fault, so the page says the number and the limit side by side.
+            box.hidden = false;
+            box.className = "hint bad";
+            box.textContent = back.saying;
+            hint.className = "hint";
+            hint.textContent = `the index asked ${back.price_usdc} USDC and this agent will not pay above ${back.ceiling_usdc} USDC for one answer`;
+          } else if (back.answered) {
+            // Already bought with this wallet, so the chain was read once and the
+            // answer is being handed over for nothing. Say which of those it is.
+            box.hidden = false;
+            box.className = "hint good";
+            box.textContent = `${back.answered.note}. ${back.reason}, so this check cost nothing.`;
+            hint.className = "hint";
+            hint.textContent = "answered from the receipt this wallet already paid for";
+          } else {
+            await show();
+            $("root").scrollIntoView({ behavior: "smooth", block: "start" });
+            hint.className = "hint";
+            hint.textContent = "it is in the ticket above. Nothing is read off the chain until you sign.";
+          }
+        } catch (err) {
+          hint.className = "hint bad";
+          hint.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Ask the chain";
+        }
+      };
+
+      const reload = () => {
         loadMeta();
         show();
-      });
+        balance();
+      };
+      mountWallet(reload);
+      mountNetwork(reload);
       loadMeta();
       show();
+      balance();
     </script>
   </body>
 </html>

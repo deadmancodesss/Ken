@@ -2,43 +2,88 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Total Recall · a voice agent for money that remembers your people</title>
-    <meta name="description" content="A voice agent that reads your Sui wallet through Tatum, remembers your people on Walrus, and stops paying for the truth it has already learned." />
+    <title>Ken · your agent for a Sui wallet</title>
+    <meta name="description" content="Ken reads your Sui wallet through Tatum, remembers your people on Walrus, and pays a few cents for a fact it has not learned yet. Text, voice, limits, statements and paid links share one memory." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
       /* Wallets announce themselves before any module can load, so this captures
          the announcement into a global that public/wallet.js reads later. */
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
     <noscript><style>.reveal { opacity: 1; transform: none } .story .packet { display: none }</style></noscript>
     <style>
-      .wrap { max-width: 940px; margin: 0 auto; padding: 0 var(--pad); }
-      section { padding: 74px 0; border-bottom: 1px solid var(--rule); }
-      section:last-of-type { border-bottom: 0; }
+      /* The page and the masthead share one shell. The section rules run the width of
+         the window while the reading columns stay capped, so the page reads as one
+         printed sheet rather than a narrow card floating on a wide desk. */
+      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); }
+      main { overflow-x: clip; }
+      section { position: relative; padding: clamp(54px, 5.4vw, 84px) 0; }
+      section::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
+      section:last-of-type::after { display: none; }
 
       .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px; }
-      h2 { font-size: var(--step-3); margin-bottom: 8px; max-width: 22ch; }
-      .lead { color: var(--ink-2); max-width: 64ch; margin-bottom: 34px; }
+      h2 { font-size: clamp(28px, 3vw, var(--step-4)); margin-bottom: 8px; max-width: 24ch; }
+      .lead { color: var(--ink-2); max-width: 60ch; margin-bottom: 34px; }
       .note { margin-top: 20px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+
+      /* The spread itself now lives in theme.css so the tool pages can use the same
+         rhythm. This one is here because only the landing has the hub. */
+      /* The hub needs a 620px room to keep its side cards readable. Below this the
+         section stacks, so the map gets the full width instead of being squeezed into
+         a 115px card. */
+      @media (max-width: 1200px) {
+        .split.hubsplit { grid-template-columns: minmax(0, 1fr); gap: 34px; }
+        .split.hubsplit.flip > .split-visual { order: 0; }
+      }
 
       /* The drawings are ink on their own sheet of paper, so the sheet is multiplied
          away instead of framed. They deliberately stay out of the reveal system: a
          transform or a fade on the parent isolates the blend and brings the rectangle
          back, and a page of pinned illustrations is not the point. */
-      .hero .plate { grid-column: 1 / -1; margin: 6px auto 0; }
+      .hero .plate { grid-column: 1 / -1; margin: 10px auto 0; }
       /* Height first, then width, so the sheet never forces the page wider than it is. */
-      .hero .plate img { display: block; width: auto; height: auto; max-width: 100%; max-height: 380px; margin: 0 auto; }
+      .hero .plate img { display: block; width: auto; height: auto; max-width: 100%; max-height: clamp(340px, 30vw, 520px); margin: 0 auto; }
       @media (max-width: 860px) { .hero .plate img { max-height: none; width: 100%; } }
       /* The statement is already paper coloured, so keying it would multiply its own
          ground against the page and show a darker rectangle. It gets a frame instead. */
       .plate.doc img { mix-blend-mode: normal; border: 1px solid var(--rule); border-radius: 10px; }
 
       /* ---------- hero ---------- */
-      .hero { padding: 66px 0 58px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); gap: 46px; align-items: center; }
+      .hero { padding: clamp(46px, 4.6vw, 76px) 0 clamp(42px, 4vw, 64px); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr); gap: clamp(32px, 4vw, 66px); align-items: center; }
       .hero h1 { font: 400 clamp(32px, 5.4vw, var(--step-6))/1.1 var(--serif); letter-spacing: -0.02em; margin: 0 0 18px; max-width: 17ch; }
-      .hero h1 em { font-style: normal; color: var(--clay); }
+      .hero h1 em { position: relative; font-style: normal; color: var(--clay); }
+      /* The underline is drawn under the word rather than set as a border, because a
+         border is straight and the sentence is about a friend, not a table. It sits in
+         the em so it inherits the word's width, and non-scaling-stroke keeps the pen
+         the same weight however wide the headline gets. */
+      .squiggle { position: absolute; left: 0; bottom: -0.1em; width: 100%; height: 0.2em; overflow: visible; }
+      .squiggle path { fill: none; stroke: var(--clay); stroke-width: 2.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
       .hero .sub { margin: 0 0 26px; max-width: 46ch; color: var(--ink-2); font-size: var(--step-1); }
       .cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
       .cta a { border-bottom: 0; }
@@ -46,15 +91,22 @@
       /* The product itself, running. Every number in here is read from the same
          server the agent answers from, so nothing in this card is invented. */
       .demo { border: 1px solid var(--rule-strong); border-radius: 14px; background: var(--paper); overflow: hidden; box-shadow: none; }
-      .demo .top { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--rule); }
-      .demo .top .chip { font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
-      .demo .top .bal { margin-left: auto; text-align: right; }
-      .demo .top .bal b { display: block; font: 400 var(--step-2)/1.1 var(--serif); font-variant-numeric: tabular-nums; }
-      .demo .top .bal span { font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
+      .demo .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 14px 16px; border-bottom: 1px solid var(--rule); }
+      /* The wallet label and the balance used to share one line. At the card's real
+         width that squeezed the unit into a five-line column and silently changed the
+         card's height when the balance arrived, which moved the whole page. They get a
+         line each now, and every line truncates instead of wrapping. */
+      .demo .top .chip { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
+      .demo .top .bal { flex: 1 1 auto; display: flex; align-items: baseline; gap: 8px; min-width: 0; text-align: left; }
+      .demo .top .bal b { flex: 0 0 auto; font: 400 var(--step-2)/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+      .demo .top .bal span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
       .faces { display: flex; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--rule); overflow: hidden; }
-      .face { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; border: 1px solid var(--rule); border-radius: 999px; padding: 5px 11px 5px 5px; }
+      .face { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; padding: 4px 11px 4px 4px; transition: border-color var(--t-1) var(--ease); }
+      .face:hover { border-color: var(--ink-2); }
       .face i { width: 22px; height: 22px; border-radius: 50%; background: var(--clay-wash); color: var(--clay); display: grid; place-items: center; font: 400 var(--step--1)/1 var(--serif); }
+      .face .av { width: 22px; height: 22px; }
       .face span { font: var(--step--1)/1 var(--sans); color: var(--ink-2); }
+      .faces .empty { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
       .ask { padding: 16px; min-height: 52px; display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--rule); }
       .ask .you { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); flex: 0 0 auto; }
       .ask .line { font: 400 var(--step-1)/1.4 var(--serif); color: var(--ink); }
@@ -69,7 +121,23 @@
       .bar { height: 2px; background: var(--rule); }
       .bar i { display: block; height: 2px; width: 0; background: var(--clay); transition: width 900ms var(--ease); }
       .bar i.run { width: 100%; }
-      @media (max-width: 860px) { .hero { grid-template-columns: 1fr; gap: 34px; } }
+      /* Both of these are flex or grid, and a class that sets display beats the hidden
+         attribute, so a card trying to fall back to a blank state would keep showing the
+         question it had just decided not to ask. */
+      .ask[hidden], .ans[hidden], .demo .blank[hidden] { display: none; }
+      /* Nothing has been read about a brand new wallet, and a card that types an invented
+         sentence over a real address is a card making things up about the person looking at
+         it. So the card says it has nothing, in the same box. */
+      .demo .blank { margin: 0; padding: 18px 16px; font: var(--step--1)/1.7 var(--mono); color: var(--ink-2); }
+
+      /* Three things sit behind the same 402 wall, so they are shown as three of one
+         kind rather than as three features. */
+      .wall { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+      .wall > div { background: var(--paper); padding: 22px 20px 24px; }
+      .wall h4 { margin: 0 0 8px; font: 400 var(--step-0)/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+      .wall p { margin: 0; font: 400 var(--step-1)/1.45 var(--serif); color: var(--ink); }
+      .wall em { display: block; margin-top: 12px; font-style: normal; font: var(--step--1)/1.6 var(--mono); color: var(--ink-2); }
+      @media (max-width: 860px) { .wall { grid-template-columns: 1fr; } .hero { grid-template-columns: 1fr; gap: 34px; } }
 
       /* A rail that runs forever makes nothing memorable, so the two comparisons are
          read as documents and the hub is read by clicking. */
@@ -77,103 +145,248 @@
         .ledger { grid-template-columns: 1fr; }
       }
 
-      /* ---------- the hub ---------- */
-      .hub { position: relative; width: min(540px, 92vw); aspect-ratio: 1; margin: 10px auto 0; }
-      .hub .cross { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--rule); }
-      .hub .cross.v { left: 50%; right: auto; top: 0; width: 1px; height: 100%; }
-      .hub .core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 150px; height: 150px; border-radius: 50%; border: 1px solid var(--ink); background: var(--paper); display: grid; place-items: center; text-align: center; padding: 12px; }
-      .hub .core b { font: 400 var(--step-1)/1.2 var(--serif); display: block; }
-      .hub .core span { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
-      .hub .sat { position: absolute; width: 186px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); padding: 12px 14px; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease); }
-      .hub .sat:hover { border-color: var(--ink-2); }
+      /* ---------- the hub ----------
+         Four jobs around the wallet that pays for them. It used to be a 540px square
+         with cards pinned to the compass points, so the east and west cards landed on
+         the core at desktop widths and the middle of the section was empty paper. It
+         is a grid now: the flanking cards take whatever width is left, the core keeps
+         a fixed column, and the connector is drawn inside the gap itself. A card can
+         no longer touch the core, because the gap is the card's own margin rather than
+         a number somebody guessed. */
+      .hub { --wire: 28px; position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(168px, 200px) minmax(0, 1fr); grid-template-rows: auto minmax(128px, auto) auto; gap: var(--wire) 18px; align-items: center; width: 100%; max-width: 620px; margin: 0 auto; }
+      .hub::before, .hub::after { content: ""; position: absolute; background: var(--rule); pointer-events: none; }
+      .hub::before { left: 0; right: 0; top: 50%; height: 1px; }
+      .hub::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+      .hub .core { grid-area: 2 / 2; position: relative; z-index: 1; justify-self: center; width: 180px; max-width: 100%; aspect-ratio: 1; border-radius: 50%; border: var(--edge) solid var(--ink); background: var(--paper); display: grid; place-items: center; text-align: center; padding: 14px; }
+      .hub .core b { display: block; font: 400 var(--step-1)/1.2 var(--serif); }
+      .hub .core span { display: block; font: 9px/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+      .hub .core em { display: block; margin-top: 4px; font: var(--step--1)/1.4 var(--mono); font-style: normal; color: var(--ink-3); }
+      .hub .sat { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 132px; border: var(--edge) solid var(--rule); border-radius: 10px; background: var(--paper); padding: 13px 15px 14px; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
+      .hub .sat:hover { border-color: var(--ink-2); transform: translateY(-1px); }
       .hub .sat.sel { border-color: var(--ink); background: var(--paper-sunk); }
-      .hub .sat b { display: block; font: 400 var(--step-0)/1.2 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
-      .hub .sat em { display: block; margin-top: 5px; font: var(--step--1)/1.45 var(--sans); font-style: normal; color: var(--ink-2); }
-      .hub .n { left: 50%; top: 0; transform: translateX(-50%); }
-      .hub .s { left: 50%; bottom: 0; transform: translateX(-50%); }
-      .hub .e { right: 0; top: 50%; transform: translateY(-50%); }
-      .hub .w { left: 0; top: 50%; transform: translateY(-50%); }
-      .hub .n b { color: var(--clay); }
-      .hub .e b { color: var(--moss); }
-      .hub .s b { color: var(--brick); }
-      .hub .w b { color: var(--ink-2); }
-      /* Spoke dots mark which service is currently being read out in the core. */
-      .hub .spoke { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--rule); transition: background var(--t-2) var(--ease), transform var(--t-2) var(--ease); }
-      .hub .spoke.on { background: var(--clay); transform: scale(1.8); }
-      .hub .sn { left: calc(50% - 2px); top: calc(50% - 104px); }
-      .hub .ss { left: calc(50% - 2px); top: calc(50% + 99px); }
-      .hub .se { top: calc(50% - 2px); left: calc(50% + 100px); }
-      .hub .sw { top: calc(50% - 2px); left: calc(50% - 105px); }
+      .hub .sat .idx { font: 9px/1 var(--mono); letter-spacing: 0.14em; color: var(--ink-3); }
+      .hub .sat .mini { display: flex; align-items: center; width: 100%; height: 34px; }
+      .hub .sat .mini img { display: block; width: 100%; height: 34px; object-fit: contain; object-position: left center; transition: transform var(--t-2) var(--ease-spring); }
+      .hub .sat.sel .mini img { transform: translateY(-2px); }
+      .hub .sat .role { display: block; font: var(--step--1)/1.35 var(--sans); color: var(--ink-2); }
+      .hub .n { grid-area: 1 / 2; }
+      .hub .s { grid-area: 3 / 2; }
+      .hub .w { grid-area: 2 / 1; }
+      .hub .e { grid-area: 2 / 3; }
+      /* The four official marks sit in the same ink as the page, so the diagram reads
+         as one plate rather than four brand colours fighting the paper. */
+      /* The connector lives in the grid gap, so it reaches exactly from the card to the
+         core at every width and never crosses either of them. */
+      .hub .sat::after { content: ""; position: absolute; background: var(--rule-strong); transition: background var(--t-1) var(--ease); }
+      .hub .w::after { right: calc(-1 * var(--wire)); top: 50%; width: var(--wire); height: 1px; }
+      .hub .e::after { left: calc(-1 * var(--wire)); top: 50%; width: var(--wire); height: 1px; }
+      .hub .n::after { left: 50%; bottom: calc(-1 * var(--wire)); width: 1px; height: var(--wire); }
+      .hub .s::after { left: 50%; top: calc(-1 * var(--wire)); width: 1px; height: var(--wire); }
+      .hub .sat.sel::after { background: var(--clay); }
+      .hubHint { margin: 18px 0 0; text-align: center; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
 
-      /* The compass needs 540px of width before its east and west cards start landing
-         on the core, so below that it becomes a sheet the readout sits on top of. Same
-         four buttons, same click to read, no absolute positioning that can collide. */
-      @media (max-width: 640px) {
-        .hub { position: static; width: 100%; aspect-ratio: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
-        .hub .cross, .hub .spoke { display: none; }
-        .hub .core { position: static; transform: none; width: auto; height: auto; grid-column: 1 / -1; border: 0; border-radius: 0; background: var(--paper-sunk); display: block; text-align: left; padding: 16px 18px; }
-        .hub .core b { font-size: var(--step-0); }
-        .hub .sat { position: static; width: auto; transform: none; border: 0; border-radius: 0; background: var(--paper); padding: 14px 16px; }
-        .hub .sat.sel { background: var(--clay-wash); border-color: transparent; }
-        .hub .n, .hub .e, .hub .s, .hub .w { transform: none; }
-        .hub .sat { order: 1; }
+      /* The line under the diagram is the readout. It sits with the words, because the
+         thing a judge wants after clicking is a sentence, not a label. */
+      .hubRead { margin-top: 26px; padding: 15px 18px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .hubRead .k { display: block; margin-bottom: 7px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+      .hubRead p { margin: 0; font: 400 var(--step-1)/1.5 var(--serif); color: var(--ink); }
+
+      /* The chosen mark gets a plate beside the heading, so a pick does more than move
+         a border. One large official mark fills the paper, and the job sits beneath it
+         in the same mono the diagram uses. The plate is inside the words column, so it
+         costs no extra height. */
+      .hubTop { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 26px; align-items: center; }
+      .hubStage { position: relative; height: 236px; display: grid; place-items: end center; padding: 12px 10px 0; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper-sunk); box-shadow: var(--lift) var(--lift) 0 var(--sheet); overflow: hidden; }
+      .hubStage .stageTag { position: absolute; z-index: 2; left: 12px; right: 12px; top: 10px; font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .hubStage .spot { position: absolute; left: 50%; bottom: 0; height: 100%; aspect-ratio: var(--ar); transform: translate(-50%, 10px) scale(.96); opacity: 0; transition: opacity .22s var(--ease), transform .42s var(--ease-spring); }
+      .hubStage .spot.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+      .hubStage .spot img { display: block; width: 100%; height: 100%; object-fit: cover; object-view-box: var(--vb); }
+      @media (max-width: 620px) {
+        .hubTop { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+        .hubStage { width: 100%; height: 210px; }
+        .hubStage .spot { height: 90%; }
       }
+
+      @media (max-width: 640px) {
+        .hub { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; gap: 1px; align-items: stretch; background: var(--rule); border: var(--edge) solid var(--rule); border-radius: 12px; overflow: hidden; max-width: none; }
+        .hub::before, .hub::after, .hub .sat::after { display: none; }
+        .hub .core { grid-area: 1 / 1 / 2 / -1; width: auto; aspect-ratio: auto; border: 0; border-radius: 0; background: var(--paper-sunk); display: block; text-align: left; padding: 15px 16px; }
+        .hub .n { grid-area: 2 / 1; }
+        .hub .e { grid-area: 2 / 2; }
+        .hub .s { grid-area: 3 / 1; }
+        .hub .w { grid-area: 3 / 2; }
+        .hub .sat { border: 0; border-radius: 0; background: var(--paper); padding: 13px 14px; min-height: 116px; }
+        .hub .sat.sel { background: var(--clay-wash); }
+        .hub .sat:hover { transform: none; }
+      }
+      @media (max-width: 520px) {
+        .hub .sat { min-height: 104px; gap: 9px; padding: 11px 12px 12px; }
+        .hub .sat .mini { height: 28px; }
+        .hub .sat .mini img { height: 27px; }
+        .hub .sat .role { font-size: 11px; }
+      }
+
+      /* ---------- one ticket, three endings ----------
+         The object sits on one leaf, the three endings and the reasons sit on the other.
+         Choosing an ending changes both, so the control and the thing it controls are
+         never separated by a scroll. The marks stay under the tabs on desktop; on a
+         phone they move below the ticket, because there the order has to be choose,
+         see, then read why. */
+      .tk2 { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr); grid-template-areas: "copy obj" "marks marks"; gap: 26px clamp(30px, 4.4vw, 64px); align-items: start; }
+      .tk2-copy { grid-area: copy; min-width: 0; }
+      .tk2-obj { grid-area: obj; min-width: 0; display: grid; gap: 20px; align-content: start; }
+      /* The three facts used to trail down the left column only, which left the ticket
+         short of the page and the whole row sitting off centre. They close the section
+         as a footnote strip under both columns. The full width rule that used to sit
+         above them made the strip read as a new section, so the seams are vertical and
+         dashed instead, like the perforation already on the ticket. */
+      .tk2-marks { grid-area: marks; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px clamp(20px, 2.6vw, 38px); }
+      .tk2 .lead { margin-bottom: 26px; }
+
+      .tk2-tabs { display: grid; gap: 8px; margin-bottom: 20px; }
+      .tk2-tabs button { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; padding: 12px 15px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); color: var(--ink-3); transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), color var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
+      .tk2-tabs button i { width: 28px; height: 28px; border: 1px solid currentColor; border-radius: 50%; display: grid; place-items: center; font: var(--step--1)/1 var(--mono); font-style: normal; }
+      .tk2-tabs button b { display: block; font: 400 var(--step-1)/1.2 var(--serif); color: var(--ink); }
+      .tk2-tabs button em { display: block; margin-top: 2px; font: var(--step--1)/1.3 var(--mono); font-style: normal; color: var(--ink-3); }
+      .tk2-tabs button:hover { border-color: var(--ink-2); }
+      .tk2-tabs button.on { border-color: var(--ink); background: var(--ink); color: var(--paper); box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .tk2-tabs button.on b { color: var(--paper); }
+      .tk2-tabs button.on em { color: var(--rule); }
+
+      .ticket2 { position: relative; border: var(--edge) solid var(--ink); border-radius: 12px; background: var(--paper); padding: 20px 22px 18px; box-shadow: 7px 7px 0 var(--sheet); transform: rotate(-0.6deg); transition: transform var(--t-2) var(--ease-spring), box-shadow var(--t-2) var(--ease); }
+      .ticket2:hover { transform: rotate(0deg) translate(-1px, -1px); box-shadow: 9px 9px 0 var(--sheet); }
+      .ticket2 .tk2-head { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .ticket2 .tk2-amt { margin: 16px 0 6px; font: 400 clamp(46px, 5vw, 62px)/1 var(--serif); letter-spacing: -0.03em; }
+      .ticket2 .tk2-amt small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
+      .ticket2 .tk2-rows div { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-top: 1px solid var(--rule); font-size: var(--step-0); }
+      .ticket2 .tk2-rows div:first-child { border-top: 1px solid var(--rule); }
+      .ticket2 .tk2-rows span { font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.05em; color: var(--ink-3); }
+      .ticket2 .tk2-rows b { font: 400 var(--step--1)/1.4 var(--mono); color: var(--ink); text-align: right; }
+      .ticket2 .tk2-perf { margin: 14px -22px 0; border-top: 1px dashed var(--rule-strong); }
+      .ticket2 .tk2-code { display: block; width: 100%; height: 22px; margin: 14px 0 10px; fill: var(--ink-2); }
+      .ticket2 .tk2-foot { max-width: 40ch; margin: 0; font: var(--step--1)/1.55 var(--mono); color: var(--ink-2); }
+      .ticket2 .tk2-stamp { position: absolute; top: 88px; right: 18px; padding: 5px 9px; border: 2px solid var(--clay); border-radius: 4px; background: var(--paper); color: var(--clay); font: 10px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; transform: rotate(-11deg); }
+      .ticket2[data-tone="signed"] .tk2-stamp { border-color: var(--moss); color: var(--moss); }
+      .ticket2[data-tone="refused"] .tk2-stamp { border-color: var(--brick); color: var(--brick); }
+      .tk2-obj .tk2-hint { margin: 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+
+      /* These are notes, not the masthead wordmark. Sharing the class "mark" made them
+         inherit its nowrap, so a long note ran into the next column and pushed the page
+         sideways at wide widths. The class is local and the text is allowed to wrap. */
+      .tk2-note { position: relative; min-width: 0; padding-left: 24px; font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); white-space: normal; overflow-wrap: break-word; }
+      .tk2-note + .tk2-note { border-left: 1px dashed var(--rule-strong); }
+      .tk2-note::before { content: ""; position: absolute; top: 9px; left: 0; width: 15px; height: 1px; background: var(--rule-strong); }
+      .tk2-note::after { content: ""; position: absolute; top: 7px; left: 15px; width: 5px; height: 5px; border-radius: 50%; background: var(--rule-strong); }
+      .tk2-note b { display: block; margin-bottom: 1px; font: 400 var(--step-0)/1.4 var(--sans); color: var(--ink); }
+      .tk2-note.hi::before, .tk2-note.hi::after { background: var(--clay); }
+      .tk2-note.hi b { color: var(--clay); }
+
+      @media (max-width: 900px) {
+        .tk2 { grid-template-columns: minmax(0, 1fr); grid-template-areas: "copy" "obj" "marks"; gap: 34px; }
+        .tk2-marks { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+        .tk2-note + .tk2-note { border-left: 0; }
+      }
+      @media (max-width: 560px) {
+        .ticket2 { padding: 18px 18px 16px; }
+        .ticket2 .tk2-perf { margin-left: -18px; margin-right: -18px; }
+        .ticket2 .tk2-stamp { top: 80px; right: 12px; }
+      }
+
+      /* ---------- the statement on its mat ----------
+         The card is portrait and the column is square, so the card sits on a cut mat
+         instead of filling the column like a billboard. The three facts along the foot
+         are the provenance strip: where the numbers came from, where the names came
+         from, and what did not write any of it. */
+      .docmat { position: relative; margin: 0; padding: clamp(16px, 2.2vw, 28px); border: 1px solid var(--rule-strong); border-radius: 14px; background: var(--paper-sunk); background-image: var(--dots); box-shadow: 7px 7px 0 var(--sheet); }
+      .docmat .flag { position: absolute; top: -11px; right: clamp(18px, 4vw, 34px); padding: 5px 11px; border: 1px solid var(--clay); border-radius: 3px; background: var(--clay-wash); color: var(--clay); font: 10px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; transform: rotate(3deg); }
+      .docmat .doc { display: block; width: min(350px, 100%); margin: 0 auto; border: var(--edge) solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--paper); box-shadow: 5px 5px 0 var(--sheet); transform: rotate(-0.7deg); transition: transform var(--t-2) var(--ease-spring), box-shadow var(--t-2) var(--ease); }
+      .docmat .doc:hover { transform: rotate(0deg) translate(-2px, -2px); box-shadow: 7px 7px 0 var(--sheet); }
+      .docmat .doc img { display: block; width: 100%; height: auto; }
+      .docFacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 18px; border: 1px solid var(--rule); background: var(--rule); }
+      .docFacts div { padding: 9px 11px; background: var(--paper); }
+      .docFacts b { display: block; font: 400 var(--step-0)/1.25 var(--serif); }
+      .docFacts span { font: 9px/1.4 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
+      .docmat figcaption { max-width: 46ch; margin: 16px auto 0; text-align: center; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .docProof { display: flex; align-items: flex-start; gap: 16px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--rule); }
+      .docProof .proofSeal { flex: 0 0 auto; margin-top: 2px; padding: 6px 10px; border: 2px solid var(--moss); border-radius: 4px; color: var(--moss); font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; transform: rotate(-4deg); }
+      .docProof p { max-width: 44ch; font: var(--step--1)/1.65 var(--mono); color: var(--ink-2); }
 
       .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
       .facts > div { background: var(--paper); padding: 18px; }
       .facts .v { font: 400 var(--step-4)/1.15 var(--serif); font-variant-numeric: tabular-nums; }
       .facts .k { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
 
-      footer.page { border-top: 1px solid var(--rule); padding: 26px var(--pad) 40px; }
-      footer.page .inner { max-width: 940px; margin: 0 auto; display: flex; gap: 20px; flex-wrap: wrap; align-items: baseline; }
+      footer.page { border-top: 1px solid var(--rule); padding: 26px 0 40px; }
+      footer.page .inner { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); display: flex; gap: 20px; flex-wrap: wrap; align-items: baseline; }
+      /* ---------- the feature grid, cut down ----------
+         The full grid lives on /features. This is the same cabinet with six doors on
+         it, so a reader sees the range from the landing page without a second wall
+         of prose. Each door opens the full grid on the tile it names. */
+      .fgTease { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 24px; }
+      .fgTease a { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 13px; align-items: start; padding: 16px; border: 1px solid var(--rule-strong); border-radius: 12px; background: var(--paper); color: inherit; text-decoration: none; border-bottom: 1px solid var(--rule-strong); transition: transform var(--t-2) var(--ease), box-shadow var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
+      .fgTease a:hover { transform: translate(-2px, -2px); box-shadow: 4px 4px 0 var(--sheet); border-color: var(--ink-2); }
+      .fgTease .ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--tone, var(--clay)); background: var(--paper-sunk); background: color-mix(in srgb, var(--tone, var(--clay)) 13%, var(--paper)); }
+      .fgTease .ico svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+      .fgTease .txt b { display: block; font: 400 var(--step-0)/1.25 var(--serif); letter-spacing: -0.01em; }
+      .fgTease .txt span { display: block; margin-top: 3px; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .fgTease .more { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 15px 16px; border-style: dashed; background: var(--paper-sunk); }
+      .fgTease .more .arrow { font: 400 var(--step-1)/1 var(--mono); color: var(--clay); }
+      @media (max-width: 760px) { .fgTease { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 470px) { .fgTease { grid-template-columns: minmax(0, 1fr); } }
       @media (prefers-reduced-motion: reduce) { .ask .caret { animation: none } }
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">it learns your people, then it stops asking</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
       <div class="wrap">
         <section class="hero">
           <div>
-            <div class="kicker reveal">a voice agent for money</div>
-            <h1 class="reveal">Ask about your money the way you would ask a <em>friend</em>.</h1>
+            <div class="kicker reveal">Ken · agent for a Sui wallet</div>
+            <h1 class="reveal">I'm Ken. Ask about your money the way you would ask a <em>friend<svg class="squiggle" viewBox="0 0 240 12" preserveAspectRatio="none" aria-hidden="true"><path d="M3 8 C 34 2, 62 11, 96 6 S 168 2, 237 8" /></svg></em>.</h1>
             <p class="sub reveal">
-              A wallet shows you a list of transfers. This one already knows who the addresses belong to, what you
-              normally pay them, and when the money did not arrive. You talk, it answers, and it stops paying for a
-              truth it has already learned.
+              I read the chain through Tatum, keep your people on Walrus, and pay a few cents for a fact I have not
+              learned yet. Talk to me, type to me, call me, or hand me a paid link. It is one memory on every surface.
             </p>
             <div class="cta reveal">
-              <a href="/app"><button class="primary">Open the agent</button></a>
-              <a href="/call"><button>Call it instead</button></a>
-              <span class="quiet">nothing to install, it reads a testnet wallet</span>
+              <a href="/app"><button class="primary">Talk to Ken</button></a>
+              <a href="/app?voice=1"><button>Call Ken</button></a>
+              <span class="quiet">text, voice, limits, statements and paid links share one memory</span>
             </div>
           </div>
 
-          <div class="demo reveal" id="demo">
+          <div class="demo" id="demo">
             <div class="top">
               <span class="chip" id="demoWallet">reading wallet…</span>
-              <span class="bal"><b id="demoBal">·</b><span>USDC available</span></span>
+              <span class="bal"><b id="demoBal">·</b><span id="demoUnit">USDC available</span></span>
             </div>
             <div class="faces" id="faces"></div>
-            <div class="ask">
+            <div class="ask" id="demoAsk">
               <span class="you">you</span>
               <span class="line"><span id="typed"></span><i class="caret"></i></span>
             </div>
@@ -182,25 +395,30 @@
               <div class="bar"><i id="ansBar"></i></div>
               <div class="meter" id="ansMeter"></div>
             </div>
+            <p class="blank" id="demoBlank" hidden></p>
           </div>
 
-          <figure class="plate">
-            <img src="/assets/hero-voice.webp" width="1200" height="686" alt="A man talking to a clerk who is writing in a notebook, with one enormous cartoon ear" />
+          <figure class="plate cut">
+            <img src="/assets/hero-voice-cut.webp" width="1200" height="686" alt="A man talking to a clerk who is writing in a notebook, with one enormous cartoon ear" />
             <figcaption>You stand on the left and say a sentence. She sits on the right, has one ear far too big for her head, and writes the answer down so she never has to be told twice.</figcaption>
           </figure>
         </section>
 
         <section>
-          <div class="kicker reveal">What happens when you speak</div>
-          <h2 class="reveal">Five stations, and only the cheap ones run every time</h2>
-          <p class="lead reveal">
-            Watch the dot. It travels the whole path the first time because the agent genuinely has to find out
-            who you mean. Then it stops taking that route, because the answer is already written down.
-          </p>
-          <figure class="plate mid">
-            <img src="/assets/stations-five.webp" width="1100" height="734" loading="lazy" decoding="async" alt="Five bank counters in a row. The first two are busy, the third is empty, the fourth is asleep and the fifth has a cobweb" />
-            <figcaption>Five desks, and only the first two are open on a question you have asked before. The rest are not broken, they are simply finished.</figcaption>
-          </figure>
+          <div class="split art flip">
+            <div class="split-copy reveal">
+              <div class="kicker">What happens when you speak</div>
+              <h2>Five stations, and only the cheap ones run every time</h2>
+              <p class="lead">
+                Watch the dot. It travels the whole path the first time because Ken genuinely has to find out
+                who you mean. Then it stops taking that route, because the answer is already written down.
+              </p>
+            </div>
+            <figure class="plate mid split-visual">
+              <img src="/assets/stations-five.webp" width="1100" height="734" loading="lazy" decoding="async" alt="Five bank counters in a row. The first two are busy, the third is empty, the fourth is asleep and the fifth has a cobweb" />
+              <figcaption>Five desks, and only the first two are open on a question you have asked before. The rest are not broken, they are simply finished.</figcaption>
+            </figure>
+          </div>
           <div class="story reveal" data-story data-play="7000">
             <div class="rail">
               <span class="packet"></span>
@@ -226,52 +444,56 @@
               <div class="cap">
                 <h4>The chain is read only when memory is not enough</h4>
                 <p>Tatum answers amounts, dates and counterparties. Inbound money never appears in your own
-                transaction list, so the agent reads the other side of each transfer to find it.</p>
+                transaction list, so Ken reads the other side of each transfer to find it.</p>
                 <span class="cost">rate limited, so it is cached</span>
               </div>
               <div class="cap">
                 <h4>A stranger costs one lookup, once</h4>
-                <p>When an address is unknown, the agent is charged for naming it. That is the x402 half of the
+                <p>When an address is unknown, Ken is charged for a measured profile of it. That is the x402 half of the
                 product: a price is quoted, you sign it, the answer is released, and the fact is written down.</p>
-                <span class="cost" id="priceCap">costs 0.01 USDC the first time</span>
+                <span class="cost" id="priceCap">costs from 0.01 USDC the first time</span>
               </div>
               <div class="cap">
                 <h4>You get a sentence you can argue with</h4>
                 <p>Round money, a relative date, and a plain note of what it read and what the answer cost. If the
                 tool failed, it says that instead of inventing an answer.</p>
-                <span class="cost">spoken back on the Call page</span>
+                <span class="cost">spoken back in the call</span>
               </div>
             </div>
           </div>
         </section>
 
         <section>
-          <div class="kicker reveal">The claim, in two columns</div>
-          <h2 class="reveal">The same question, twice</h2>
-          <p class="lead reveal">
-            Left is the first time you ever ask about an address. Right is every time after that. Two of the four
-            lines on the right are struck through, and that is the whole product.
-          </p>
-          <figure class="plate mid">
-            <img src="/assets/memory-versus-chain.webp" width="1100" height="734" loading="lazy" decoding="async" alt="The same walker twice. On the left he reads a book on an empty path with a lit bulb above him. On the right he is stuck in traffic handing a coin to a toll booth" />
-            <figcaption>Left is a question the memory has already answered. Right is the same man at a toll booth he has already paid, still digging in his pocket.</figcaption>
-          </figure>
+          <div class="split art">
+            <div class="split-copy reveal">
+              <div class="kicker">The claim, in two columns</div>
+              <h2>The same question, twice</h2>
+              <p class="lead">
+                Left is the first time you ever ask about an address. Right is every time after that. Three of the
+                five lines on the right are struck through, and that is the whole product.
+              </p>
+            </div>
+            <figure class="plate mid split-visual">
+              <img src="/assets/memory-versus-chain.webp" width="1100" height="734" loading="lazy" decoding="async" alt="The same walker twice. On the left he reads a book on an empty path with a lit bulb above him. On the right he is stuck in traffic handing a coin to a toll booth" />
+              <figcaption>Left is a question the memory has already answered. Right is the same man at a toll booth he has already paid, still digging in his pocket.</figcaption>
+            </figure>
+          </div>
           <div class="ledger reveal">
             <div>
               <h4>The first time</h4>
               <div class="line"><span class="n">Search Walrus for the address</span><span class="d">miss</span></div>
               <div class="line"><span class="n">Read your transfers through Tatum</span><span class="d">3 reads</span></div>
-              <div class="line"><span class="n">Read the other side of each one</span><span class="d">because inbound money is invisible to you</span></div>
-              <div class="line"><span class="n">Buy a name at the paid index</span><span class="d">0.01 USDC</span></div>
+              <div class="line"><span class="n">Read the other side of each one</span><span class="d">because the default list only shows what you signed</span></div>
+              <div class="line"><span class="n">Buy a chain profile at the paid index</span><span class="d">from 0.01 USDC</span></div>
               <div class="line"><span class="n">Write the answer back to Walrus</span><span class="d">once</span></div>
-              <div class="tot"><b>7 s</b><span>and 0.01 USDC, for one answer you will ask for again</span></div>
+              <div class="tot"><b>7 s</b><span>and a few cents, for one answer you will ask for again</span></div>
             </div>
             <div class="warm">
               <h4>Every time after</h4>
               <div class="line"><span class="n">Search Walrus for the address</span><span class="d">hit</span></div>
               <div class="line no"><span class="n">Read your transfers through Tatum</span><span class="d">skipped</span></div>
               <div class="line no"><span class="n">Read the other side of each one</span><span class="d">skipped</span></div>
-              <div class="line no"><span class="n">Buy a name at the paid index</span><span class="d">already owned</span></div>
+              <div class="line no"><span class="n">Buy a chain profile at the paid index</span><span class="d">already owned</span></div>
               <div class="line"><span class="n">Speak the answer</span><span class="d">free</span></div>
               <div class="tot"><b>4 s</b><span>and nothing spent, nothing queried, nothing learned</span></div>
             </div>
@@ -280,86 +502,157 @@
         </section>
 
         <section>
-          <div class="kicker reveal">Money</div>
-          <h2 class="reveal">Nothing leaves until your own wallet signs</h2>
-          <p class="lead reveal">
-            The agent can prepare a payment and then it has to stop. This server holds the bytes and never holds
-            your key, so refusing is always available and always final. Tap the three states and read what changes
-            on the ticket.
-          </p>
-          <figure class="plate narrow">
-            <img src="/assets/wallet-seal.webp" width="900" height="900" loading="lazy" decoding="async" alt="A woman pressing a wax seal onto a document while a small robot stands back with both hands raised and a purse hangs out of reach" />
-            <figcaption>The robot keeps its hands where she can see them. The purse is on the wall behind it, and only she has the seal.</figcaption>
-          </figure>
-          <div class="tk reveal">
-            <div class="steps" id="tkSeg" role="group" aria-label="Which ending of the same payment to show">
-              <button class="on" data-state="held"><i>1</i><span>before you sign</span></button>
-              <button data-state="signed"><i>2</i><span>after you sign</span></button>
-              <button data-state="refused"><i>3</i><span>if you refuse</span></button>
-            </div>
-            <div class="body">
-              <div class="ticket">
-                <div class="row"><span>Pay</span><span>total recall</span></div>
-                <div class="big" id="tkAmt">0.95 <small>USDC</small></div>
-                <div class="row"><span>to</span><span id="tkTo">Tara</span></div>
-                <div class="row"><span>from</span><span>your wallet</span></div>
-                <div class="row"><span>state</span><span id="tkState">held, unsigned</span></div>
-                <div class="row"><span>on chain</span><span id="tkChain">nothing to find yet</span></div>
-                <div class="perf"><span id="tkFoot">Nothing has left your wallet.</span></div>
+          <div class="tk2">
+            <div class="tk2-copy reveal">
+              <div class="kicker">Money</div>
+              <h2>Nothing leaves until your own wallet signs</h2>
+              <p class="lead">
+                The agent can prepare a payment and then it has to stop. This server holds the bytes and never
+                holds your key, so refusing is always available and always final.
+              </p>
+              <div class="tk2-tabs" id="tkSeg" role="group" aria-label="Which ending of the same payment to show">
+                <button type="button" class="on" data-state="held" aria-pressed="true"><i>1</i><span><b>before you sign</b><em>bytes waiting, nothing moved</em></span></button>
+                <button type="button" data-state="signed" aria-pressed="false"><i>2</i><span><b>after you sign</b><em>the chain has the last word</em></span></button>
+                <button type="button" data-state="refused" aria-pressed="false"><i>3</i><span><b>if you refuse</b><em>it ends cleanly, nothing kept</em></span></button>
               </div>
-              <div class="marks" id="tkMarks"></div>
+            </div>
+            <div class="tk2-obj reveal">
+              <div class="ticket2" id="tkTicket" data-tone="held">
+                <div class="tk2-head"><span>Ken</span><span>receipt 001</span></div>
+                <div class="tk2-amt">0.95 <small>USDC</small></div>
+                <div class="tk2-rows">
+                  <div><span>to</span><b id="tkTo">Tara</b></div>
+                  <div><span>from</span><b>your wallet</b></div>
+                  <div><span>state</span><b id="tkState">held, unsigned</b></div>
+                  <div><span>on chain</span><b id="tkChain">nothing to find yet</b></div>
+                </div>
+                <div class="tk2-perf"></div>
+                <svg class="tk2-code" viewBox="0 0 150 18" preserveAspectRatio="none" aria-hidden="true">
+                  <rect x="0" width="2" height="18"/><rect x="4" width="1" height="18"/><rect x="7" width="3" height="18"/><rect x="12" width="1" height="18"/><rect x="15" width="2" height="18"/><rect x="19" width="4" height="18"/><rect x="25" width="1" height="18"/><rect x="28" width="2" height="18"/><rect x="32" width="1" height="18"/><rect x="35" width="3" height="18"/><rect x="40" width="1" height="18"/><rect x="43" width="2" height="18"/><rect x="47" width="4" height="18"/><rect x="53" width="1" height="18"/><rect x="56" width="2" height="18"/><rect x="60" width="1" height="18"/><rect x="63" width="3" height="18"/><rect x="68" width="2" height="18"/><rect x="72" width="1" height="18"/><rect x="75" width="4" height="18"/><rect x="81" width="2" height="18"/><rect x="85" width="1" height="18"/><rect x="88" width="3" height="18"/><rect x="93" width="1" height="18"/><rect x="96" width="2" height="18"/><rect x="100" width="4" height="18"/><rect x="106" width="1" height="18"/><rect x="109" width="2" height="18"/><rect x="113" width="3" height="18"/><rect x="118" width="1" height="18"/><rect x="121" width="2" height="18"/><rect x="125" width="4" height="18"/><rect x="131" width="1" height="18"/><rect x="134" width="2" height="18"/><rect x="138" width="3" height="18"/><rect x="143" width="1" height="18"/><rect x="146" width="2" height="18"/>
+                </svg>
+                <p class="tk2-foot" id="tkFoot">Nothing has left your wallet. These are only bytes, waiting for your extension to sign.</p>
+                <span class="tk2-stamp" id="tkStamp">unsigned</span>
+              </div>
+              <p class="tk2-hint">ask for a payment in the conversation and this ticket is drawn under the answer. <a href="/pay">The Pay page</a> holds the same one.</p>
+            </div>
+            <div class="tk2-marks" id="tkMarks"></div>
+          </div>
+        </section>
+
+        <section>
+          <div class="kicker reveal">The paid index</div>
+          <h2 class="reveal">Three questions, one wall, one price before you sign</h2>
+          <p class="lead reveal">
+            x402 is not a way to sell this app. It is a way to buy a fact the buyer cannot get for free, and this
+            build sells exactly three of them through one charging wall. Each one has a price before anything is
+            signed, each one is checked on chain before the answer is released, and each one is free forever after,
+            because the answer goes to Walrus the moment it is paid for.
+          </p>
+          <div class="wall reveal">
+            <div>
+              <h4>An address you have never named</h4>
+              <p>Who is this wallet?</p>
+              <em>The chain gives counts and counterparties and nothing else. A few cents buys the measured profile, and Ken never asks again.</em>
+            </div>
+            <div>
+              <h4>A note somebody locked</h4>
+              <p>What did they leave me?</p>
+              <em>The writer sets the price. The seller checks the money on chain, and a link replayed twice is still sold once.</em>
+            </div>
+            <div>
+              <h4>A payment somebody claims</h4>
+              <p>Did this transaction really move money?</p>
+              <em>Only a chain read can answer, and the read costs the seller provider quota. That is why it is worth a cent.</em>
             </div>
           </div>
-          <p class="note reveal">there is a real ticket on this build right now if you ask for one. <a href="/pay">See the Pay page</a>.</p>
+          <p class="note reveal">ask for any of the three on <a href="/pay">the Pay page</a> and the ticket arrives before the answer does.</p>
         </section>
 
         <section>
-          <div class="kicker reveal">Paper</div>
-          <h2 class="reveal">Ask it out loud, keep the card</h2>
-          <p class="lead reveal">
-            Say "give me a report of what I have been paying people" and the same tool calls that answer you out
-            loud set this card. The amounts come from the chain and the names come from memory. No model wrote any
-            of it, because a statement with a wrong total is worse than no statement.
-          </p>
-          <figure class="plate mid doc reveal">
-            <img src="/report.svg" width="1080" height="1350" loading="lazy" decoding="async" alt="A paper statement card showing the total paid out, the month by month bars, the people paid with their amounts, and what it cost the agent to learn all of it" />
-            <figcaption>This is the live card, not a picture of one. It reads the demo wallet the moment you open the page, and <a href="/report">the Statement page</a> will print it or save it as an image.</figcaption>
-          </figure>
-        </section>
-
-        <section>
-          <div class="kicker reveal">What is used, and what each one changes</div>
-          <h2 class="reveal">Four services, four different jobs</h2>
-          <p class="lead reveal">
-            Nothing here is decoration. Take one away and a specific thing stops working, which is the honest test
-            of whether a product needs it.
-          </p>
-          <figure class="plate mid">
-            <img src="/assets/cast-four.webp" width="1100" height="628" loading="lazy" decoding="async" alt="Four animals in a row. A bird with a telescope, a hedgehog carrying a stack of books, a frog with its mouth wide open and a mouse holding a purse and a balance scale" />
-            <figcaption>The bird sees, the hedgehog remembers, the frog says it out loud, and the mouse holds the purse. Take one away and a named feature dies, which is why there are four and not five.</figcaption>
-          </figure>
-          <div class="hub reveal">
-            <div class="cross"></div>
-            <div class="cross v"></div>
-            <span class="spoke sn"></span>
-            <span class="spoke ss"></span>
-            <span class="spoke se"></span>
-            <span class="spoke sw"></span>
-            <div class="core"><div><b id="coreName">your wallet</b><span id="coreJob">tap one of the four</span></div></div>
-            <button class="sat n" data-svc="Tatum" data-job="is the eyes" data-spoke="sn" data-line="Sui GraphQL on mainnet and testnet, and the reason the agent reads the other side of a transfer to find money coming in.">
-              <b>Tatum</b><em>Sees the money</em>
-            </button>
-            <button class="sat e" data-svc="Walrus" data-job="is the memory" data-spoke="se" data-line="Names, notes and bought facts on Mainnet, scoped to the wallet you speak for, and it survives a restart.">
-              <b>Walrus</b><em>Remembers the people</em>
-            </button>
-            <button class="sat s" data-svc="x402" data-job="prices the unknown" data-spoke="ss" data-line="An address it has never met costs one lookup, you sign it, and the next forty questions about it are free.">
-              <b>x402</b><em>Charges for a name</em>
-            </button>
-            <button class="sat w" data-svc="Gemini" data-job="chooses and speaks" data-spoke="sw" data-line="Picks which tool to call out of a fixed set, then says the answer in the language, the voice and at the pace you set.">
-              <b>Gemini</b><em>Chooses and speaks</em>
-            </button>
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">Paper</div>
+              <h2>Ask it out loud, keep the card</h2>
+              <p class="lead">
+                Say "give me a report of what I have been paying people" and the same tool calls that answer you
+                out loud set this card. The amounts come from the chain and the names come from memory. No model
+                wrote any of it, because a statement with a wrong total is worse than no statement.
+              </p>
+              <div class="docProof">
+                <span class="proofSeal">no model</span>
+                <p>Every figure is read from Tatum or from Walrus. The card is drawn by the server from those reads, so it can be checked line by line and printed without a screenshot.</p>
+              </div>
+            </div>
+            <div class="split-visual reveal">
+              <figure class="docmat">
+                <span class="flag">live card</span>
+                <a class="doc" href="/report" aria-label="Open the Statement page and print this card">
+                  <img src="/report.svg" width="1080" height="1350" loading="lazy" decoding="async" alt="A paper statement card showing the total paid out, the month by month bars, the people paid with their amounts, and what it cost the agent to learn all of it" />
+                </a>
+                <div class="docFacts">
+                  <div><b>Tatum</b><span>amounts and dates</span></div>
+                  <div><b>Walrus</b><span>names and notes</span></div>
+                  <div><b>tools</b><span>wrote the card</span></div>
+                </div>
+                <figcaption>This is the live card, not a picture of one. It reads whichever wallet this page is speaking for, and <a href="/report">the Statement page</a> will print it or save it as an image.</figcaption>
+              </figure>
+            </div>
           </div>
-          <p class="note reveal" id="hubLine">remove any one of these and a feature dies. Remove a fifth and nothing changes, which is why there is no fifth.</p>
+        </section>
+
+        <section id="services">
+          <div class="split flip hubsplit">
+            <div class="split-copy reveal">
+              <div class="hubTop">
+                <div class="hubIntro">
+                  <div class="kicker">What is used, and what each one changes</div>
+                  <h2>Four services, four different jobs</h2>
+                  <p class="lead">
+                    Nothing here is decoration. Take one away and a specific thing stops working, which is the honest
+                    test of whether a product needs it.
+                  </p>
+                </div>
+                <div class="hubStage" aria-hidden="true">
+                  <span class="stageTag" id="stageTag">Walrus · the hedgehog</span>
+                  <div class="spot on" data-face="Walrus" style="--vb: inset(9% 48% 10% 28%); --ar: 264/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" decoding="async" alt="" /></div>
+                  <div class="spot" data-face="Tatum" style="--vb: inset(9% 72% 10% 0); --ar: 308/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" decoding="async" alt="" /></div>
+                  <div class="spot" data-face="x402" style="--vb: inset(9% 0 10% 74%); --ar: 286/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" decoding="async" alt="" /></div>
+                  <div class="spot" data-face="Gemini" style="--vb: inset(9% 26% 10% 52%); --ar: 242/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" decoding="async" alt="" /></div>
+                </div>
+              </div>
+              <div class="hubRead">
+                <span class="k">what it does</span>
+                <p id="hubLine">Names, notes and bought facts on Mainnet, scoped to the wallet you speak for, and it survives a restart.</p>
+              </div>
+              <p class="note">remove any one of these and a feature dies. Remove a fifth and nothing changes, which is why there is no fifth.</p>
+            </div>
+            <div class="split-visual reveal">
+              <div class="hub" role="group" aria-label="The four services and what each one does">
+                <div class="core"><div><span>under the hood</span><b id="coreName">Walrus</b><em id="coreJob">memory for people</em></div></div>
+                <button class="sat n" data-svc="Tatum" data-animal="the bird" data-job="eyes on the money" data-line="Sui GraphQL on mainnet and testnet, and the reason Ken reads the other side of a transfer to find money coming in.">
+                  <span class="idx">01</span>
+                  <span class="mini"><img src="/assets/vendors/tatum.svg" alt="Tatum" width="725" height="143" decoding="async" /></span>
+                  <span class="role">Sees the money</span>
+                </button>
+                <button class="sat e sel" data-svc="Walrus" data-animal="the hedgehog" data-job="memory for people" data-line="Names, notes and bought facts on Mainnet, scoped to the wallet you speak for, and it survives a restart.">
+                  <span class="idx">02</span>
+                  <span class="mini"><img src="/assets/vendors/walrus.svg" alt="Walrus" width="144" height="34" decoding="async" /></span>
+                  <span class="role">Remembers the people</span>
+                </button>
+                <button class="sat s" data-svc="x402" data-animal="the mouse" data-job="a price on the unknown" data-line="Three facts sit behind one wall, each priced before you sign. A chain profile, a locked note, a chain read. You sign, the seller's facilitator checks the money itself, and the answer is yours forever.">
+                  <span class="idx">03</span>
+                  <span class="mini"><img src="/assets/vendors/x402.svg" alt="x402" width="707" height="326" decoding="async" /></span>
+                  <span class="role">Charges for a fact</span>
+                </button>
+                <button class="sat w" data-svc="Gemini" data-animal="the frog" data-job="a voice and a choice" data-line="Picks which tool to call out of a fixed set, then answers out loud in one of five working voices.">
+                  <span class="idx">04</span>
+                  <span class="mini"><img src="/assets/vendors/gemini.svg" alt="Gemini" width="211" height="46" decoding="async" /></span>
+                  <span class="role">Chooses and speaks</span>
+                </button>
+              </div>
+              <p class="hubHint">Tatum sees. Walrus remembers. Gemini speaks. x402 holds the purse. Pick one and its animal takes the stage.</p>
+            </div>
+          </div>
         </section>
 
         <section>
@@ -369,34 +662,73 @@
             <div><div class="v" data-stat="memories">·</div><div class="k">names kept</div></div>
             <div><div class="v" data-stat="lookups">·</div><div class="k">lookups bought</div></div>
             <div><div class="v" data-stat="spend">·</div><div class="k">usdc spent</div></div>
-            <div><div class="v" id="liveBal">·</div><div class="k">usdc available</div></div>
+            <div><div class="v" id="liveBal">·</div><div class="k" id="liveBalUnit">usdc available</div></div>
             <div><div class="v" id="livePeople">·</div><div class="k">people with history</div></div>
           </div>
-          <p class="note reveal">the same numbers the agent reasons over. <a href="/memory">Every line it has written</a>, or <a href="/app">start talking to it</a>.</p>
+          <p class="note reveal">the same numbers Ken reasons over. <a href="/memory">Every line Ken has written</a>, or <a href="/app">start talking to Ken</a>.</p>
+        </section>
+
+        <section>
+          <div class="kicker reveal">The whole closet, one door</div>
+          <h2 class="reveal">Six drawers of a larger cabinet</h2>
+          <p class="lead reveal" style="max-width: 64ch">The full grid holds eighteen capabilities. These six are the ones people ask about first, and every one of them runs on this build.</p>
+          <div class="fgTease reveal">
+            <a href="/features#talk" style="--tone: var(--clay)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></span>
+              <span class="txt"><b>Talk to it</b><span>Text or a live call, one memory</span></span>
+            </a>
+            <a href="/features#memory" style="--tone: var(--moss)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>
+              <span class="txt"><b>Remembers by wallet</b><span>Your people, scoped to the address</span></span>
+            </a>
+            <a href="/features#pay" style="--tone: var(--brick)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3 10 14"/><path d="M21 3 14 21l-4-7-7-4z"/></svg></span>
+              <span class="txt"><b>Pay by saying it</b><span>A ticket that waits for your signature</span></span>
+            </a>
+            <a href="/features#spam" style="--tone: var(--brick)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M6.5 6.5l11 11"/></svg></span>
+              <span class="txt"><b>Spam marks</b><span>It stops and repeats your reason</span></span>
+            </a>
+            <a href="/features#reminder" style="--tone: var(--clay)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+              <span class="txt"><b>Reminders on time</b><span>Written back into the chat, while the server runs</span></span>
+            </a>
+            <a href="/features#x402" style="--tone: var(--moss)">
+              <span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z"/><circle cx="8" cy="8" r="1.4"/></svg></span>
+              <span class="txt"><b>Buy a fact</b><span>A few cents for what it has not learned</span></span>
+            </a>
+            <a class="more" href="/features">
+              <span class="txt"><b>See all eighteen</b><span>What each one does, in order, and where to run it</span></span>
+              <span class="arrow" aria-hidden="true">→</span>
+            </a>
+          </div>
         </section>
       </div>
     </main>
 
     <footer class="page">
       <div class="inner">
-        <span class="quiet">built for the Tatum and Walrus Total Recall hackathon</span>
-        <span class="quiet" style="margin-left: auto">testnet money, worthless on purpose</span>
+        <span class="quiet">built for the Tatum and Walrus hackathon</span>
+        <span class="quiet" style="margin-left: auto">nothing moves without your signature</span>
       </div>
     </footer>
 
+    <script defer src="/vendor/gsap.min.js"></script>
     <script type="module">
-      import { reveal, loadMeta, fillStats, spoken, when, shortAddr } from "./shared.js";
+      import { reveal, loadMeta, fillStats, spoken, when, shortAddr, faceUrl, castNotice } from "./shared.js";
+      import { heroScene, facesPop } from "./scene.js";
       import { stories } from "./story.js";
 
       reveal();
       stories();
+      heroScene();
 
       const $ = (id) => document.getElementById(id);
 
       /* The hero runs the real product path against real wallet data, so the sentence
          in the card is a sentence the agent can actually answer on this build. */
       function script(state) {
-        const named = state.parties.filter((p) => p.name);
+        const named = state.parties.filter((p) => p.name && !p.service);
         const byNet = [...named].sort((a, b) => Number(b.net) - Number(a.net));
         const top = byNet[0];
         const rows = [];
@@ -419,54 +751,167 @@
         if (stranger) {
           rows.push({
             ask: `who did I send money to at ${shortAddr(stranger.address)}`,
-            said: `I have never been told who that is, so naming it costs ${spoken(String(state.spend.price))} USDC at the paid index. Sign it once and I stop asking.`,
-            meter: [["memory answered nothing", ""], [`a paid lookup costs ${state.spend.price} USDC`, "paid"]],
+            said: `I have never been told who that is, so a profile of it costs from ${spoken(String(state.spend.price))} USDC at the paid index. Sign it once and I stop asking.`,
+            meter: [["memory answered nothing", ""], [`a profile starts at ${state.spend.price} USDC`, "paid"]],
           });
         }
-        const again = {
-          ask: "who was that, again",
-          said: state.roster?.length
-            ? `Already written down. I have ${state.stats.total} lines on Walrus, and asking me the same thing twice is the one thing this agent refuses to pay for.`
-            : "Already written down, and asking twice costs nothing.",
-          meter: [["read Walrus only", "free"], ["the chain was not touched", "free"]],
-        };
-        rows.push(again);
+        /* Asking twice and being answered free is the whole product, but the sentence is
+           only true once something has actually been written down. Saying "already written
+           down" to a wallet whose memory is empty would be the card inventing a fact about
+           the person reading it. */
+        if (state.roster?.length) {
+          rows.push({
+            ask: "who was that, again",
+            said: `Already written down. I have ${state.stats.total} lines on Walrus, and asking me the same thing twice is the one thing this agent refuses to pay for.`,
+            meter: [["read Walrus only", "free"], ["the chain was not touched", "free"]],
+          });
+        }
         return rows;
       }
 
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      async function run() {
-        const state = await fetch("/state").then((r) => r.json()).catch(() => null);
-        if (!state) return;
-        $("demoWallet").textContent = shortAddr(state.session.wallet) + " · " + state.session.network;
-        $("coreJob").textContent = state.session.network;
-        $("livePeople").textContent = state.parties.filter((p) => p.name).length;
-        $("faces").innerHTML = state.parties
-          .filter((p) => p.name)
-          .slice(0, 3)
-          .map((p) => `<span class="face"><i>${p.name[0]}</i><span>${p.name}</span></span>`)
-          .join("");
-        fillStats(state);
+      /* A wallet holds more than the one coin this card used to print, and a reader with
+         three SUI in front of a bare "0.00 USDC" reasonably decided the page could not
+         read his money. So the coin worth the most in dollars becomes the headline, and
+         the headline says which coin it is and what it is worth. */
+      const coinPlaces = (h) => (String(h.symbol).toUpperCase() === "SUI" ? 3 : 2);
+      const worth = (h) => (typeof h.usd === "number" ? h.usd : 0);
 
+      function showBalance() {
         fetch("/balance")
           .then((r) => r.json())
           .then((b) => {
-            const usdc = (b.holdings ?? []).find((h) => h.symbol === "USDC");
-            if (!usdc) return;
-            $("demoBal").textContent = usdc.amount.toFixed(2);
-            $("liveBal").textContent = usdc.amount.toFixed(2);
+            const coins = [...(b.holdings ?? [])].sort((a, h) => worth(h) - worth(a) || (h.amount || 0) - (a.amount || 0));
+            const top = coins[0];
+            const amount = top && top.amount > 0 ? top.amount.toFixed(coinPlaces(top)) : "0.00";
+            const unit = !top
+              ? "no coin this chain could name"
+              : top.amount > 0
+                ? `${top.symbol} available${typeof top.usd === "number" ? ` · about $${top.usd.toFixed(2)}` : ""}`
+                : "nothing in this wallet yet";
+            /* Both tiles print the same figure, so both are written from the same two
+               strings. A page that updates one number and one label is a page that shows
+               its reader two different wallets at once. */
+            $("demoBal").textContent = amount;
+            $("demoUnit").textContent = unit;
+            $("liveBal").textContent = amount;
+            $("liveBalUnit").textContent = unit;
           })
-          .catch(() => {});
+          .catch(() => {
+            $("demoUnit").textContent = "balance not read";
+            $("liveBalUnit").textContent = "balance not read";
+          });
+      }
+
+      /* Names and notes arrive from Walrus, and profiles from a paid index, so none of them are
+         dropped into innerHTML. A person's stored note is data, and data that reaches
+         markup is a hole rather than a shortcut. */
+      function pill(text, kind) {
+        const p = document.createElement("span");
+        p.className = kind ? `pill ${kind}` : "pill";
+        p.textContent = text;
+        return p;
+      }
+
+      function face(p) {
+        const chip = document.createElement("span");
+        chip.className = "face";
+        const art = faceUrl(p.name);
+        if (art) {
+          const av = document.createElement("span");
+          av.className = "av";
+          const img = document.createElement("img");
+          img.src = art;
+          img.alt = "";
+          av.append(img);
+          chip.append(av);
+        } else {
+          const initial = document.createElement("i");
+          initial.textContent = String(p.name).slice(0, 1);
+          chip.append(initial);
+        }
+        const label = document.createElement("span");
+        label.textContent = p.name;
+        chip.append(label);
+        return chip;
+      }
+
+      async function run(state) {
+        if (!state?.session) return;
+        const owned = state.session.source === "wallet";
+        $("demoWallet").textContent = `${owned ? "your wallet" : "the demo story"} · ${shortAddr(state.session.wallet)} · ${state.session.network}`;
+        const named = (state.parties ?? []).filter((p) => p.name && !p.service);
+        $("livePeople").textContent = named.length;
+        const rail = $("faces");
+        rail.innerHTML = "";
+        if (!named.length) {
+          const none = document.createElement("span");
+          none.className = "empty";
+          none.textContent = "this wallet has paid nobody and been paid by nobody yet";
+          rail.append(none);
+        } else {
+          named.slice(0, 3).forEach((p) => rail.append(face(p)));
+        }
+        facesPop();
+        fillStats(state);
+        castNotice(state);
+        showBalance();
 
         const rows = script(state);
-        const typed = $("typed");
+        const ask = $("demoAsk");
         const box = $("ans");
+        const blank = $("demoBlank");
+        if (!rows.length) {
+          ask.hidden = true;
+          box.hidden = true;
+          blank.hidden = false;
+          blank.textContent = owned
+            ? "This wallet has no payments and no notes yet, so this card has nothing true to type. Ask Ken a question, and the answer you get becomes the card."
+            : "The demo wallet could not be read just now, so the card stays empty rather than invented.";
+          return;
+        }
+        ask.hidden = false;
+        box.hidden = false;
+        blank.hidden = true;
+
+        const typed = $("typed");
+        /*
+         * This card changes its mind every seven seconds, and every answer is a
+         * different number of lines. Left alone it grows and shrinks by a few
+         * centimetres and drags the whole page below it along, which is exactly the
+         * loose-sheet feeling this page should not have. Measure every answer once,
+         * hold the frame at the tallest, and the words can change inside a card that
+         * does not move.
+         */
+        const demoCard = $("demo");
+        let tallest = 0;
+        for (const ask of rows) {
+          typed.textContent = ask.ask;
+          for (const r of rows) {
+            $("ansText").textContent = r.said;
+            const pills = $("ansMeter");
+            pills.innerHTML = "";
+            r.meter.filter((m) => m[0]).forEach((m) => pills.append(pill(m[0], m[1])));
+            box.classList.add("on");
+            tallest = Math.max(tallest, demoCard.getBoundingClientRect().height);
+          }
+        }
+        typed.textContent = "";
+        $("ansText").textContent = "";
+        $("ansMeter").innerHTML = "";
+        box.classList.remove("on");
+        demoCard.style.minHeight = `${Math.ceil(tallest)}px`;
+
         let i = 0;
         const step = () => {
           const r = rows[i % rows.length];
           i++;
-          box.classList.remove("on");
+          /*
+           * The answer from the last question stays on screen while the next question
+           * is typed, the way a conversation does. Clearing it left a reserved hole
+           * two hundred pixels tall, which read as a broken card rather than a calm one.
+           */
           $("ansBar").classList.remove("run");
           typed.textContent = "";
           let n = 0;
@@ -477,10 +922,9 @@
               typed.textContent = r.ask;
               setTimeout(() => {
                 $("ansText").textContent = r.said;
-                $("ansMeter").innerHTML = r.meter
-                  .filter((m) => m[0])
-                  .map((m) => `<span class="pill ${m[1]}">${m[0]}</span>`)
-                  .join("");
+                const meter = $("ansMeter");
+                meter.innerHTML = "";
+                r.meter.filter((m) => m[0]).forEach((m) => meter.append(pill(m[0], m[1])));
                 box.classList.add("on");
                 requestAnimationFrame(() => $("ansBar").classList.add("run"));
                 setTimeout(step, reduce ? 14000 : 7200);
@@ -492,19 +936,22 @@
         step();
       }
 
-      loadMeta().then(fillStats).catch(() => {});
-      run();
+      /* One /state read paints the masthead and this card, because two reads taken a few
+         milliseconds apart can disagree, and a page that shows the same figure two ways
+         cannot be trusted on either of them. */
+      loadMeta().then(run).catch(() => {});
 
       /* The hub is read by choosing. A judge who wants to know what Walrus does should
          be able to ask it that, rather than wait for a dot to travel past. */
       const sats = [...document.querySelectorAll(".hub .sat")];
-      const spokes = [...document.querySelectorAll(".hub .spoke")];
+      const spots = [...document.querySelectorAll(".hubStage .spot")];
       function pick(sat) {
         for (const s of sats) s.classList.toggle("sel", s === sat);
-        for (const sp of spokes) sp.classList.toggle("on", sp.classList.contains(sat.dataset.spoke));
         $("coreName").textContent = sat.dataset.svc;
         $("coreJob").textContent = sat.dataset.job;
         $("hubLine").textContent = sat.dataset.line;
+        for (const spot of spots) spot.classList.toggle("on", spot.dataset.face === sat.dataset.svc);
+        $("stageTag").textContent = sat.dataset.svc + " · " + sat.dataset.animal;
       }
       for (const sat of sats) {
         sat.addEventListener("click", () => pick(sat));
@@ -518,7 +965,8 @@
         held: {
           state: "held, unsigned",
           chain: "nothing to find yet",
-          foot: "Nothing has left your wallet. These are only bytes, waiting on the Pay page for your extension.",
+          foot: "Nothing has left your wallet. These are only bytes, waiting for your extension to sign.",
+          stamp: "unsigned",
           hi: 0,
           marks: [
             ["A sentence is not a payment", "spoken words only ever build bytes"],
@@ -530,6 +978,7 @@
           state: "settled on chain",
           chain: "0.95 USDC, digest checked",
           foot: "The digest your wallet reported was read back through Tatum and matched against 0.95 USDC arriving. Only now does it become a memory.",
+          stamp: "settled",
           hi: 2,
           marks: [
             ["Your yes was the only key", "this page never held one, so it could not spend one"],
@@ -540,7 +989,8 @@
         refused: {
           state: "cancelled by you",
           chain: "still nothing to find",
-          foot: "Nothing moved, nothing was written, and the agent was told you refused. It will not ask again in the same breath.",
+          foot: "Nothing moved, nothing was written, and Ken was told you refused. It will not ask again in the same breath.",
+          stamp: "void",
           hi: 0,
           marks: [
             ["Cancel is a normal ending", "refusing costs nothing and changes nothing"],
@@ -556,10 +1006,13 @@
         $("tkState").textContent = t.state;
         $("tkChain").textContent = t.chain;
         $("tkFoot").textContent = t.foot;
+        $("tkStamp").textContent = t.stamp;
+        $("tkTicket").dataset.tone = key;
+        for (const b of tkSeg.children) b.setAttribute("aria-pressed", String(b.dataset.state === key));
         tkMarks.innerHTML = "";
         t.marks.forEach((m, i) => {
           const cell = document.createElement("div");
-          cell.className = i === t.hi ? "mark hi" : "mark";
+          cell.className = i === t.hi ? "tk2-note hi" : "tk2-note";
           const head = document.createElement("b");
           head.textContent = m[0];
           cell.append(head, document.createTextNode(m[1]));

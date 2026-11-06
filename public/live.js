@@ -42,10 +42,29 @@ export function floorIsMine({ barge = false, speaking = false, now = 0, tailUnti
 }
 
 /**
+ * The live model sends transcription in pieces that are sometimes cumulative and
+ * sometimes only the words it has not sent yet. Appending both shapes blindly is
+ * what printed one spoken sentence twice, which reads as the call having heard and
+ * answered the same thing two times.
+ */
+export function mergeHeard(line, piece) {
+  // Punctuation and the space a piece starts with are not new words, so they are
+  // compared away. Without that, "Prakash" and " Prakash" are two utterances.
+  const norm = (s) => s.toLowerCase().replace(/[.,!?…]+$/g, "").trim();
+  if (!norm(piece)) return line;
+  if (!norm(line)) return piece;
+  const whole = norm(line);
+  const part = norm(piece);
+  if (part === whole || whole.endsWith(part)) return line;
+  if (part.startsWith(whole)) return piece;
+  return line + piece;
+}
+
+/**
  * Microphone bytes at 16 kHz, which is what the model listens for. The browser's own
  * rate is whatever the hardware decided, so every block is resampled on the way out.
  */
-export async function captureMic(onChunk, onLevel) {
+export async function captureMic(onChunk, onLevel, onTrace) {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   });
@@ -57,6 +76,7 @@ export async function captureMic(onChunk, onLevel) {
   let pending = new Int16Array(0);
   let phase = 0;
   let previous = 0;
+  const shape = new Float32Array(192);
 
   node.onaudioprocess = (e) => {
     const input = e.inputBuffer.getChannelData(0);
@@ -66,6 +86,21 @@ export async function captureMic(onChunk, onLevel) {
       if (v > peak) peak = v;
     }
     onLevel(Math.min(1, peak * 2.6));
+    // The scope gets the shape of the block, not just its loudness, so it can
+    // draw the voice rather than a curve that only looks like one.
+    if (onTrace) {
+      const span = input.length / shape.length;
+      for (let b = 0; b < shape.length; b++) {
+        const start = Math.floor(b * span);
+        const end = Math.min(input.length, Math.floor((b + 1) * span));
+        let loudest = 0;
+        for (let k = start; k < end; k++) {
+          if (Math.abs(input[k]) > Math.abs(loudest)) loudest = input[k];
+        }
+        shape[b] = loudest;
+      }
+      onTrace(shape);
+    }
     // Step through the block at the ratio between the two rates and carry the fraction
     // into the next block, or the resampled audio drifts a few milliseconds behind the
     // speaker every time the microphone hands over a buffer.
@@ -108,14 +143,17 @@ export async function captureMic(onChunk, onLevel) {
  * to start the moment the last finishes, so the sentence is continuous even though it
  * crossed the network in fragments.
  */
-export function createPlayer(onLevel) {
+export function createPlayer(onLevel, onTrace) {
   const ctx = new AudioContext();
   const master = ctx.createGain();
   const analyser = ctx.createAnalyser();
-  analyser.fftSize = 512;
+  // Long enough to show a tenth of a second of speech at once, which is what
+  // gives the scope its detail instead of one slow swell per syllable.
+  analyser.fftSize = 2048;
   master.connect(analyser);
   analyser.connect(ctx.destination);
-  const bytes = new Uint8Array(analyser.frequencyBinCount);
+  // Time-domain data is one byte per fftSize sample, not one per frequency bin.
+  const bytes = new Uint8Array(analyser.fftSize);
   let next = 0;
   const live = [];
   let raf = 0;
@@ -125,11 +163,15 @@ export function createPlayer(onLevel) {
     let peak = 0;
     for (let i = 0; i < bytes.length; i++) peak = Math.max(peak, Math.abs(bytes[i] - 128) / 128);
     onLevel(peak);
+    onTrace?.(bytes);
     raf = requestAnimationFrame(tick);
   };
 
   return {
     feed(pcm, rate) {
+      // A context that the browser parked while the page was in the background would
+      // swallow every frame it was given, so waking it is part of playing a chunk.
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
       const s16 = new Int16Array(pcm);
       const buf = ctx.createBuffer(1, s16.length, rate);
       const ch = buf.getChannelData(0);
@@ -185,9 +227,14 @@ export function createPlayer(onLevel) {
  */
 export function openLive(handlers) {
   // A numeric voice value is an index into this browser's own list, which the live
-  // socket has no use for, so only a real speaker name is sent upstream.
-  const qs = handlers.voice && !/^\d+$/.test(handlers.voice) ? `?voice=${encodeURIComponent(handlers.voice)}` : "";
-  const es = new EventSource("/live/stream" + qs);
+  // socket has no use for, so only a real speaker name is sent upstream. The session
+  // travels with the stream so a ticket earned by voice lands in the thread the
+  // person actually had open.
+  const qs = new URLSearchParams();
+  if (handlers.voice && !/^\d+$/.test(handlers.voice)) qs.set("voice", handlers.voice);
+  if (handlers.session) qs.set("session", handlers.session);
+  const tail = qs.toString();
+  const es = new EventSource("/live/stream" + (tail ? `?${tail}` : ""));
   let id = "";
   let queue = [];
   let busy = false;
@@ -243,6 +290,7 @@ export function openLive(handlers) {
       handlers.onHeard?.(m.text);
     } else if (m.kind === "said") handlers.onSaid?.(m.text);
     else if (m.kind === "tool") handlers.onTool?.(m);
+    else if (m.kind === "tool-start") handlers.onToolStart?.(m);
     else if (m.kind === "activity") handlers.onActivity?.(m.type);
     else if (m.kind === "turn") {
       dropping = false;
@@ -272,10 +320,34 @@ export function openLive(handlers) {
       while (queue.length > 3) queue.shift();
       pump();
     },
+    /**
+     * A typed note for the live model. The microphone path carries speech, and an
+     * address is the one thing this page refuses to carry that way, so the sentence
+     * that says an address was typed travels through here instead.
+     */
+    say(text) {
+      if (!id || dead) return Promise.resolve(false);
+      return fetch(`/live/text?id=${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+        .then((r) => r.ok)
+        .catch(() => false);
+    },
+    /**
+     * Ends the call on both sides and hands back something a caller can wait on. Closing
+     * the stream is what actually frees the server's socket, so the post below is the polite
+     * version of the same instruction rather than the only one, and an id that was never
+     * issued is not a leak waiting behind it.
+     */
     hangup() {
       dead = true;
       es.close();
-      if (id) fetch(`/live/hangup?id=${id}`, { method: "POST" }).catch(() => {});
+      if (!id) return Promise.resolve();
+      return fetch(`/live/hangup?id=${encodeURIComponent(id)}`, { method: "POST" })
+        .then(() => {})
+        .catch(() => {});
     },
     hold() {
       dropping = true;

@@ -1,54 +1,52 @@
 // Shared behaviour for every page: the masthead state, the wallet handshake and
 // the scroll reveals. Keeping it here is what stops the app and the landing page
 // from disagreeing about what the same chip does.
-import { discover, connect } from "./wallet.js";
+import { discover, connect, resume, whyNoSuiWallet } from "./wallet.js";
+import { dialogue, walletAsked, walletWaiting, walletOpen, walletFailed } from "./dialogue.js";
+
+// The four word-shaping helpers live in format.js, so a node test can read them
+// without loading this file and hitting wallet.js's use of window. They are bound
+// here too because the masthead prints a shortened address.
+import { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx } from "./format.js";
+export { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx };
+
+/*
+ * Which ledger this build settles on is a server field. Pages that print a payment
+ * label or build an explorer link read it from here instead of typing "testnet" into
+ * copy, which is how a mainnet build ended up telling people their money was worthless
+ * dust. The default is the network a fresh deploy pays on.
+ */
+let settleNet = "mainnet";
+export const payNetwork = () => settleNet;
+export const payChain = () => `sui:${settleNet}`;
 
 export const $ = (id) => document.getElementById(id);
 
-export const shortAddr = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-
-// Chain units and ISO dates are the two things this product exists to hide.
-export function spoken(text) {
-  const [num, ...rest] = String(text).split(" ");
-  const x = Number(num);
-  if (!Number.isFinite(x)) return text;
-  const unit = rest.join(" ");
-  if (x !== 0 && Math.abs(x) < 0.01) return unit ? `under a cent of ${unit}` : "under a cent";
-  return [x >= 100 ? String(Math.round(x)) : x.toFixed(2).replace(/\.?0+$/, ""), unit].join(" ");
-}
-
-export function when(iso) {
-  if (!iso) return "never";
-  // Both sides are pinned to local midday, because a stored date is a calendar day and
-  // a millisecond difference across a timezone boundary used to call today yesterday.
-  const noon = (d) => new Date(d).setHours(12, 0, 0, 0);
-  const days = Math.round((noon(new Date()) - noon(iso.slice(0, 10))) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return days + " days ago";
-  if (days < 14) return "last week";
-  return Math.floor(days / 7) + " weeks ago";
-}
-
 /**
- * A stored line is written by code, so it comes back holding a whole address, a whole
- * digest and an ISO date. Those are the exact three things this product exists to hide,
- * and Walrus memory has no delete, so the only place to fix it is on the way to screen.
+ * A receipt is only useful if the long string on it can leave the screen, and a
+ * clipboard that silently fails wastes the one time a person tries. The older
+ * selection path is kept because a browser without a secure context has no
+ * navigator.clipboard at all.
  */
-export function plain(text) {
-  return String(text)
-    .replace(/\bCounterparty\b/g, "An address")
-    .replace(/\btx\s+([1-9A-HJ-NP-Za-km-z]{30,})/g, (_, d) => `tx ${d.slice(0, 8)}…`)
-    .replace(/\b0x[0-9a-f]{40,}\b/gi, (a) => shortAddr(a))
-    .replace(/\bon (\d{4}-\d{2}-\d{2})\b/g, (_, d) => when(d))
-    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, (d) => when(d))
-    .replace(/\b\d+\.\d{5,}\s+[A-Z]{3,4}\b/g, (m) => spoken(m))
-    .replace(/\b(\d+) transaction\(s\)/g, (_, n) => `${n} transaction${n === "1" ? "" : "s"}`)
-    .replace(/\bnot yet labelled by the user\.?/gi, "Nothing has named it yet")
-    .replace(/\buser revoked\b/gi, "you revoked")
-    .replace(/\s+,/g, ",")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const box = document.createElement("textarea");
+      box.value = text;
+      box.setAttribute("readonly", "");
+      box.style.cssText = "position:fixed;left:-9999px;top:0";
+      document.body.appendChild(box);
+      box.select();
+      const ok = document.execCommand("copy");
+      box.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 }
 
 /** Sections fade up once as they enter the viewport. */
@@ -180,7 +178,7 @@ const peak = (buf) => {
  * Real microphone level from 0 to 1, so a visual can move with the sound coming
  * out of a person rather than with a timer. Returns a stop function. Throws when
  * the browser has no microphone API or the permission was refused, which the
- * caller reports instead of showing a ribbon that would be lying.
+ * caller reports instead of showing a meter that would be lying.
  */
 export async function startMic(onLevel) {
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -231,7 +229,7 @@ let playCtx = null;
 
 /**
  * Speaks through the model and returns a stop function. The level it reports comes
- * from the audio actually playing, which is what makes the ribbon honest for the
+ * from the audio actually playing, which is what makes the scope honest for the
  * agent's voice as well as the user's.
  */
 export async function speakRemote(text, { onLevel, onEnd, onVoice } = {}) {
@@ -305,41 +303,219 @@ async function post(payload) {
 }
 
 /**
- * Wires the wallet chip and returns the current session to the caller so each
- * page can load whatever it displays.
+ * One wallet connects itself. Three wallets in the same browser is a decision only
+ * the person can make, so the dialogue asks it rather than whichever extension
+ * happened to register first. The choice lives inside the sheet because a row of
+ * chips under a masthead is invisible the moment the sheet is over it.
+ */
+export function pickWallet(dlg, { onStatus, onPick, control } = {}) {
+  const found = discover();
+  if (!found.length) throw new Error(whyNoSuiWallet());
+  if (found.length === 1) return connect(found[0].wallet, onStatus, control);
+  return new Promise((resolve) => {
+    dlg.replace({
+      tone: "wait",
+      kicker: "more than one door answered",
+      title: "which of these holds your money?",
+      line: "This page will not choose for you. Whichever one you pick is the only one it asks.",
+      beats: found.map((f) => {
+        const onSui = (a) => a.address && (!a.chain || String(a.chain).toLowerCase().startsWith("sui:"));
+        const shown = f.accounts.filter(onSui);
+        const other = f.accounts.find((a) => a.address && !onSui(a));
+        return {
+          text: shown.length
+            ? `${f.name} already shows ${shortAddr(shown[0].address)} on ${shown[0].chain}`
+            : other
+              ? `${f.name} holds ${other.chain}, and this page cannot pay on a chain that is not Sui`
+              : `${f.name} has shown this page no account it can read yet`,
+          mark: shown.length ? "check" : "dot",
+        };
+      }),
+      actions: found.map((f) => ({
+        label: f.name,
+        icon: f.icon,
+        primary: f.accounts.some((a) => a.address && (!a.chain || String(a.chain).toLowerCase().startsWith("sui:"))),
+        onClick: () => {
+          onPick?.(f.name);
+          resolve(f.wallet);
+        },
+      })),
+    });
+  }).then((wallet) => connect(wallet, onStatus, control));
+}
+
+/*
+ * What this browser kept about the wallet being let go of. The name beside an address is
+ * a convenience and the stored brief is a whole sentence about somebody's money, so both
+ * outlive the page unless something deletes them. Leaving is therefore an action with a
+ * list rather than a change of state, and the list is what the sheet reads back, because
+ * a person is entitled to know which of their traces a button actually removed. The same
+ * sentences are dropped when a wallet is picked up, keeping only the name the new account
+ * is about to overwrite, because a stored paragraph about the previous wallet has no
+ * business outliving it either.
+ */
+function forgetBrowser({ name = true, briefs = true } = {}) {
+  const dropped = [];
+  const kill = (store, key, label) => {
+    try {
+      if (store.getItem(key) === null) return;
+      store.removeItem(key);
+      if (!dropped.includes(label)) dropped.push(label);
+    } catch {
+      /* a window that refuses storage has nothing here left to clear either */
+    }
+  };
+  if (name) kill(localStorage, "walletName", "the wallet name this page stored");
+  if (briefs) {
+    try {
+      for (const key of Object.keys(sessionStorage)) {
+        if (key.startsWith("brief-")) kill(sessionStorage, key, "the brief it had already said out loud");
+      }
+    } catch {
+      /* same */
+    }
+  }
+  return dropped;
+}
+
+/**
+ * Wires the wallet chip and returns the current session to the caller so each page
+ * can load whatever it displays.
+ *
+ * The telling is a cartoon sheet rather than a line in the masthead. It opens the
+ * moment a person presses Connect, so the wait has a face, and it stays the same
+ * sheet when the answer arrives, because a card that mutates in front of you reads
+ * as a character talking while a second card replacing the first reads as a page
+ * reloading.
  */
 export function mountWallet(onChange) {
   const btn = $("connect");
   if (!btn) return;
-  btn.onclick = async () => {
-    if (btn.dataset.mode === "wallet") {
-      btn.textContent = "returning…";
-      await post({ demo: true }).catch(() => {});
-      btn.textContent = "Connect wallet";
-      btn.dataset.mode = "";
-      btn.classList.remove("on");
-      onChange?.();
+
+  const toDemo = async () => {
+    btn.textContent = "letting go…";
+    /* One call hands the page back to the wallet this build speaks for, and the server
+       drops the address, the cached balance read, the transcript and every sentence it
+       had recorded in a voice, because all three are derived from the wallet that is
+       going away. The reply is the proof: a sheet that promised the address was gone
+       after a request that never landed would be this page lying about the one thing
+       the person pressed the button to find out. */
+    let left = null;
+    try {
+      left = await post({ demo: true });
+    } catch {
+      /* nothing was dropped, and the sheet below says so */
+    }
+    if (left?.source !== "demo") {
+      btn.textContent = "Disconnect";
+      dialogue({
+        who: "mouse",
+        tone: "bad",
+        kicker: "the server would not let go",
+        title: "this page still reads your address",
+        line: "Nothing was cleared, so nothing is half-gone. Press try again, and if it fails a second time reload the page, because a dead server cannot forget on command.",
+        beats: [
+          { text: "your wallet is still the account every read on this page is for", mark: "cross" },
+          { text: "this browser kept its copy of the wallet name and the brief, since dropping them while the server still holds your address would leave the two halves disagreeing", mark: "dot" },
+        ],
+        stamp: "still here",
+        actions: [
+          { label: "try again", primary: true, onClick: (dlg) => { dlg.close(true); toDemo(); } },
+          { label: "reload the page", onClick: () => location.reload() },
+        ],
+      });
       return;
     }
-    btn.textContent = "looking…";
+    const dropped = forgetBrowser();
+    btn.textContent = "Connect wallet";
+    btn.dataset.mode = "";
+    btn.classList.remove("on");
+    btn.removeAttribute("title");
+    /* The transcript is the page's own memory of what it was told about this wallet, and
+       no cache clear reaches it. Saying so out loud on the document is what lets the Talk
+       page wipe its own screen rather than leaving a stranger's conversation up after the
+       person has pressed let go. */
+    document.dispatchEvent(new CustomEvent("wallet:changed"));
+    onChange?.();
+    dialogue({
+      who: "mouse",
+      tone: "good",
+      kicker: "the page let go of your account",
+      title: "nothing here carries your address now",
+      line: "This page reads the demo story's own wallet again, so nothing on it can reach your account or your money.",
+      beats: [
+        {
+          text: dropped.length ? `this browser also dropped ${dropped.join(", ")}` : "this browser had nothing of yours stored",
+          mark: "check",
+        },
+        { text: "the server dropped your address, the balance it had read for you, the conversation, and every sentence it had voiced about your people", mark: "check" },
+        { text: "the screen went back to how it looked before you asked it anything", mark: "check" },
+        { text: "what stays is what no button here can undo: the notes already written to Walrus under your address, since that store has no delete verb, and anything that settled on the chain", mark: "dot" },
+        { text: "press Connect wallet whenever you want your own account back", mark: "dot" },
+      ],
+      stamp: "gone",
+    });
+  };
+
+  const ask = async () => {
+    const found = discover();
+    if (!found.length) {
+      dialogue(walletFailed(new Error(whyNoSuiWallet()), { retry: ask, onDemo: toDemo }));
+      return;
+    }
+
+    const control = {};
+    let who = found.length === 1 ? found[0].name : "the wallet";
+    const waiting = () =>
+      walletWaiting(who, {
+        onAgain: () => control.again?.(),
+        onDemo: toDemo,
+      });
+
+    /* The sheet opens before the wallet is asked, so the window the extension opens
+       lands over a page that already says what it is waiting for. */
+    const dlg = dialogue(found.length === 1 ? waiting() : walletAsked(found.length));
+    btn.textContent = "asking…";
     try {
-      const found = discover();
-      if (!found.length) {
-        btn.textContent = "Connect wallet";
-        $("whose").textContent = "no Sui wallet here. Install Suiet, Ethos, Martian or Suilend";
-        return;
-      }
-      const picked = await connect(found[0].name);
+      const picked = await pickWallet(dlg, {
+        control,
+        onPick: (name) => {
+          who = name;
+          dlg.replace(waiting());
+        },
+        onStatus: (s) => {
+          dlg.status(s);
+          btn.textContent = "waiting on your wallet…";
+        },
+      });
       await post({ address: picked.address, chain: picked.chain });
-      btn.textContent = "Use the demo story";
+      /* The name is the wallet's own, kept beside its address so the masthead can say
+         Slush rather than a string of hex. It is only ever shown when the address it
+         was saved with is the address this page is actually speaking for. */
+      try {
+        localStorage.setItem("walletName", JSON.stringify({ address: picked.address, name: picked.name }));
+      } catch {
+        /* private windows refuse storage, and an address is still honest */
+      }
+      forgetBrowser({ name: false });
+      btn.textContent = "Disconnect";
+      btn.title = "let go of this wallet and clear what this page stored about it";
       btn.dataset.mode = "wallet";
       btn.classList.add("on");
+      /* The same wipe runs in this direction. Every sentence above the log was answered
+         to a different wallet, and leaving the demo story's people on screen the moment
+         your own address arrives is how a page shows a stranger's money inside your
+         account. */
+      document.dispatchEvent(new CustomEvent("wallet:changed"));
+      dlg.replace(walletOpen(picked, { seconds: dlg.seconds(), onDemo: toDemo, payNet: settleNet }));
       onChange?.();
     } catch (err) {
       btn.textContent = "Connect wallet";
-      $("whose").textContent = err.message;
+      dlg.replace(walletFailed(err, { seconds: dlg.seconds(), retry: ask, onDemo: toDemo }));
     }
   };
+
+  btn.onclick = () => (btn.dataset.mode === "wallet" ? toDemo() : ask());
 }
 
 /*
@@ -414,59 +590,358 @@ export function fillStats(body) {
   }
 }
 
-/** Fills the masthead readouts. Missing ids are skipped so pages can show a subset. */
-export async function loadMeta(refresh) {
-  const res = await fetch(refresh ? "/state?refresh=1" : "/state").catch(() => null);
-  if (!res || !res.ok) return null;
-  const body = await res.json();
+/**
+ * Renders a /state body that the caller already holds. Split out of loadMeta because a
+ * page that reads the same endpoint for its own rail would otherwise ask twice, and
+ * ?refresh=1 is not a cache hit, it is a fresh walk over the chain.
+ */
+export function paintMeta(body) {
   noteSpeech(body);
+  settleNet = body?.pay_network === "testnet" ? "testnet" : "mainnet";
   const set = (id, v) => {
     const el = $(id);
     if (el) el.textContent = v;
   };
   set("model", (body.model || "").replace("gemini-", "gem "));
   set("decide", (body.brain?.decide || "").replace("gemini-", "gem "));
-  set("memCount", body.stats.total);
+  set("memCount", body.stats?.total ?? 0);
   set("spend", `${Number(body.spend?.usdc ?? 0).toFixed(2)}${body.spend?.lookups ? ` over ${body.spend.lookups}` : ""}`);
   set("chainState", `${body.session?.network ?? "·"}${body.payments ? ", live" : ", read only"}`);
+  const status = document.querySelector(".statusBtn");
+  if (status) {
+    status.dataset.live = String(Boolean(body.payments));
+    status.title = body.payments
+      ? settleNet === "mainnet"
+        ? `payments are live on mainnet, where that money is real, so nothing moves until your own wallet signs`
+        : "payments are live, this build can move testnet money"
+      : "read only, nothing on this page can move money";
+  }
   const s = body.session;
+  markNetwork?.(s?.network);
   if (s) {
-    set("whose", s.source === "wallet" ? `your wallet · ${shortAddr(s.wallet)}` : `the demo story · ${shortAddr(s.wallet)}`);
+    let named = "";
+    try {
+      const saved = JSON.parse(localStorage.getItem("walletName") || "null");
+      if (saved?.address === s.wallet) named = saved.name;
+    } catch {
+      /* the address is plenty when storage is unavailable */
+    }
+    set("whose", s.source === "wallet" ? `${named || "your wallet"} · ${shortAddr(s.wallet)}` : `the demo story · ${shortAddr(s.wallet)}`);
     const btn = $("connect");
     if (btn) {
       const on = s.source === "wallet";
       btn.dataset.mode = on ? "wallet" : "";
       btn.classList.toggle("on", on);
-      btn.textContent = on ? "Use the demo story" : "Connect wallet";
+      btn.textContent = on ? "Disconnect" : "Connect wallet";
+      if (on) btn.title = "let go of this wallet and clear what this page stored about it";
+      else btn.removeAttribute("title");
     }
+    /* The seat says a wallet is connected, which outlives the tab, so this load has
+       not asked the wallet anything yet. Asking it quietly here is what lets Sign in
+       wallet find the account later without opening a window on page load. */
+    if (s.source === "wallet") resumeWallet();
   }
   return body;
 }
 
-/* The masthead folds below 720px, and a menu that stays open after you have picked
-   a destination is a menu you have to close twice. Escape and a tap outside close it
-   too, because a panel that only closes by its own button is a trap on a phone. */
+let stillAsking = false;
+async function resumeWallet() {
+  if (stillAsking) return;
+  stillAsking = true;
+  try {
+    await resume();
+  } catch {
+    /* a wallet that will not answer quietly is asked properly when it is needed */
+  }
+}
+
+/*
+ * Which ledger is being read is a server field, so this control never holds a copy of
+ * it. paintMeta marks it from every /state read, which means the two names on the pill
+ * can only ever disagree with the numbers underneath them if the server itself says so.
+ */
+let markNetwork = null;
+
+export function mountNetwork(onChange) {
+  const slot = document.querySelector(".wallet");
+  if (!slot || slot.querySelector(".nets")) return null;
+  const box = document.createElement("div");
+  box.className = "nets";
+  box.setAttribute("role", "group");
+  box.setAttribute("aria-label", "Which Sui ledger this page reads");
+  let current = "";
+  /* The note has to be re-read on every /state paint, because which of these two
+     buttons can hold a payment is decided by the server, not by the order of the pair. */
+  const notes = () => ({
+    testnet: `reads the testnet history.${
+      settleNet === "testnet" ? " This is the network this build prepares a payment on, and the dust there is worthless." : " Nothing a payment is prepared on in this build."
+    }`,
+    mainnet: `reads your real balances and transfers.${
+      settleNet === "mainnet"
+        ? " This is the network this build prepares a payment on, and only your own wallet signature moves it."
+        : " Nothing here can move mainnet money."
+    }`,
+  });
+  const set = (net) => {
+    current = net ?? "";
+    const NOTES = notes();
+    for (const b of box.children) {
+      const on = b.dataset.net === current;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+      if (NOTES[b.dataset.net]) b.title = NOTES[b.dataset.net];
+    }
+  };
+  markNetwork = set;
+
+  for (const net of ["testnet", "mainnet"]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.net = net;
+    b.textContent = net;
+    b.title = notes()[net];
+    b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", async () => {
+      if (net === current) return;
+      for (const other of box.children) other.disabled = true;
+      let res = null;
+      let body = null;
+      try {
+        res = await fetch("/network", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ network: net }),
+        });
+        body = await res.json().catch(() => null);
+      } catch {
+        /* a server that is not answering is reported by the sheet below */
+      }
+      for (const other of box.children) other.disabled = false;
+      if (!res || !res.ok) {
+        dialogue({
+          who: "mouse",
+          tone: "bad",
+          kicker: "the read did not move",
+          title: `still reading ${current || "the last network"}`,
+          line:
+            body?.error ??
+            "The server did not answer, so every number on this page is still the one you were shown. Press the other name to try again.",
+          stamp: "nothing changed",
+          actions: [{ label: "ok", primary: true }],
+        });
+        return;
+      }
+      set(body?.network ?? net);
+      onChange?.(body);
+    });
+    box.append(b);
+  }
+  slot.insertBefore(box, slot.querySelector("#connect") ?? slot.firstChild);
+  /* The switch is born after the masthead has already placed its pieces, and on a
+     phone it belongs inside the menu sheet rather than the wallet row. */
+  document.dispatchEvent(new CustomEvent("masthead:layout"));
+  return box;
+}
+
+/** The same read, fetched here rather than handed in. Missing ids are skipped so each page shows a subset. */
+export async function loadMeta(refresh) {
+  const res = await fetch(refresh ? "/state?refresh=1" : "/state").catch(() => null);
+  if (!res || !res.ok) return null;
+  return paintMeta(await res.json());
+}
+
+/*
+ * The story pages are written in the second person about invented people, and they are the
+ * pages a judge reads while a wallet is connected from a earlier tab. Nothing about those
+ * sentences is false about the cast, and everything about them is false about the reader,
+ * so the difference has to be stated where it is being read rather than assumed from a
+ * masthead line two scrolls away. In demo mode there is nothing to correct, so no line.
+ */
+export function castNotice(body) {
+  if (body?.session?.source !== "wallet") return;
+  if (document.querySelector(".castnote")) return;
+  try {
+    if (sessionStorage.getItem("cast-note-dismissed") === "1") return;
+  } catch {
+    /* private windows refuse storage, and a note that cannot be remembered is still true */
+  }
+  const box = document.createElement("aside");
+  box.className = "castnote";
+  box.setAttribute("role", "note");
+  box.setAttribute("aria-label", "About the examples on this page");
+  const text = document.createElement("p");
+  text.textContent = "These examples are the invented cast, not your money. Your own people are on ";
+  const link = document.createElement("a");
+  link.href = "/app";
+  link.textContent = "the App page";
+  text.append(link, ".");
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "x";
+  close.setAttribute("aria-label", "Dismiss this note");
+  close.textContent = "×";
+  close.addEventListener("click", () => {
+    try {
+      sessionStorage.setItem("cast-note-dismissed", "1");
+    } catch {
+      /* the note still closes for this page */
+    }
+    box.remove();
+  });
+  box.append(text, close);
+  document.body.append(box);
+}
+
+/* One glyph per destination, drawn at the same weight as every other rule in the build.
+   They live here rather than in twelve copies of the header so a new page cannot quietly
+   become the one page whose Talk link has no picture. A page that carries an unknown
+   href simply keeps its word. */
+const NAV_ICONS = {
+  "/app": "M4 5.5h16v10.5H9.5L4 20z M8 9h8 M8 12.5h5",
+  "/memory": "M5 7h14v13H5z M5 7l2-3h10l2 3 M9 11h6 M9 15h4",
+  "/pay": "M3 6h18v12H3z M3 10h18 M7 15h4",
+  "/request": "M10.2 13.8a4 4 0 0 0 5.6 0l3-3a4 4 0 0 0-5.6-5.6l-1 1 M13.8 10.2a4 4 0 0 0-5.6 0l-3 3a4 4 0 0 0 5.6 5.6l1-1",
+  "/ask": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M9.6 9.2a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.5 M12 16.8h.01",
+  "/report": "M5 3h14v18l-3-2-2 2-2-2-2 2-3-2z M9 8h6 M9 12h6 M9 16h3",
+  "/features": "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
+  "/how": "M4 18l5-2 6 2 5-2V6l-5 2-6-2-5 2z M9 16V8 M15 18V10",
+  "/life": "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6l1.4 1.4 M17 17l1.4 1.4 M18.4 5.6 17 7 M7 17l-1.4 1.4",
+};
+
+function navGlyph(d) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "navicon");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", d);
+  svg.append(path);
+  return svg;
+}
+
+function paintNavIcons(head) {
+  for (const a of head.querySelectorAll("nav.tabs a[href]")) {
+    if (a.querySelector(".navicon")) continue;
+    const d = NAV_ICONS[a.getAttribute("href")];
+    if (d) a.prepend(navGlyph(d));
+  }
+}
+
+/* The masthead is one row above a laptop and one sheet below it. The sheet carries the
+   wallet name, the ledger switch and the status readouts, so the top row keeps only the
+   mark, the connect chip and the menu. Everything that opens closes on Escape and on a
+   tap outside, because a panel that only closes by its own button is a trap on a phone. */
 export function mountMasthead() {
   const head = document.querySelector("header");
-  const btn = head?.querySelector("[data-menu]");
-  const nav = head?.querySelector("nav.tabs");
-  if (!head || !btn || !nav) return;
-  const set = (open) => {
-    head.classList.toggle("open", open);
-    btn.setAttribute("aria-expanded", String(open));
-    btn.textContent = open ? "close" : "menu";
+  if (!head) return;
+  const btn = head.querySelector("[data-menu]");
+  const nav = head.querySelector("nav.tabs");
+  const more = head.querySelector(".moreBtn");
+  const moreMenu = head.querySelector(".moreMenu");
+  const statusBtn = head.querySelector(".statusBtn");
+  const statusBox = head.querySelector(".statusBox");
+  const wallet = head.querySelector(".wallet");
+  const extra = head.querySelector(".navExtra");
+  const narrow = typeof matchMedia === "function"
+    ? matchMedia("(max-width: 1199px)")
+    : { matches: false, addEventListener: null };
+
+  const closeMore = () => {
+    if (!more || !moreMenu) return;
+    moreMenu.hidden = true;
+    more.setAttribute("aria-expanded", "false");
   };
-  set(false);
-  btn.addEventListener("click", () => set(!head.classList.contains("open")));
-  nav.addEventListener("click", (e) => {
-    if (e.target.closest("a")) set(false);
+  const closeStatus = () => {
+    if (!statusBtn || !statusBox) return;
+    statusBox.hidden = true;
+    statusBtn.setAttribute("aria-expanded", "false");
+  };
+  const setMenu = (open) => {
+    head.classList.toggle("open", open);
+    btn?.setAttribute("aria-expanded", String(open));
+    btn?.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    if (!open) closeMore();
+  };
+  const setStatus = (open) => {
+    if (!statusBtn || !statusBox) return;
+    statusBox.hidden = !open;
+    statusBtn.setAttribute("aria-expanded", String(open));
+  };
+
+  /* The pieces below the top row move between the wallet and the menu sheet. The DOM
+     order is fixed, only the parent changes, so paintMeta keeps finding the same ids. */
+  const place = () => {
+    if (!extra || !wallet) return;
+    const whose = wallet.querySelector("#whose") ?? extra.querySelector("#whose");
+    const nets = wallet.querySelector(".nets") ?? extra.querySelector(".nets");
+    if (narrow.matches) {
+      for (const el of [statusBtn, statusBox, whose, nets]) {
+        if (el && el.parentElement !== extra) extra.append(el);
+      }
+      return;
+    }
+    if (whose && whose.parentElement !== wallet) wallet.insertBefore(whose, wallet.firstChild);
+    const anchor = wallet.querySelector("#connect") ?? statusBtn ?? null;
+    if (nets && nets.parentElement !== wallet) wallet.insertBefore(nets, anchor);
+    if (statusBox && statusBox.parentElement !== wallet) wallet.append(statusBox);
+    if (statusBtn && statusBtn.parentElement !== wallet) wallet.insertBefore(statusBtn, statusBox);
+  };
+
+  btn?.addEventListener("click", () => {
+    const open = !head.classList.contains("open");
+    setMenu(open);
+    if (open) closeStatus();
   });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") set(false);
+  more?.addEventListener("click", () => {
+    const open = moreMenu?.hidden;
+    closeStatus();
+    if (!open) closeMore();
+    else if (moreMenu) {
+      moreMenu.hidden = false;
+      more.setAttribute("aria-expanded", "true");
+    }
+  });
+  statusBtn?.addEventListener("click", () => {
+    const open = statusBox?.hidden;
+    closeMore();
+    setStatus(open);
+  });
+  nav?.addEventListener("click", (e) => {
+    if (e.target.closest("a")) {
+      setMenu(false);
+      closeMore();
+    }
   });
   document.addEventListener("click", (e) => {
-    if (head.classList.contains("open") && !head.contains(e.target)) set(false);
+    if (head.classList.contains("open") && !head.contains(e.target)) setMenu(false);
+    if (moreMenu && !moreMenu.hidden && !e.target.closest(".more")) closeMore();
+    if (statusBox && !statusBox.hidden && !e.target.closest(".statusBtn") && !e.target.closest(".statusBox")) closeStatus();
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    setMenu(false);
+    closeMore();
+    closeStatus();
+  });
+
+  /* A page reached through More has no pill of its own in the top row, so the button
+     carries a clay dot and says so to a screen reader. */
+  if (more && moreMenu?.querySelector('a[aria-current="page"]')) {
+    more.classList.add("on");
+    more.setAttribute("aria-label", "More, this page is in the menu");
+  }
+
+  paintNavIcons(head);
+  setMenu(false);
+  closeMore();
+  closeStatus();
+  place();
+  narrow.addEventListener?.("change", () => {
+    setMenu(false);
+    place();
+  });
+  document.addEventListener("masthead:layout", place);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mountMasthead);

@@ -2,14 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Statement · Total Recall</title>
-    <meta name="description" content="A shareable statement built from the same tool calls the voice agent makes. Numbers come from the chain, names come from memory, and nothing about the money is generated." />
+    <title>Statement · Ken</title>
+    <meta name="description" content="A shareable statement built from the same tool calls Ken makes. Numbers come from the chain, names come from memory, and nothing about the money is generated." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <style>
       .wrap { max-width: 940px; margin: 0 auto; padding: 0 var(--pad) 70px; }
       .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin: 46px 0 18px; }
@@ -19,21 +44,114 @@
       .stage { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 24px; align-items: start; }
       @media (max-width: 820px) { .stage { grid-template-columns: 1fr; } }
 
-      .card { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--paper-sunk); }
+      .card { position: relative; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--paper-sunk); }
       .card svg { display: block; width: 100%; height: auto; }
 
+      /* While the sheet is being typeset the card holds the shape it is about to
+         become: a kicker, a total and rows of rules on the same 4:5 sheet.
+         The sweep is paper-coloured rather than a white glare, so waiting reads as
+         the page going through a press, not as a spinner wearing a card costume.
+         The ratio reserves the real height, so the page never jumps when the sheet
+         lands. Everything here goes away the instant the SVG arrives.
+         It used to be called .ghost, and the secondary button used the class ghost for
+         a different reason entirely, so the button inherited the skeleton's 4:5 ratio
+         and printed as a 295px empty box with one line of text in the middle of it. */
+      .skel { aspect-ratio: 1080 / 1350; overflow: hidden; padding: 7% 8%; display: flex; flex-direction: column; gap: 16px; }
+      .skel i { display: block; height: 10px; border-radius: 4px; background: var(--sheet); }
+      .skel .gKick { width: 26%; }
+      .skel .gTitle { width: 66%; height: 30px; margin-top: 10px; }
+      .skel .gTotal { width: 48%; height: 54px; margin-top: 6px; }
+      .skel .gRows { margin-top: 12px; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+      .skel .gRow { flex: 1 1 0; min-height: 0; overflow: hidden; display: flex; align-items: center; gap: 18px; border-top: 1px solid var(--rule); }
+      .skel .gRow i:first-child { flex: 1; }
+      .skel .gRow i:nth-child(2) { width: 62px; }
+      .skel .gRow i:nth-child(3) { width: 40px; }
+      .card.loading::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(100deg, transparent 30%, rgba(245, 242, 234, 0.78) 50%, transparent 70%);
+        background-size: 240% 100%;
+        animation: sheetShimmer 1.7s linear infinite;
+      }
+      @keyframes sheetShimmer { from { background-position: 165% 0; } to { background-position: -65% 0; } }
+      @media (prefers-reduced-motion: reduce) {
+        .card.loading::after { animation: none; opacity: 0; }
+      }
+
       .side { display: flex; flex-direction: column; gap: 10px; }
-      .side .btn { width: 100%; justify-content: center; }
-      .note { font: var(--step--1)/1.65 var(--sans); color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; }
+      /* One button shape for the whole rail, and a quieter second tier for the action
+         that repeats a read rather than making a thing. */
+      .side .btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; padding: 11px 14px; }
+      .btn.ghost { background: var(--paper-sunk); border-color: var(--rule); color: var(--ink-2); box-shadow: none; }
+      .btn.ghost:hover { background: var(--paper); border-color: var(--ink-2); color: var(--ink); box-shadow: none; }
+      .note { font: var(--step--1)/1.65 var(--sans); color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 4px; }
       .note b { color: var(--ink-2); font-weight: 400; }
 
-      .why { margin-top: 46px; border: 1px solid var(--rule); border-radius: 8px; padding: 22px; background: var(--paper-sunk); }
+      /* The month and the moves are the part a person checks after the card, so they
+         are drawn as instruments rather than prose: a number, a bar, and rows. They
+         used to be two full width slabs stacked under each other, which put the meter
+         a screen and a half below the total it belongs to. */
+      .panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 26px; }
+      .panel { border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; background: var(--paper-sunk); min-width: 0; }
+      .panel .head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .panel h2 { font: 400 var(--step-2)/1.2 var(--serif); margin: 0; }
+      .capLine { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+      .capNum { font: 400 var(--step-5)/1 var(--serif); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+      .capNum small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); margin-left: 7px; }
+      .capOf { color: var(--ink-3); font: var(--step--1)/1.5 var(--mono); }
+      .capState { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 11px; border-radius: 999px; border: 1px solid currentColor; }
+      .capState.under { color: var(--moss); }
+      .capState.close { color: var(--clay); }
+      .capState.over { color: var(--brick); }
+      .capState.none { color: var(--ink-3); }
+      .meter { height: 10px; border-radius: 999px; background: var(--sheet); margin-top: 15px; overflow: hidden; border: 1px solid var(--rule); }
+      .meter i { display: block; height: 100%; width: 0; background: var(--moss); transition: width 500ms var(--ease); }
+      .meter i.close { background: var(--clay); }
+      .meter i.over { background: var(--brick); }
+      .capForm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+      .capForm label { display: flex; align-items: baseline; gap: 8px; color: var(--ink-2); font: var(--step--1)/1.4 var(--mono); }
+      .capForm input { width: 112px; }
+      .tiny { font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); margin: 10px 0 0; }
+      .tiny.bad { color: var(--brick); }
+
+      .moveList { margin-top: 10px; }
+      .move { display: grid; grid-template-columns: 24px auto minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule); }
+      .move:first-child { border-top: 0; }
+      .move .dir { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 13px/1 var(--sans); color: var(--paper); }
+      .move .dir.in { background: var(--moss); }
+      .move .dir.out { background: var(--clay); }
+      .move .amt { font: 400 var(--step-1)/1.2 var(--serif); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .move .amt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 2px; }
+      .move .who { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+      .move time { font: var(--step--1)/1 var(--mono); color: var(--ink-3); white-space: nowrap; }
+      .move a { font: var(--step--1)/1 var(--mono); color: var(--ink-3); text-decoration: none; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+      .move a:hover { color: var(--ink); }
+      @media (max-width: 700px) {
+        .move { grid-template-columns: 24px minmax(0, 1fr) auto; row-gap: 3px; }
+        .move .dir { grid-row: 1 / 4; }
+        .move .who { grid-column: 2 / 4; }
+        .move a { grid-column: 2 / 4; justify-self: start; }
+        .move time { grid-column: 3; grid-row: 1; }
+        .move .amt { grid-column: 2; grid-row: 1; }
+      }
+
+      /* Same left copy, right drawing rhythm the landing uses, instead of a grey box
+         with a picture glued to the bottom of it. */
+      .why { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 30px; align-items: center; margin-top: 40px; border-top: 1px solid var(--rule); padding-top: 34px; }
       .why h2 { font: 400 var(--step-2)/1.4 var(--serif); margin: 0 0 10px; }
-      .why p { color: var(--ink-2); margin: 0 0 10px; max-width: 66ch; }
+      .why p { color: var(--ink-2); margin: 0 0 10px; max-width: 44ch; }
       .why p:last-child { margin-bottom: 0; }
+      .why .plate { margin: 0; }
+
+      @media (max-width: 820px) {
+        .panels, .why { grid-template-columns: minmax(0, 1fr); }
+        .why .plate figcaption { text-align: left; }
+      }
 
       @media print {
-        header, .side, .why, .kicker, h1, .lead, footer { display: none !important; }
+        header, .side, .panel, .why, .kicker, h1, .lead, footer { display: none !important; }
         body { display: block; background: #fff; }
         .wrap { max-width: none; padding: 0; }
         .card { border: 0; }
@@ -41,42 +159,72 @@
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">the week, on paper</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report" aria-current="page">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report" aria-current="page">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <div class="wrap">
       <div class="kicker">statement</div>
       <h1>Ask it out loud, keep the paper</h1>
-      <p class="lead">This is the same data the agent answers from. It reads the chain through Tatum for the amounts and Walrus for who each address is, then sets them on one card you can save, print or post.</p>
+      <p class="lead">The chain for the amounts. Walrus for the names. The same numbers the agent just spoke, set on one card you can save, print or post.</p>
 
       <div class="stage">
-        <div class="card" id="card"><svg viewBox="0 0 1080 1350" xmlns="http://www.w3.org/2000/svg"><rect width="1080" height="1350" fill="#ece7dc"/></svg></div>
+        <div class="card loading" id="card" aria-busy="true">
+          <div class="skel" aria-hidden="true">
+            <i class="gKick"></i>
+            <i class="gTitle"></i>
+            <i class="gTotal"></i>
+            <div class="gRows">
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+              <div class="gRow"><i></i><i></i><i></i></div>
+            </div>
+          </div>
+        </div>
         <div class="side">
           <button class="btn" id="png">Save as image</button>
           <button class="btn" id="pdf">Print or save PDF</button>
@@ -86,29 +234,223 @@
         </div>
       </div>
 
+      <div class="panels">
+        <section class="panel" id="budget">
+          <div class="head">
+            <h2>This month</h2>
+            <span class="capState none" id="capState">reading…</span>
+          </div>
+          <div class="capLine">
+            <span class="capNum" id="capSpent">·<small>USDC out</small></span>
+            <span class="capOf" id="capOf"></span>
+          </div>
+          <div class="meter" id="meter" role="img" aria-label="monthly spending">
+            <i id="meterFill"></i>
+          </div>
+          <form class="capForm" id="capForm">
+            <label>monthly limit <input id="capInput" type="text" inputmode="decimal" placeholder="25" autocomplete="off" /> USDC</label>
+            <button class="btn" type="submit" id="capSave">Set limit</button>
+            <button class="btn ghost" type="button" id="capClear" hidden>Clear</button>
+          </form>
+          <p class="tiny" id="capNote"></p>
+        </section>
+
+        <section class="panel" id="moves">
+          <div class="head">
+            <h2>Recent moves</h2>
+            <span class="tiny" id="moveNote" style="margin:0">reading…</span>
+          </div>
+          <div class="moveList" id="moveList"></div>
+        </section>
+      </div>
+
       <div class="why">
-        <h2>Why the card is typeset instead of generated</h2>
-        <p>Every image model we can reach draws convincing paper and unreliable digits. A statement that gets a total wrong by forty cents is worse than no statement, because the one claim this product makes is that its numbers came from the chain.</p>
-        <p>So the layout is real vector text set from the tool output, which means the same file prints at any size, exports as a picture for sharing, and carries the exact figures the agent just spoke. The only thing a model touches here is the sentence it says out loud.</p>
-        <figure class="plate" style="margin-top:20px">
+        <div class="why-copy">
+          <h2>Why the card is typeset instead of drawn</h2>
+          <p>Image models draw convincing paper and unreliable digits. One total wrong by forty cents undoes the only promise this page makes.</p>
+          <p>So the card is real vector text set from the tool output. It prints at any size and carries the exact figures the agent just spoke.</p>
+        </div>
+        <figure class="plate">
           <img src="/assets/report-typeset.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man at a hand-cranked printing press with a tray of metal type, feeding out a sheet ruled in clean even lines, while a woman inspects it and an abandoned easel behind them holds a smeared canvas with a spilled pot and a brush on the floor" />
-          <figcaption>The press is this page. Metal type set from the numbers the chain actually returned, so every figure on the sheet is the figure the ledger holds. The easel is what the alternative looked like: a model asked to draw a statement will draw beautiful paper and invent the amounts on it, and one total wrong by forty cents undoes the only promise this product makes.</figcaption>
+          <figcaption>Metal type from the numbers the chain returned. The easel is the alternative: beautiful paper with invented amounts on it.</figcaption>
         </figure>
       </div>
     </div>
 
     <script type="module">
-      import { $, loadMeta, fillStats, mountWallet } from "./shared.js";
+      import { $, loadMeta, fillStats, mountWallet, mountNetwork, explorerTx, payNetwork } from "./shared.js";
 
       const card = $("card");
+      const skeleton = card.innerHTML;
 
       async function paint() {
+        card.innerHTML = skeleton;
+        card.classList.add("loading");
+        card.setAttribute("aria-busy", "true");
+        $("png").disabled = true;
         const res = await fetch("/report.svg", { cache: "no-store" });
         if (!res.ok) {
+          card.classList.remove("loading");
+          card.removeAttribute("aria-busy");
+          $("png").disabled = false;
           card.innerHTML = `<p style="padding:24px;color:var(--brick)">the statement could not be built. ${res.status}</p>`;
           return;
         }
         card.innerHTML = await res.text();
+        card.classList.remove("loading");
+        card.removeAttribute("aria-busy");
+        $("png").disabled = false;
+      }
+
+      function paintCap(c) {
+        const state = c.state || "none";
+        const badge = $("capState");
+        badge.className = `capState ${state}`;
+        badge.textContent = { none: "no limit", under: "inside the limit", close: "close to the limit", over: "over the limit" }[state] ?? state;
+
+        const spent = $("capSpent");
+        spent.textContent = "";
+        spent.append(document.createTextNode(String(c.spent_text ?? "0")));
+        const unit = document.createElement("small");
+        unit.textContent = "USDC out";
+        spent.append(unit);
+
+        const monthly = Number(c.monthly ?? 0);
+        const used = Number(c.spent ?? 0);
+        const pct = monthly > 0 ? Math.round((used / monthly) * 100) : 0;
+        const of = $("capOf");
+        if (monthly > 0) {
+          of.textContent = used > monthly
+            ? `of ${monthly} this month, over by ${Math.round((used - monthly) * 100) / 100} USDC`
+            : `of ${monthly} this month, ${Math.round((monthly - used) * 100) / 100} USDC left, ${pct}% used`;
+        } else {
+          of.textContent = "no limit set. Every USDC that left this wallet this month is counted.";
+        }
+
+        const fill = $("meterFill");
+        fill.className = state === "close" ? "close" : state === "over" ? "over" : "";
+        fill.style.width = `${monthly > 0 ? Math.min(100, pct) : 0}%`;
+        $("meter").setAttribute("aria-label", monthly > 0 ? `${pct}% of the monthly limit used` : "no monthly limit set");
+
+        $("capInput").value = monthly > 0 ? String(c.monthly) : "";
+        $("capClear").hidden = !(monthly > 0);
+
+        const note = $("capNote");
+        note.className = "tiny";
+        const bits = [`${c.transactions ?? 0} outgoing USDC ${c.transactions === 1 ? "transfer" : "transfers"} this month on ${c.network ?? "this network"}.`];
+        if (c.complete === false) bits.push("Only the newest 50 transactions were read, so the real total may be higher.");
+        note.textContent = bits.join(" ");
+      }
+
+      // The first read can take seconds because it counts the month on chain. A limit
+      // saved while it is in flight must not be repainted with the answer that was
+      // already on its way out of the server.
+      let capSeq = 0;
+
+      async function capLoad(refresh) {
+        const seq = ++capSeq;
+        try {
+          const c = await fetch(`/cap${refresh ? "?refresh=1" : ""}`, { cache: "no-store" }).then((r) => r.json());
+          if (seq !== capSeq) return;
+          if (c.error) throw new Error(c.error);
+          paintCap(c);
+        } catch (err) {
+          if (seq !== capSeq) return;
+          const badge = $("capState");
+          badge.className = "capState none";
+          badge.textContent = "not read";
+          const note = $("capNote");
+          note.className = "tiny bad";
+          note.textContent = err.message;
+        }
+      }
+
+      async function saveCap(monthly) {
+        const seq = ++capSeq;
+        const btn = $("capSave");
+        const note = $("capNote");
+        btn.disabled = true;
+        btn.textContent = "saving…";
+        try {
+          const res = await fetch("/cap", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ monthly }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          if (seq === capSeq) paintCap(body);
+        } catch (err) {
+          if (seq !== capSeq) return;
+          note.className = "tiny bad";
+          note.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Set limit";
+        }
+      }
+
+      function paintMoves(body) {
+        const list = $("moveList");
+        list.textContent = "";
+        const rows = body.rows ?? [];
+        for (const m of rows) {
+          const row = document.createElement("div");
+          row.className = "move";
+          row.title = m.address || "";
+
+          const dir = document.createElement("span");
+          dir.className = `dir ${m.dir}`;
+          dir.textContent = m.dir === "in" ? "↓" : "↑";
+
+          const amt = document.createElement("span");
+          amt.className = "amt";
+          amt.append(document.createTextNode(`${m.dir === "in" ? "+" : "−"}${m.amount} `));
+          const asset = document.createElement("small");
+          asset.textContent = m.asset;
+          amt.append(asset);
+
+          const who = document.createElement("span");
+          who.className = "who";
+          who.textContent = m.who;
+
+          const link = document.createElement("a");
+          link.href = explorerTx(body.network ?? payNetwork(), m.tx);
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = `${String(m.tx).slice(0, 6)}…${String(m.tx).slice(-4)} ↗`;
+
+          const at = document.createElement("time");
+          at.textContent = m.at && !Number.isNaN(Date.parse(m.at))
+            ? new Date(m.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })
+            : "·";
+
+          row.append(dir, amt, who, link, at);
+          list.append(row);
+        }
+        if (!rows.length) {
+          const p = document.createElement("p");
+          p.className = "tiny";
+          p.textContent = "No transfers on this wallet yet.";
+          list.append(p);
+        }
+        const note = $("moveNote");
+        note.className = "tiny";
+        note.textContent = rows.length ? `${rows.length} newest${body.complete ? ", the whole history" : ", older ones exist"}` : "";
+      }
+
+      async function movesLoad(refresh) {
+        const note = $("moveNote");
+        note.className = "tiny";
+        note.textContent = "reading the chain…";
+        try {
+          const body = await fetch(`/transfers${refresh ? "?refresh=1" : ""}`, { cache: "no-store" }).then((r) => r.json());
+          if (body.error) throw new Error(body.error);
+          paintMoves(body);
+        } catch (err) {
+          note.className = "tiny bad";
+          note.textContent = err.message;
+        }
       }
 
       async function toPng() {
@@ -129,19 +471,23 @@
         const blob = await new Promise((ok) => canvas.toBlob(ok, "image/png"));
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = "total-recall-statement.png";
+        a.download = "ken-statement.png";
         a.click();
       }
 
       async function toCsv() {
         const d = await (await fetch("/report.json", { cache: "no-store" })).json();
-        const rows = [["person", "amount", "flows", "cadence", "last seen", "named from memory"]];
-        for (const p of d.people) rows.push([p.name, p.amount, p.flows, p.cadence ?? "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
-        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]), [], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
+        const rows = [["person", "amount", "flows", "next payment", "last seen", "named from memory"]];
+        if (d.direction === "in") {
+          for (const p of d.senders) rows.push([p.name, p.amount, p.flows, "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
+        } else {
+          for (const p of d.people) rows.push([p.name, p.amount, p.flows, p.cadence ?? "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
+        }
+        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]), [], ["total in", d.totalIn], ["total out", d.totalOut], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
         const cell = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(",")).join("\n")], { type: "text/csv" }));
-        a.download = "total-recall-statement.csv";
+        a.download = "ken-statement.csv";
         a.click();
       }
 
@@ -149,13 +495,25 @@
       $("csv").onclick = toCsv;
       $("pdf").onclick = () => window.print();
       $("again").onclick = async () => {
-        await loadMeta(true);
-        await paint();
+        await Promise.allSettled([loadMeta(true).then(fillStats), paint(), movesLoad(true), capLoad(true)]);
       };
 
-      mountWallet(() => loadMeta().then(fillStats));
-      await loadMeta().then(fillStats);
-      await paint();
+      $("capForm").onsubmit = (e) => {
+        e.preventDefault();
+        const raw = $("capInput").value.trim();
+        saveCap(raw === "" ? 0 : Number(raw));
+      };
+      $("capClear").onclick = () => saveCap(0);
+
+      // Four reads that do not depend on each other. Waiting for the statement card to
+      // finish before the budget and the ledger even start is what makes a page arrive
+      // in pieces, so they all leave at once and each panel fills when it is ready.
+      const reload = async () => {
+        await Promise.allSettled([loadMeta().then(fillStats), paint(), movesLoad(), capLoad()]);
+      };
+      mountWallet(reload);
+      mountNetwork(reload);
+      await Promise.allSettled([loadMeta().then(fillStats), paint(), movesLoad(), capLoad()]);
     </script>
   </body>
 </html>

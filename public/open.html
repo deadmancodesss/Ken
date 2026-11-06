@@ -2,14 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>A link · Total Recall</title>
+    <title>A link · Ken</title>
     <meta name="description" content="One priced note. The words are held behind a 402 paywall and only come out after the chain says the money arrived." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <style>
       main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
       .wrap { max-width: 540px; margin: 0 auto; }
@@ -40,27 +65,43 @@
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">nothing opens until the chain agrees</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask" aria-current="page">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask" aria-current="page">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
@@ -70,8 +111,9 @@
     <script type="module">
       /* Absolute paths, because this one page is served under /ask/<id> and a relative
          import would look for the script inside the link rather than at the root. */
-      import { $, loadMeta, shortAddr, spoken } from "/shared.js";
-      import { connect, discover, signAndExecute } from "/wallet.js";
+      import { $, loadMeta, pickWallet, shortAddr, spoken, payNetwork, payChain } from "/shared.js";
+      import { signX402, discover } from "/wallet.js";
+      import { dialogue, walletAsked, walletFailed } from "/dialogue.js";
 
       const id = location.pathname.split("/")[2] ?? "";
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -86,13 +128,13 @@
       function offer(meta, paid) {
         $("root").innerHTML =
           `<div class="offer">
-             <div class="label">A note that costs money to read</div>
+             <div class="label">${meta.from_memory ? "A line out of somebody's memory, priced to read" : "A note that costs money to read"}</div>
              <h1>${esc(meta.title)}</h1>
              <div class="price">${esc(spoken(String(meta.usdc)))} <small>USDC</small></div>
              <div class="who">${meta.opened === 0 ? "Nobody has opened this yet" : `${meta.opened} wallet${meta.opened === 1 ? "" : "s"} paid to open it`}</div>
              <dl class="terms">
                <div><dt>writer</dt><dd>${esc(shortAddr(meta.pay_to))}</dd></div>
-               <div><dt>chain</dt><dd>sui:testnet</dd></div>
+               <div><dt>paid on</dt><dd>${esc(terms?.prepared?.chain ?? payChain())}</dd></div>
                ${paid ? `<div><dt>you paid</dt><dd>${esc(paid)}</dd></div>` : ""}
              </dl>
            </div>
@@ -111,23 +153,33 @@
 
         const pick = $("pick");
         if (pick) {
-          pick.onclick = async () => {
+          const ask = async () => {
             pick.disabled = true;
+            const dlg = dialogue(walletAsked(discover().length));
             try {
-              const found = discover();
-              if (!found.length) throw new Error("no Sui wallet in this browser. Suiet, Ethos, Martian and Suilend all work");
-              const picked = await connect(found[0].name);
-              if (picked.chain && !picked.chain.includes("testnet")) {
-                throw new Error(`that account is on ${picked.chain}, and this link is only paid and checked on testnet`);
+              const picked = await pickWallet(dlg, (s) => dlg.status(s));
+              pick.disabled = false;
+              if (picked.chain && !String(picked.chain).toLowerCase().includes(payNetwork())) {
+                dlg.replace({
+                  tone: "bad",
+                  kicker: "the wrong door answered",
+                  title: `that account lives on ${picked.chain}`,
+                  line: `This link is only paid and checked on Sui ${payNetwork()}, so that account cannot open it from this page.`,
+                  beats: [{ text: `it answered with ${shortAddr(picked.address)}`, mark: "dot" }],
+                  stamp: "wrong chain",
+                  actions: [{ label: "ask again", primary: true, onClick: (d) => { d.close(true); ask(); } }],
+                });
+                return;
               }
               payer = picked.address;
-              pick.disabled = false;
+              dlg.close(true);
               await open();
             } catch (err) {
               pick.disabled = false;
-              $("root").insertAdjacentHTML("beforeend", stage(`not connected · ${esc(err.message)}`, "bad"));
+              dlg.replace(walletFailed(err, { seconds: dlg.seconds(), retry: ask }));
             }
           };
+          pick.onclick = ask;
         }
         const pay = $("pay");
         if (pay && payer) pay.onclick = () => open(true);
@@ -157,7 +209,7 @@
             body: JSON.stringify({ id, payer }),
           });
           asked = await res.json();
-          if (!res.ok && !asked.quote) throw new Error(asked.error || `the index answered ${res.status}`);
+          if (!res.ok && !asked.requirements) throw new Error(asked.error || `the index answered ${res.status}`);
         } catch (err) {
           offer(meta);
           $("root").insertAdjacentHTML("beforeend", stage(esc(err.message), "bad"));
@@ -165,13 +217,22 @@
         }
 
         if (asked.opened) {
-          reveal(meta, asked, asked.charged === 0 ? `paid ${esc(spoken(String(asked.paid_then)))} USDC on ${esc(asked.paid_on)}` : null);
+          reveal(meta, asked, asked.tx ? `an earlier signed payment, ${esc(shortAddr(asked.tx))}` : null);
+          return;
+        }
+
+        // The index quoted above what this agent will pay for one answer. Refusing is a
+        // decision, so the page says the price and the ceiling instead of showing a
+        // Pay button that would be declined a moment later.
+        if (asked.refused) {
+          offer(meta);
+          $("root").insertAdjacentHTML("beforeend", stage(esc(asked.saying), "bad"));
           return;
         }
 
         // The index priced the note but could not build a transaction for it, which in
-        // practice means a wallet with no testnet USDC in it. Saying that is better than
-        // offering a Pay button that fails again two seconds later.
+        // practice means a wallet with no USDC on the ledger this note is paid on. Saying
+        // that is better than offering a Pay button that fails again two seconds later.
         if (asked.error && !asked.prepared) {
           offer(meta, null);
           $("root").insertAdjacentHTML("beforeend", stage(esc(asked.error), "bad"));
@@ -183,45 +244,45 @@
           offer(meta, null);
           $("root").insertAdjacentHTML(
             "beforeend",
-            stage(`this wallet has never paid for it · <b>${esc(spoken(String(asked.quote.usdc)))} USDC</b> to open`),
+            stage(`this wallet has never paid for it · <b>${esc(spoken(String(asked.price_usdc)))} USDC</b> to open`),
           );
           return;
         }
 
         $("pay").disabled = true;
         $("pay").textContent = "check your wallet…";
-        let digest = "";
+        let signed = null;
         try {
-          const signed = await signAndExecute({ address: payer, chain: asked.prepared.chain, bytesBase64: asked.prepared.bytes });
-          if (!signed.digest) throw new Error("the wallet sent no transaction digest back");
-          digest = signed.digest;
-          $("root").innerHTML = stage("the money moved. reading the receipt off the chain…");
+          // The wallet signs the exact transfer the index published and sends nothing.
+          // The index's facilitator checks the signature and the terms, broadcasts the
+          // bytes, and only then releases the words.
+          signed = await signX402({ address: payer, chain: asked.prepared.chain, bytesBase64: asked.prepared.bytes });
+          $("root").innerHTML = stage("the wallet signed. the index is checking and settling the exact payment…");
         } catch (err) {
           $("pay").disabled = false;
-          $("pay").textContent = `Pay ${esc(spoken(String(asked.quote.usdc)))} USDC`;
+          $("pay").textContent = `Pay ${esc(spoken(String(asked.price_usdc)))} USDC`;
           $("root").insertAdjacentHTML("beforeend", stage(esc(err.message), "bad"));
           return;
         }
 
-        const res = await fetch("/paid", {
+        const res = await fetch("/x402/settle", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ resource: `note:${id}`, payer, quote: asked.quote.id, receipt: digest }),
+          body: JSON.stringify({ resource: `note:${id}`, payer, bytes: signed.bytes, signature: signed.signature }),
         });
         const back = await res.json();
         if (!res.ok) {
           // Money and words are separate facts, and the page has to say which one it
-          // has instead of showing an error that reads like nothing happened.
+          // has instead of showing an error that reads like nothing happened. The signed
+          // envelope is journalled, so asking again replays it rather than paying twice.
           $("root").innerHTML =
             stage(
-              `<b>${esc(spoken(String(asked.quote.usdc)))} USDC moved</b> as ${esc(digest.slice(0, 12))}… and the index refused to open the note: ${esc(
+              `<b>the signed payment did not come back settled</b> and the index said: ${esc(
                 back.error || `it answered ${res.status}`,
-              )}. Ask again and it replays that receipt rather than paying twice.`,
+              )}. The exact signed transfer is kept, so pressing the button again retries the same payment instead of making a new one.`,
               "bad",
-            ) + `<div class="actions"><button id="again">Back to making links</button></div>`;
-          $("again").onclick = () => {
-            location.href = "/ask";
-          };
+            ) + `<div class="actions"><button id="again" class="primary">Try the same signed payment again</button></div>`;
+          $("again").onclick = () => open(true);
           return;
         }
         reveal(meta, back, null);

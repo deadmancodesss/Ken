@@ -2,14 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Total Recall in an ordinary week · five moments it takes over</title>
-    <meta name="description" content="What a voice agent that remembers your people changes about a week of money: the split bill, the quiet subscription, the late plumber, the mystery debit and the hands-free question." />
+    <title>Ken in an ordinary week · five moments it takes over</title>
+    <meta name="description" content="What a personal agent that remembers your people changes about a week of money: the split bill, the quiet subscription, the late plumber, the mystery debit and the hands-free question." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <noscript><style>.reveal { opacity: 1; transform: none }</style></noscript>
     <style>
       .wrap { max-width: 880px; margin: 0 auto; padding: 0 var(--pad); }
@@ -52,33 +77,47 @@
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">five moments in an ordinary week</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life" aria-current="page">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life" aria-current="page">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
@@ -158,12 +197,12 @@
               <img src="/assets/life-taxi.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man at an airport kerb handing a coin through the open window of a small taxicab while a very long blank paper receipt trails out and pools on the ground" />
             </figure>
             <div class="line"><span class="from">you say</span><span class="said">who did I send 0.45 to</span></div>
-            <div class="line it"><span class="from">it says</span><span class="said">I have never seen that address and memory has nothing, so naming it costs 0.01 USDC at the paid index. It is on the Pay page for you to sign.</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">I have never seen that address and memory has nothing, so a profile of it costs from 0.01 USDC at the paid index. It is in the ticket under this reply for you to sign.</span></div>
             <div class="line"><span class="from">you sign</span><span class="said">your wallet, not ours</span></div>
-            <div class="line it"><span class="from">it says</span><span class="said">Nightlight Taxi Co. Airport transfers, they charge by the ride and never send a bill. I have written that down, and asking me again will cost nothing.</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">That address has fourteen transactions in the window and deals mostly with you. It first appears in March. I have written that down, and asking me again will cost nothing.</span></div>
             <div class="meter">
-              <div>read <b>memory, then a 402 quote, then the chain</b></div>
-              <div>bought <b>one lookup</b></div>
+              <div>read <b>memory, then a 402 price, then the chain</b></div>
+              <div>bought <b>one profile</b></div>
               <div class="paid">cost 0.01 USDC, once, forever free after</div>
             </div>
           </div>
@@ -174,7 +213,7 @@
               <img src="/assets/life-morning.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man at a breakfast table asking without looking up from his bowl while a woman at her desk slides an already written answer card out of a drawer" />
             </figure>
             <div class="line"><span class="from">you say</span><span class="said">who was that taxi payment</span></div>
-            <div class="line it"><span class="from">it says</span><span class="said">The airport taxi company. They charge by the ride and never send you an invoice, which is the habit you told me about.</span></div>
+            <div class="line it"><span class="from">it says</span><span class="said">The same address you paid 0.45 to on Sunday. The profile you bought says it deals mostly with you and first appears in March.</span></div>
             <div class="meter">
               <div>read <b>Walrus only</b></div>
               <div>bought <b>nothing</b></div>
@@ -187,12 +226,12 @@
             <figure>
               <img src="/assets/call-live.webp" width="1100" height="733" loading="lazy" decoding="async" alt="A man walking along a street carrying two full shopping bags and a bunch of greens, speaking aloud, with sound arcs crossing to a woman seated far away at her desk who answers him" />
             </figure>
-            <div class="line"><span class="from">you say</span><span class="said">aloud, into a call, in a voice you picked and at a pace you set</span></div>
+            <div class="line"><span class="from">you say</span><span class="said">aloud, into a call, in a voice you picked</span></div>
             <div class="line it"><span class="from">it says</span><span class="said">the same sentences, spoken back, with the transcript on screen so you can check it before you act on it</span></div>
             <div class="meter">
               <div>read <b>identical tools</b></div>
               <div>bought <b>nothing new</b></div>
-              <div class="free">language, voice and pace stored per browser</div>
+              <div class="free">the voice you pick stays with this browser</div>
             </div>
           </div>
 
@@ -231,7 +270,7 @@
             <div><h3>Pay on a sentence</h3><p>It prepares the transaction and stops. Your signature is the confirmation, and refusing leaves nothing written.</p></div>
             <div><h3>Guess a name</h3><p>An unknown address is reported as unknown. A paid lookup is offered, not performed silently, and the price is shown before anything is signed.</p></div>
             <div><h3>Share your people</h3><p>Notes live in a namespace derived from the wallet you speak for, so your Sana is not somebody else's Sana.</p></div>
-            <div><h3>Hold your key</h3><p>No secret of yours is stored on this server, and the demo wallet is a scripted stand-in with worthless testnet money in it.</p></div>
+            <div><h3>Hold your key</h3><p>No secret of yours is stored on this server, and the demo wallet is a scripted stand-in whose only money is worthless dust on testnet.</p></div>
           </div>
           <p class="cap reveal">read the machinery behind all of this on <a href="/how">the how it works page</a>, or just <a href="/app">start talking to it</a>.</p>
         </section>
@@ -246,10 +285,14 @@
     </footer>
 
     <script type="module">
-      import { reveal, loadMeta, fillStats, mountWallet } from "./shared.js";
+      import { reveal, loadMeta, fillStats, mountWallet, castNotice } from "./shared.js";
       reveal();
-      mountWallet(() => loadMeta().then(fillStats));
-      loadMeta().then(fillStats);
+      const paint = (body) => {
+        fillStats(body);
+        castNotice(body);
+      };
+      mountWallet(() => loadMeta().then(paint));
+      loadMeta().then(paint);
     </script>
   </body>
 </html>

@@ -2,166 +2,533 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ask to pay · Total Recall</title>
+    <title>Sell what you remember · Ken</title>
     <meta
       name="description"
-      content="Write something, put a price on it in USDC and send one link. The words come out of the same 402 paywall the agent buys through, and they stay open for whoever paid once."
+      content="Put a line out of your own agent's memory behind the same 402 paywall the agent buys through. You pick the line, you set the price, the money goes to your wallet, and whoever pays opens it once and never pays for it again."
     />
     <link rel="stylesheet" href="/theme.css" />
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <style>
-      main { flex: 1; overflow-y: auto; padding: 46px var(--pad) 70px; }
-      .wrap { max-width: 560px; margin: 0 auto; }
-      h1 { font-size: var(--step-4); margin-bottom: 10px; }
-      .intro { color: var(--ink-2); margin-bottom: 28px; max-width: 58ch; }
+      /* The page used to be one 620px column holding a number, a picker, a list and a
+         form one under the other, so the two halves of the same job (what you can sell,
+         and what you have already sold) were never on screen together. It is now the
+         same shell-width spread the landing and the other tool pages use. */
+      main { flex: 1; overflow-y: auto; }
+      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad) clamp(34px, 6vh, 70px); }
+      .band { position: relative; padding: clamp(24px, 2.6vw, 38px) 0; }
+      .band::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
+      .band:last-of-type::after { display: none; }
+      .band:first-of-type { padding-top: clamp(22px, 2.4vw, 34px); }
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 14px; }
+      h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.02em; margin: 0 0 10px; max-width: 24ch; }
+      h1 { font-size: clamp(28px, 3.4vw, 36px); line-height: 1.08; }
+      h2 { font-size: clamp(22px, 2.3vw, 28px); line-height: 1.12; }
+      .lead { color: var(--ink-2); max-width: 52ch; margin: 0 0 18px; }
+      .note { margin: 0; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .pane { border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 18px 20px 20px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .pane > .label { margin-bottom: 14px; }
+      /* The things you can sell are longer and read more often than the list of links
+         you have already made, so the picker takes the larger leaf. Neither leaf is a
+         pane, because every line inside the left one is already a bordered card and a
+         frame around a frame reads as a form you have to fill in. The right leaf stacks
+         the three short things that belong beside a long list, so the column ends at
+         roughly the same place instead of leaving two screens of empty paper. */
+      .cols { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: clamp(26px, 3.4vw, 54px); align-items: start; }
+      .cols .rows + .hint, .cols .list + .hint { margin-top: 14px; }
+      .stack { display: grid; gap: 26px; align-content: start; min-width: 0; }
+      .stack .plate { margin: 0; }
+      @media (max-width: 960px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+      .pane .lead { margin-bottom: 20px; max-width: 46ch; }
 
-      form { border: 1px solid var(--rule-strong); border-radius: 10px; padding: 24px; display: grid; gap: 16px; }
-      .field { display: grid; gap: 7px; }
-      .field span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
-      textarea {
-        font: var(--step-0)/1.6 var(--sans);
-        color: var(--ink);
-        background: var(--paper);
-        border: 1px solid var(--rule-strong);
-        border-radius: 7px;
-        padding: 11px 12px;
-        resize: vertical;
-        min-height: 130px;
-      }
+      /* ---------- the tally ----------
+         One number doing the talking, because the claim on this page is that a memory is
+         worth money and a sentence about it would be worth nothing. */
+      .tally { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+        border: var(--edge) solid var(--ink); border-radius: 12px; background: var(--paper);
+        padding: 18px 20px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .tally .amount { display: flex; align-items: baseline; gap: 9px; }
+      .tally b { font: 400 var(--step-6)/1 var(--serif); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+      .tally .amount span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .tally .splitNote { font: var(--step--1)/1.6 var(--mono); color: var(--ink-2); text-align: right; min-width: 0; }
+      .tally .splitNote i { font-style: normal; color: var(--moss); }
+      .tally + .field { margin-top: 16px; }
+      .tally + .field + .hint { margin-top: 12px; }
+
+      /* ---------- a line you can price ---------- */
+      .filter { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+      .rows { display: grid; gap: 12px; }
+      /* A wallet with a year of memory has two dozen priceable lines, and twenty-two
+         cards in a column is a wall nobody scrolls to the bottom of to find the one
+         they meant. The first few are listed and the rest are one press away. */
+      .rows .rest { justify-self: start; font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; color: var(--ink-2); }
+      .line { display: grid; gap: 12px; }
+      .line .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .line h3 { font: 400 var(--step-1)/1.4 var(--serif); margin: 0; min-width: 0; }
+      .line .kind { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+      .line .say { margin: 0; font: var(--step-0)/1.6 var(--mono); color: var(--ink-2); overflow-wrap: anywhere;
+        /* A stored line is one long sentence with a hash inside it. Clamped to three rows
+           so the list stays a list, and opened by the only button that says what it does. */
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+      .line.open .say { -webkit-line-clamp: unset; display: block; }
+      .line .act { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .stepper { display: inline-flex; align-items: center; border: 1px solid var(--rule-strong); border-radius: 8px; overflow: hidden; }
+      .stepper button { border: 0; border-radius: 0; box-shadow: none; padding: 8px 12px; font: var(--step-0)/1 var(--mono); color: var(--ink-2); background: var(--paper); }
+      .stepper button:hover { background: var(--paper-sunk); color: var(--ink); }
+      .stepper input { width: 74px; border: 0; border-radius: 0; text-align: center; font: var(--step-0)/1 var(--mono); padding: 9px 2px; }
+      .stepper input:focus { outline: none; background: var(--clay-wash); }
+      .line .usdc { font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
+      .line .more { font: var(--step--1)/1 var(--mono); color: var(--clay); background: transparent; border: 0; box-shadow: none; padding: 0; }
+      .line .state { font: var(--step--1)/1.5 var(--mono); color: var(--brick); flex: 1 1 100%; }
+      .line .state.good { color: var(--moss); }
+      .line[data-sold] .act { opacity: 1; }
+      .empty { color: var(--ink-3); font-size: var(--step-0); }
+
+      form { display: grid; gap: 15px; }
+      .field { display: grid; gap: 7px; min-width: 0; }
+      .field > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      textarea { font: var(--step-0)/1.6 var(--sans); color: var(--ink); background: var(--paper); border: 1px solid var(--rule-strong);
+        border-radius: 7px; padding: 11px 12px; resize: vertical; min-height: 110px; }
       textarea:hover { border-color: var(--ink-3); }
-      .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
       .money { display: flex; align-items: baseline; gap: 8px; }
       .money input { flex: 1; min-width: 0; }
       .money b { font: var(--step-0)/1 var(--mono); color: var(--ink-2); font-weight: 400; }
-      .hint { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .hint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); margin: 0; }
       .hint.bad { color: var(--brick); }
-      form button { justify-self: start; }
+      form button.go { justify-self: start; font: var(--step--1)/1 var(--mono); letter-spacing: 0.05em; }
 
-      .made { border: 1px solid var(--moss); border-radius: 10px; padding: 20px; margin-top: 22px; }
+      .made { border: 1px solid var(--moss); border-radius: 10px; padding: 16px 17px; margin-top: 16px; }
       .made .label { color: var(--moss); margin-bottom: 10px; }
-      .link { display: flex; gap: 10px; align-items: center; }
+      .link { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
       .link code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: var(--step-0)/1.5 var(--mono); color: var(--ink); }
 
-      .band { margin-top: 44px; border-top: 1px solid var(--rule); padding-top: 26px; }
       .list { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
       .list:empty { display: none; }
-      .one { background: var(--paper); padding: 14px 16px; display: flex; gap: 14px; align-items: baseline; justify-content: space-between; }
-      .one h3 { font: 400 var(--step-0)/1.4 var(--serif); margin: 0; }
+      .one { background: var(--paper); padding: 14px 16px; }
+      .one .top { display: flex; gap: 14px; align-items: baseline; justify-content: space-between; }
+      .one h3 { font: 400 var(--step-0)/1.4 var(--serif); margin: 0; min-width: 0; }
       .one .price { font: var(--step--1)/1 var(--mono); color: var(--clay); white-space: nowrap; }
-      .one a { font: var(--step--1)/1 var(--mono); }
+      .one a { font: var(--step--1)/1 var(--mono); overflow-wrap: anywhere; }
+      .trail { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+      .trail li { font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); display: flex; gap: 8px; flex-wrap: wrap; }
+      .trail li b { color: var(--moss); font-weight: 400; }
+      .trail li span { color: var(--ink-3); }
       .none { color: var(--ink-3); font-size: var(--step-0); }
+      .tag { font: var(--step--1)/1 var(--mono); color: var(--moss); border: 1px solid var(--moss); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">you write it, you price it</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask" aria-current="page">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask" aria-current="page">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
       <div class="wrap">
-        <h1>Sell something you wrote</h1>
-        <p class="intro">
-          The agent has been the buyer so far. This is the same door from the inside: you write the words, you set the
-          price, and the money goes to your wallet. Whoever pays opens it once and never pays for it again.
-        </p>
-
-        <form id="form">
-          <label class="field">
-            <span>What the link is about</span>
-            <input type="text" id="title" maxlength="90" placeholder="The deal for the two landing pages" autocomplete="off" />
-          </label>
-          <label class="field">
-            <span>The words behind the wall</span>
-            <textarea id="body" maxlength="6000" placeholder="Half now, half on delivery, and the source files go in a shared folder rather than the mail."></textarea>
-          </label>
-          <div class="row">
-            <label class="field">
-              <span>Price</span>
-              <div class="money">
-                <input type="text" id="usdc" inputmode="decimal" value="0.02" autocomplete="off" />
-                <b>USDC</b>
-              </div>
-            </label>
-            <label class="field">
-              <span>Money arrives at</span>
-              <input type="text" id="payTo" autocomplete="off" spellcheck="false" />
-            </label>
+        <div class="band">
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">Ask to pay</div>
+              <h1>Sell what you already remember</h1>
+              <p class="lead">
+                The agent has been the buyer so far. This is the same door from the inside. Every line you can price
+                below is something this wallet already keeps on Walrus, read back out of the store as you opened this
+                page. Name a price and the words come out of the same 402 paywall the agent buys through. Whoever pays
+                opens it once and never pays for it again.
+              </p>
+            </div>
+            <div class="split-visual">
+              <section class="tally" id="tally">
+                <div class="amount"><b id="earnedSum">0.00</b><span>USDC paid in</span></div>
+                <div class="splitNote" id="earnedSplit">nothing has been bought yet</div>
+              </section>
+              <label class="field">
+                <span>Money arrives at</span>
+                <input type="text" id="payTo" autocomplete="off" spellcheck="false" />
+              </label>
+              <p class="hint">
+                Counted from the receipts, not from a number written beside the link. Every cent here was checked
+                arriving at that address on chain before it was added.
+              </p>
+            </div>
           </div>
-          <p class="hint" id="hint">
-            Testnet only. The box holds the wallet this page is narrating, and you can replace it with any testnet address
-            you own.
-          </p>
-          <button type="submit" class="primary" id="go">Make the link</button>
-        </form>
-
-        <div id="made"></div>
+        </div>
 
         <div class="band">
-          <div class="label">Links you have made</div>
-          <div class="list" id="list"><div class="none">none yet</div></div>
-          <p class="hint" style="margin-top:14px">
-            This list cannot show you your own words. They leave the server through the paywall and nowhere else, which is
-            the whole claim of the page.
-          </p>
+          <div class="cols">
+            <div>
+              <div class="label">Lines you already keep</div>
+              <div class="filter" id="filter">
+                <button class="chip on" data-f="all">everything</button>
+                <button class="chip" data-f="people">people</button>
+                <button class="chip" data-f="counterparties">money</button>
+              </div>
+              <div class="rows" id="lines"><p class="empty">reading your memory off Walrus…</p></div>
+              <p class="hint">
+                These are your own words, shown back to you. They leave this server through the paywall and nowhere
+                else, which is the whole claim of the page.
+              </p>
+            </div>
+
+            <div class="stack">
+              <div>
+                <div class="label">Links you have made</div>
+                <div class="list" id="list"><div class="none">none yet</div></div>
+                <p class="hint">
+                  A link that pays a wallet other than the one this page is narrating is still listed here, because you
+                  made it, and its money is counted in the tally above rather than added to yours.
+                </p>
+              </div>
+
+              <div class="pane">
+                <div class="label">Or write something new</div>
+                <p class="lead">
+                  Nothing behind these walls has to be a memory. The deal you struck with a client is worth a cent too,
+                  and it goes through the same door.
+                </p>
+                <form id="form">
+                  <label class="field">
+                    <span>What the link is about</span>
+                    <input type="text" id="title" maxlength="90" placeholder="The deal for the two landing pages" autocomplete="off" />
+                  </label>
+                  <label class="field">
+                    <span>The words behind the wall</span>
+                    <textarea id="body" maxlength="6000" placeholder="Half now, half on delivery, and the source files go in a shared folder rather than the mail."></textarea>
+                  </label>
+                  <label class="field">
+                    <span>Price</span>
+                    <div class="money">
+                      <input type="text" id="usdc" inputmode="decimal" value="0.02" autocomplete="off" />
+                      <b>USDC</b>
+                    </div>
+                  </label>
+                  <p class="hint" id="hint">
+                    Mainnet USDC only. Money arrives at the address named at the top of this page, and you can replace
+                    it there with any mainnet address you own.
+                  </p>
+                  <button type="submit" class="primary go" id="go">Make the link</button>
+                </form>
+                <div id="made"></div>
+              </div>
+
+              <figure class="plate">
+                <img src="/assets/memory-shop.webp" alt="A woman taking a paper card out of a small drawer cabinet and handing it to a man who is passing her a coin." width="1536" height="1024" loading="lazy" decoding="async" />
+                <figcaption>A drawer of things you know, and somebody with a coin in front of it. That is the whole page.</figcaption>
+              </figure>
+            </div>
+          </div>
         </div>
       </div>
     </main>
 
     <script type="module">
-      import { $, mountWallet, loadMeta, shortAddr, spoken } from "./shared.js";
+      import { $, mountWallet, mountNetwork, loadMeta, shortAddr, spoken, reveal } from "./shared.js";
 
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-      const list = async () => {
-        const rows = await fetch("/notes").then((r) => r.json());
+      let rows = [];
+      let earned = null;
+      let filter = "all";
+      let showAll = false;
+      const CAP = 6;
+
+      /* ---------- the tally ---------- */
+      const countTo = (el, value) => {
+        const from = Number(el.textContent) || 0;
+        if (!window.gsap || from === value) {
+          el.textContent = value.toFixed(2);
+          return;
+        }
+        const box = { v: from };
+        window.gsap.to(box, { v: value, duration: 0.9, ease: "power2.out", onUpdate: () => (el.textContent = box.v.toFixed(2)) });
+      };
+
+      const paintTally = () => {
+        if (!earned) return;
+        countTo($("earnedSum"), earned.total);
+        const into = earned.into_this_wallet;
+        const elsewhere = Math.round((earned.total - into) * 100) / 100;
+        const parts = [];
+        parts.push(
+          earned.bought
+            ? `${earned.bought} of ${earned.links} link${earned.links === 1 ? "" : "s"} bought`
+            : `nothing has been bought yet`,
+        );
+        if (into) parts.push(`<i>${into.toFixed(2)} USDC into the wallet being narrated</i>`);
+        if (elsewhere) parts.push(`${elsewhere.toFixed(2)} USDC into a wallet you named instead`);
+        $("earnedSplit").innerHTML = parts.join("<br />");
+      };
+
+      /* ---------- the picker ---------- */
+      const card = (l) => {
+        const el = document.createElement("div");
+        el.className = "line card";
+        const sold = l.link;
+        if (sold) el.dataset.sold = sold;
+        el.innerHTML =
+          `<div class="head"><h3>${esc(l.title)}</h3><span class="kind">${esc(kindOf(l))}</span></div>` +
+          `<p class="say">${esc(l.text)}</p>` +
+          `<div class="act"></div>`;
+        const act = el.querySelector(".act");
+
+        let more = null;
+        if (l.characters > 96) {
+          more = document.createElement("button");
+          more.className = "more";
+          more.type = "button";
+          more.textContent = "read the whole line";
+          more.onclick = () => {
+            el.classList.toggle("open");
+            more.textContent = el.classList.contains("open") ? "fold it away" : "read the whole line";
+          };
+        }
+
+        if (sold) {
+          const tag = document.createElement("span");
+          tag.className = "tag";
+          tag.textContent = "on sale";
+          const a = document.createElement("a");
+          a.href = sold;
+          a.textContent = `open ${sold}`;
+          const state = document.createElement("span");
+          state.className = "state good";
+          act.append(tag, a, ...(more ? [more] : []), state);
+          return el;
+        }
+
+        const step = document.createElement("span");
+        step.className = "stepper";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.inputMode = "decimal";
+        input.value = "0.02";
+        const cents = () => Math.round((Number(input.value) || 0) * 100);
+        const bump = () => {
+          if (window.gsap) window.gsap.fromTo(input, { scale: 1.14 }, { scale: 1, duration: 0.34, ease: "back.out(3)" });
+        };
+        for (const [sign, delta] of [["−", -1], ["+", 1]]) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = sign;
+          b.setAttribute("aria-label", delta > 0 ? "raise the price one cent" : "lower the price one cent");
+          b.onclick = () => {
+            input.value = (Math.max(1, cents() + delta) / 100).toFixed(2);
+            bump();
+          };
+          step.append(b);
+        }
+        step.append(input);
+        input.oninput = () => (state.textContent = "");
+
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = "primary";
+        go.textContent = "put it behind a wall";
+        const usdc = document.createElement("span");
+        usdc.className = "usdc";
+        usdc.textContent = "USDC";
+        const state = document.createElement("span");
+        state.className = "state";
+
+        go.onclick = async () => {
+          go.disabled = true;
+          go.textContent = "writing…";
+          try {
+            const res = await fetch("/ask/from-memory", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ blob: l.blob, usdc: Number(input.value), pay_to: $("payTo").value.trim() }),
+            });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+            show(`${location.origin}${body.link}`, state);
+            await refresh();
+          } catch (err) {
+            state.className = "state";
+            state.textContent = err.message;
+          } finally {
+            go.disabled = false;
+            go.textContent = "put it behind a wall";
+          }
+        };
+
+        act.append(step, usdc, go, ...(more ? [more] : []), state);
+        return el;
+      };
+
+      const show = (url, into) => {
+        $("made").innerHTML =
+          `<div class="made"><div class="label">Your link</div><div class="link"><code>${esc(url)}</code>` +
+          `<button id="copy" class="chip">copy</button></div>` +
+          `<p class="hint" style="margin:12px 0 0">Send that link to whoever owes you the read. Nothing about the words is in it.</p></div>`;
+        $("copy").onclick = async () => {
+          await navigator.clipboard.writeText(url).catch(() => {});
+          $("copy").textContent = "copied";
+        };
+        if (into) {
+          into.className = "state good";
+          into.textContent = "on sale now, and your memory still holds the line";
+        }
+      };
+
+      const kindOf = (l) => (l.namespace === "people" ? "a person" : l.namespace === "counterparties" ? "a payment" : l.namespace);
+
+      const paintLines = () => {
+        const box = $("lines");
+        const want = rows.filter((l) => filter === "all" || l.namespace === filter);
+        box.innerHTML = "";
+        if (!want.length) {
+          box.innerHTML = `<p class="empty">${
+            filter === "people" ? "this wallet has named nobody yet" : filter === "counterparties" ? "this wallet has kept no payments yet" : "this wallet has stored nothing yet"
+          }</p>`;
+          return;
+        }
+        const listed = showAll ? want : want.slice(0, CAP);
+        for (const l of listed) box.append(card(l));
+        if (listed.length < want.length) {
+          const more = document.createElement("button");
+          more.type = "button";
+          more.className = "rest";
+          more.textContent = `and ${want.length - listed.length} more lines`;
+          more.onclick = () => {
+            showAll = true;
+            paintLines();
+          };
+          box.append(more);
+        }
+      };
+
+      $("filter").onclick = (e) => {
+        const b = e.target.closest("button[data-f]");
+        if (!b) return;
+        filter = b.dataset.f;
+        showAll = false;
+        for (const chip of $("filter").children) chip.classList.toggle("on", chip === b);
+        paintLines();
+      };
+
+      /* ---------- the links, and who paid for them ---------- */
+      const paintList = () => {
         const box = $("list");
-        if (!rows.notes?.length) {
+        const all = earned?.rows ?? [];
+        if (!all.length) {
           box.innerHTML = '<div class="none">none yet</div>';
           return;
         }
-        box.innerHTML = rows.notes
+        box.innerHTML = all
           .map(
             (n) =>
-              `<div class="one"><div><h3>${esc(n.title)}</h3><span class="quiet">${
+              `<div class="one"><div class="top"><div><h3>${esc(n.title)}</h3>` +
+              `<span class="quiet">${
                 n.opened === 0 ? "nobody has paid to open it" : `opened ${n.opened} time${n.opened === 1 ? "" : "s"}`
-              } · ${esc(shortAddr(n.pay_to))}</span></div><div style="text-align:right"><div class="price">${esc(
-                spoken(String(n.usdc) + " USDC"),
-              )}</div><a href="${esc(n.link)}">open</a></div></div>`,
+              } · ${esc(shortAddr(n.pay_to))}${n.from_memory ? " · out of your memory" : ""}</span></div>` +
+              `<div style="text-align:right"><div class="price">${esc(spoken(String(n.usdc) + " USDC"))}</div>` +
+              `<a href="${esc(n.link)}">open</a></div></div>` +
+              (n.money.length
+                ? `<ul class="trail">${n.money
+                    .map(
+                      (m) =>
+                        `<li><b>${esc(m.from)}</b> paid ${esc(spoken(String(m.usdc) + " USDC"))} <span>on ${esc(
+                          m.on,
+                        )} · tx ${esc(m.tx.slice(0, 10))}…</span></li>`,
+                    )
+                    .join("")}</ul>`
+                : "") +
+              `</div>`,
           )
           .join("");
       };
 
+      const refresh = async () => {
+        const [lines, money] = await Promise.all([
+          fetch("/sellable").then((r) => r.json()),
+          fetch("/earned").then((r) => r.json()),
+        ]);
+        rows = lines.lines ?? [];
+        earned = money;
+        paintTally();
+        paintLines();
+        paintList();
+      };
+
+      /* ---------- the handwritten form ---------- */
       const fill = (st) => {
         if (!$("payTo").value.trim() && st?.session?.wallet) $("payTo").value = st.session.wallet;
+        const hint = $("hint");
+        /* The paid note is collected on whichever ledger this build settles, so the
+           sentence is written from the server field rather than from the markup. A hint
+           holding an error keeps it until the next submit clears it. */
+        if (hint && !hint.classList.contains("bad")) {
+          const net = st?.pay_network === "testnet" ? "testnet" : "mainnet";
+          hint.textContent = `${net} USDC only. Money arrives at the address named at the top of this page, and you can replace it there with any ${net} address you own.`;
+        }
       };
 
       $("form").onsubmit = async (e) => {
@@ -184,19 +551,11 @@
           });
           const body = await res.json();
           if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
-          const url = `${location.origin}${body.link}`;
-          $("made").innerHTML =
-            `<div class="made"><div class="label">Your link</div><div class="link"><code>${esc(url)}</code>` +
-            `<button id="copy" class="chip">copy</button></div>` +
-            `<p class="hint" style="margin:12px 0 0">Send that link to whoever owes you the read. Nothing about the words is in it.</p></div>`;
-          $("copy").onclick = async () => {
-            await navigator.clipboard.writeText(url).catch(() => {});
-            $("copy").textContent = "copied";
-          };
+          show(`${location.origin}${body.link}`);
           $("form").reset();
           $("usdc").value = "0.02";
           fill(await loadMeta());
-          await list();
+          await refresh();
         } catch (err) {
           hint.className = "hint bad";
           hint.textContent = err.message;
@@ -206,14 +565,16 @@
         }
       };
 
-      mountWallet(async () => {
-        const st = await loadMeta();
-        fill(st);
-      });
+      const reload = async () => {
+        fill(await loadMeta());
+        await refresh();
+      };
+      mountWallet(reload);
+      mountNetwork(reload);
+      reveal();
 
-      const st = await loadMeta();
-      fill(st);
-      await list();
+      fill(await loadMeta());
+      await refresh();
     </script>
   </body>
 </html>

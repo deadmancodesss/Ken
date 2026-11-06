@@ -1,6 +1,12 @@
-/* One palette, one type scale, hairlines instead of shadows. No gradients, no
-   glass, no glow. Every page links this file and adds only its own layout, so a
-   card on the landing page is the same card in the app. */
+/* One palette, one type scale. No gradients, no glass, no glow, no blue.
+   Every page links this file and adds only its own layout, so a card on the
+   landing page is the same card in the app.
+
+   This used to say "hairlines instead of shadows". It now draws a heavier ink
+   edge and a hard offset instead, which is the difference between a document and
+   a cartoon. The offset is not a shadow: it has no blur, no light source and no
+   falloff, it is a second sheet of paper registered a few points out of place,
+   the way a two-colour print is. Everything that still bans glow stays banned. */
 
 :root {
   --paper: #f5f2ea;
@@ -25,17 +31,44 @@
   --step-4: 30px;
   --step-6: 46px;
   --pad: 22px;
+  /* One shell for the masthead, the page and the footer. Below 1320 the shell is wider
+     than the window, so phones and tablets keep the flat 22px gutter and lose nothing.
+     Above it the shell centers like a bootstrap or tailwind container, which is what
+     stops a laptop-wide page pinning its text to the glass while the art floats off
+     the other side. */
+  --shell: 1320px;
   --measure: 640px;
-  /* One motion spec for every page. Anything that moves uses these three values,
+  /* One motion spec for every page. Anything that moves uses these values,
      which is the difference between a system and a pile of tricks. */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* The spring overshoots and settles, which is what makes a thing feel drawn
+     rather than rendered. Only arrivals use it; nothing that leaves does. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --t-1: 180ms;
   --t-2: 320ms;
   --t-3: 560ms;
+  /* Ink weight and the offset sheet. Two variables, because a 1px line under a
+     3px offset reads as a mistake and a 2px line under it reads as a drawing. */
+  --edge: 1.5px;
+  --lift: 3px;
+  /* The colour of the sheet underneath. --paper-sunk measured only three points
+     off --paper, so the offset was invisible on everything that is not a filled
+     button, which is most of the site. This is a deliberate step darker. */
+  --sheet: #e0d9c9;
+  /* Halftone. A dot screen in the rule colour, used as texture on bands and
+     behind numbers. It is a repeating image, not a gradient, so the ban on
+     gradients still holds. */
+  --dots: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='1' cy='1' r='1' fill='%23d9d3c5'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* Scrolling is a gesture, not furniture. Every scroller in the build hides its bar
+   while keeping the wheel, the trackpad, the keyboard and the touch drag, so a long
+   conversation and a short page share the same calm edge. This covers the page, every
+   panel that scrolls, and any dropdown the controls add at runtime. */
+html, body, * { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
 body {
   margin: 0;
   background: var(--paper);
@@ -52,149 +85,488 @@ h1, h2, h3 { font-weight: 400; font-family: var(--serif); letter-spacing: -0.012
 p { margin: 0; }
 
 /* ---------- masthead ---------- */
-/* Three tiers, like a newspaper: the name and the wallet on the top line, the live
-   readouts on a thin strip of their own, and the destinations on a third line under a
-   hairline. The readouts used to share the destinations' row, which squeezed them into
-   the width of the wallet chip and made them fold onto a stray second line. Below 720px
-   the destinations fold into one button and a panel, because six uppercase words never
-   fit a phone. The wallet chip never folds away, since connecting is the point of the
-   product. */
+/* One line instead of three. The old header stacked the wallet, four diagnostic
+   readouts and eleven destinations into separate rows, which read as three toolbars
+   fighting for the same corner. The destinations now fit one pill row, the readouts
+   live behind a status button, and everything that is not a daily task sits in More.
+   Below a laptop the whole set folds into one menu sheet. */
 header {
   position: sticky;
   top: 0;
   z-index: 40;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas:
-    "brand wallet menu"
-    "meta  meta  meta"
-    "tabs  tabs  tabs";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "brand nav wallet";
   align-items: center;
-  gap: 4px 22px;
-  padding: 12px var(--pad) 0;
+  gap: 18px;
+  /* The padding is the shell gutter rather than a flat 22px, so the mark and the
+     wallet sit exactly above the left and right edges of the page below them. */
+  padding: 10px max(var(--pad), calc((100% - var(--shell)) / 2 + var(--pad)));
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
 }
-.brand { grid-area: brand; display: flex; align-items: baseline; gap: 14px; min-width: 0; }
-.mark { font: 400 var(--step-3)/1.1 var(--serif); letter-spacing: -0.015em; white-space: nowrap; border-bottom: 0; }
-.mark em { font-style: normal; color: var(--clay); }
-.tagline { color: var(--ink-3); font-size: var(--step--1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meta { grid-area: meta; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; font: var(--step--1)/1.35 var(--mono); color: var(--ink-2); min-width: 0; }
+.brand { grid-area: brand; display: flex; align-items: center; min-width: 0; }
+.mark { display: inline-flex; align-items: center; gap: 0; font: 400 23px/1 var(--serif); letter-spacing: -0.02em; white-space: nowrap; border-bottom: 0; }
+.mark img { display: block; width: 32px; height: 32px; flex: 0 0 auto; margin-right: -3px; transition: transform var(--t-1) var(--ease-spring); }
+.mark:hover img { transform: rotate(-4deg); }
+.mark .word { display: inline-block; }
+.mark .word i { font-style: normal; color: var(--clay); }
+/* The tagline was a second voice beside the name, and the name already says what this
+   is. It stays in the markup on pages that still carry it and is never shown again. */
+.tagline { display: none; }
+.meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 18px; font: var(--step--1)/1.35 var(--mono); color: var(--ink-2); min-width: 0; }
 .meta > div { white-space: nowrap; }
 .meta b { font-weight: 400; color: var(--ink); }
-.wallet { grid-area: wallet; display: flex; align-items: center; gap: 10px; }
+.wallet { grid-area: wallet; position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 
-/* The tagline is the first thing to go when the row gets tight, because the live
-   readouts and the wallet chip both carry information the tagline only decorates. */
-@media (max-width: 1079px) {
-  .tagline { display: none; }
+/* Which ledger the page reads is one server field, but it changes every number on
+   screen and switches which memories exist at all, so it is a control with two
+   names on it rather than a caption underneath something else. */
+.nets { display: inline-flex; align-self: center; border: var(--edge) solid var(--rule-strong); border-radius: 999px; overflow: hidden; background: var(--rule); gap: 1px; flex: 0 0 auto; }
+.nets button { border: 0; background: var(--paper); color: var(--ink-3); font: 11px/1 var(--mono); letter-spacing: 0.04em; padding: 6px 8px; cursor: pointer; transition: background var(--t-1) var(--ease), color var(--t-1) var(--ease); }
+.nets button:hover { color: var(--ink); }
+.nets button.on { background: var(--ink); color: var(--paper); }
+
+/* Five destinations stay in the row. The other five live behind More, because a
+   ten-item toolbar is a directory, not a header. On a phone the whole set becomes
+   one numbered sheet of paper that drops under the mark. */
+nav.tabs {
+  grid-area: nav;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
 }
+nav.tabs > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font: 13px/1 var(--sans);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 11px;
+  white-space: nowrap;
+  transition: color var(--t-1) var(--ease), background var(--t-1) var(--ease);
+}
+/* A destination is a place, and a small drawn glyph finds it faster than a word read
+   letter by letter. The icons are injected by shared.js, so every page carries the
+   same set and a page that forgets one degrades to the word it always had. */
+.navicon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.82;
+}
+nav.tabs > a[aria-current="page"] .navicon { opacity: 1; }
+nav.tabs > a:hover { color: var(--ink); background: var(--paper-sunk); border-color: transparent; }
+nav.tabs > a[aria-current="page"] { color: var(--clay); background: var(--clay-wash); }
+nav.tabs > a[aria-current="page"]:hover { color: var(--clay); background: var(--clay-wash); }
 
+.more { position: relative; display: flex; }
+.moreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 13px/1 var(--sans);
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 10px;
+  cursor: pointer;
+  box-shadow: none;
+}
+/* The caret is drawn from two borders rather than typed, so it keeps the same
+   weight as every other rule on the page and turns over when the sheet opens. */
+.moreBtn::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--t-1) var(--ease);
+}
+.moreBtn:hover { color: var(--ink); background: var(--paper-sunk); }
+.moreBtn[aria-expanded="true"] { color: var(--ink); background: var(--paper-sunk); }
+.moreBtn[aria-expanded="true"]::after { transform: translateY(1px) rotate(225deg); }
+.moreBtn.on { color: var(--clay); }
+.moreBtn.on::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--clay); }
+.moreMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 50;
+  display: grid;
+  gap: 1px;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--paper);
+  border: var(--edge) solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 var(--sheet);
+}
+.moreMenu[hidden] { display: none; }
+.moreMenu a { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font: 13px/1.2 var(--sans); padding: 9px 10px; border-radius: 8px; border-bottom: 0; white-space: nowrap; }
+.moreMenu a:hover { color: var(--ink); background: var(--paper-sunk); }
+.moreMenu a[aria-current="page"] { color: var(--clay); background: var(--clay-wash); }
+
+/* The four readouts were a second row of small print. They are still one click away,
+   but the click is a dot that turns green only when this build can move money. */
+.statusBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 auto;
+  background: var(--paper);
+  border: var(--edge) solid var(--rule-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--t-1) var(--ease), border-color var(--t-1) var(--ease);
+}
+.statusBtn .statusDot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); transition: background var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
+.statusBtn .statusWord { display: none; }
+.statusBtn[data-live="true"] .statusDot { background: var(--moss); }
+.statusBtn:hover { border-color: var(--ink-2); }
+.statusBtn[aria-expanded="true"] { background: var(--ink); border-color: var(--ink); }
+.statusBtn[aria-expanded="true"] .statusDot { background: var(--paper); transform: scale(0.8); }
+.statusBox {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 50;
+  width: 300px;
+  padding: 13px 15px 15px;
+  background: var(--paper);
+  border: var(--edge) solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 var(--sheet);
+}
+.statusBox[hidden] { display: none; }
+.statusHead { font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 11px; }
+.statusBox .meta { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 18px; justify-content: start; }
+.statusBox .meta > div { display: grid; gap: 2px; white-space: normal; }
+.statusBox .meta b { display: block; }
+
+/* The menu button is two bars that become an X. A word in a pill was one more
+   label to read in a row that already had too many. */
 .menuBtn {
   grid-area: menu;
   display: none;
-  align-items: center;
-  font: var(--step--1)/1 var(--mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-2);
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  flex: 0 0 auto;
   background: transparent;
-  border: 1px solid var(--rule-strong);
+  border: var(--edge) solid var(--rule-strong);
   border-radius: 999px;
-  padding: 7px 13px;
+  cursor: pointer;
 }
-.menuBtn:hover { border-color: var(--ink-2); color: var(--ink); }
+.menuBtn:hover { border-color: var(--ink-2); }
+.menuBtn .bars { display: grid; gap: 5px; width: 15px; }
+.menuBtn .bars i { display: block; height: 1.5px; background: var(--ink-2); transition: transform var(--t-1) var(--ease); }
+header.open .menuBtn .bars i:first-child { transform: translateY(3.25px) rotate(45deg); }
+header.open .menuBtn .bars i:last-child { transform: translateY(-3.25px) rotate(-45deg); }
 
-nav.tabs {
-  grid-area: tabs;
-  display: flex;
-  gap: 2px;
-  margin: 0 calc(var(--pad) * -1);
-  padding: 0 var(--pad);
-  overflow-x: auto;
-  scrollbar-width: none;
-  font: var(--step--1)/1 var(--mono);
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  border-top: 1px solid var(--rule);
-}
-nav.tabs::-webkit-scrollbar { display: none; }
-nav.tabs a { color: var(--ink-3); border-bottom: 0; padding: 11px 10px 12px; white-space: nowrap; }
-nav.tabs a:hover { color: var(--ink); }
-nav.tabs a[aria-current="page"] { color: var(--clay); box-shadow: inset 0 -2px 0 var(--clay); }
+.navExtra { display: none; }
 
-@media (max-width: 719px) {
+/* One row above a laptop, one sheet below it. The sheet carries the wallet name, the
+   ledger switch and the status readouts, so the top row only has to hold the mark,
+   the connect chip and the menu. */
+@media (max-width: 1199px) {
   header {
-    grid-template-areas:
-      "brand wallet menu"
-      "who   who    who"
-      "meta  meta   meta";
-    gap: 8px 12px;
-    padding-bottom: 11px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "brand wallet menu";
+    gap: 10px;
+    padding: 9px max(var(--pad), calc((100% - var(--shell)) / 2 + var(--pad)));
   }
-  .tagline { display: none; }
-  /* The wallet identity is long and the mark must never be squeezed to nothing, so
-     below a laptop the identity gets a line of its own and only the chip stays up
-     top. display:contents lets the two children sit in different grid rows. */
-  .wallet { display: contents; }
-  .wallet .chip { grid-area: wallet; }
-  .whose { grid-area: who; font-size: var(--step--1); }
-  .menuBtn { display: inline-flex; }
-  nav.tabs { display: none; }
-  header.open nav.tabs {
-    display: grid;
+  .menuBtn { display: grid; }
+  nav.tabs {
+    display: none;
     position: absolute;
     top: 100%;
     left: 0;
     right: 0;
-    margin: 0;
-    padding: 4px var(--pad) 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 22px;
+    padding: 14px var(--pad) 18px;
     background: var(--paper);
-    border-top: 0;
-    border-bottom: 1px solid var(--rule);
+    border-top: 1px solid var(--rule);
+    border-bottom: var(--edge) solid var(--ink);
+    box-shadow: 0 6px 0 var(--sheet);
+    max-height: calc(100dvh - 60px);
+    overflow-y: auto;
+    counter-reset: nav;
   }
-  header.open nav.tabs a { padding: 11px 2px; border-bottom: 1px solid var(--rule); }
-  header.open nav.tabs a:last-child { border-bottom: 0; }
-  header.open nav.tabs a[aria-current="page"] { box-shadow: none; }
+  header.open nav.tabs { display: grid; }
+  nav.tabs > a {
+    gap: 8px;
+    padding: 13px 2px;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    border-radius: 0;
+    font: 14px/1.2 var(--sans);
+  }
+  nav.tabs > a::before {
+    counter-increment: nav;
+    content: counter(nav, decimal-leading-zero);
+    margin-right: 0;
+    font: 10px/1 var(--mono);
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+  }
+  nav.tabs > a:hover { background: transparent; color: var(--ink); }
+  nav.tabs > a[aria-current="page"] { background: transparent; color: var(--clay); border-bottom-color: var(--clay); }
+  nav.tabs > a[aria-current="page"]::before { color: var(--clay); }
+  .more, .moreMenu, .moreMenu[hidden] { display: contents; }
+  .moreBtn { display: none; }
+  .moreMenu a {
+    gap: 8px;
+    padding: 13px 2px;
+    border-bottom: 1px solid var(--rule);
+    border-radius: 0;
+    font: 14px/1.2 var(--sans);
+  }
+  .moreMenu a::before {
+    counter-increment: nav;
+    content: counter(nav, decimal-leading-zero);
+    margin-right: 0;
+    font: 10px/1 var(--mono);
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+  }
+  .moreMenu a:hover { background: transparent; }
+  .moreMenu a[aria-current="page"] { background: transparent; color: var(--clay); border-bottom-color: var(--clay); }
+  .moreMenu a[aria-current="page"]::before { color: var(--clay); }
+  .navExtra { display: grid; grid-column: 1 / -1; gap: 11px; padding: 0 0 14px; margin-bottom: 2px; border-bottom: 1px solid var(--rule); }
+  .navExtra:empty { display: none; }
+  .navExtra .whose { padding: 0 2px; white-space: normal; }
+  .navExtra .nets { justify-self: start; }
+  .navExtra .statusBtn { width: auto; height: 30px; padding: 0 11px; justify-self: start; }
+  .navExtra .statusWord { display: inline; font: 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+  .navExtra .statusBtn[aria-expanded="true"] .statusWord { color: var(--paper); }
+  .navExtra .statusBox { position: static; width: 100%; padding: 2px 2px 4px; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
+  .navExtra .statusHead { margin-bottom: 9px; }
+}
+
+/* ---------- laptop masthead ---------- */
+/* The bar is 52px on a 1470px page, which reads like a status strip bolted to the top
+   of the window rather than the head of the document. Above the fold there is room to
+   give it weight, and only here, because on a handset the same bar is already taking
+   space the page needs more. It starts at 1280 rather than at the tab fold because the
+   row with a connected wallet address only has 521px of slack at 1200, and the wider
+   pills need more than that. */
+@media (min-width: 1280px) {
+  header { padding-top: 14px; padding-bottom: 14px; gap: 22px; }
+  .mark { font-size: 25px; }
+  .mark img { width: 34px; height: 34px; }
+  nav.tabs { gap: 4px; }
+  nav.tabs > a { gap: 8px; padding: 9px 14px; font-size: 14px; }
+  .navicon { width: 17px; height: 17px; }
+  .moreBtn { gap: 8px; padding: 9px 13px; font-size: 14px; }
+  .moreBtn::after { width: 6px; height: 6px; }
+  /* The sheet hangs off the button, not the bar, so a taller bar needs a longer drop
+     or the paper tucks 5px behind the masthead hairline. */
+  .moreMenu { top: calc(100% + 18px); }
 }
 
 /* ---------- wallet ---------- */
-/* Deliberately no display here. The fold above keeps .wallet as display:contents on a
-   phone so its two children can sit in different grid rows, and a second plain rule
-   written after that media query would win the cascade and put the chip and the menu
-   button on one line that no handset has room for. The flex box is declared once, up in
-   the header block. */
+/* The name is now one short word, so the masthead no longer has to shrink it to fit
+   beside the chip. The seal and the wordmark step down together on a handset, and the
+   mark keeps its weight because it is the one piece that has to read at 22px. */
+@media (max-width: 430px) {
+  :root { --pad: 16px; }
+  .mark { font-size: var(--step-2); gap: 0; }
+  .mark img { width: 28px; height: 28px; margin-right: -2px; }
+  .chip { font-size: 11px; padding: 5px 9px; }
+  .menuBtn { width: 34px; height: 34px; }
+}
+@media (max-width: 360px) {
+  :root { --pad: 14px; }
+  header { gap: 7px; }
+  .mark { font-size: var(--step-1); gap: 0; }
+  .mark img { width: 26px; height: 26px; margin-right: -2px; }
+  .chip { font-size: 10px; padding: 5px 7px; }
+  .menuBtn { width: 32px; height: 32px; }
+}
+/* Two columns plus a number, a glyph and a two-word label is more than a 305px handset
+   can hold without clipping the last letter. Below that width the word is the icon. */
+@media (max-width: 340px) { .navicon { display: none; } }
+
 .chip {
   font: var(--step--1)/1 var(--mono);
   color: var(--ink-2);
   background: transparent;
-  border: 1px solid var(--rule-strong);
+  border: var(--edge) solid var(--rule-strong);
   border-radius: 999px;
-  padding: 5px 12px;
+  padding: 6px 12px;
   white-space: nowrap;
+  flex: 0 0 auto;
+  transition: border-color var(--t-1) var(--ease), color var(--t-1) var(--ease), background var(--t-1) var(--ease);
 }
-.chip:hover { border-color: var(--ink-2); color: var(--ink); }
-.chip.on { border-color: var(--clay); color: var(--clay); }
+.chip:hover { border-color: var(--ink-2); color: var(--ink); background: var(--paper-sunk); }
+.chip.on { border-color: var(--clay); color: var(--clay); background: var(--clay-wash); }
 .whose { font: var(--step--1)/1 var(--mono); color: var(--ink-3); white-space: nowrap; }
+
 .whose:empty { display: none; }
 .whose b { color: var(--ink); font-weight: 400; }
+/* ---------- the cartoon dialogue ----------
+   One animal leans out of a paper sheet and says what just happened. The sheet is
+   the same object as a ticket elsewhere in the build: drawn edge, offset underneath,
+   a degree off true. The wash is flat paper and a dot screen, not glass, because a
+   blurred backdrop is the one thing that makes an ink drawing look like a web app.
+   Motion lives in public/dialogue.js and is an upgrade, never a requirement. */
+.dlg { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 18px; }
+/* The wash is the sheet colour, not paper-sunk, because that is three points off
+   paper and a dialogue that cannot be told apart from the page behind it is not a
+   dialogue. The ink offset is what makes the sheet an object on top of the page. */
+.dlg-wash { position: absolute; inset: 0; background: var(--sheet); background-image: var(--dots); opacity: 0.92; }
+.dlg-sheet {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 4px 44px;
+  padding: 22px;
+  background: var(--paper);
+  border: var(--edge) solid var(--ink);
+  box-shadow: calc(var(--lift) + 2px) calc(var(--lift) + 2px) 0 var(--ink);
+  transform: rotate(-0.5deg);
+}
+.dlg-stage { position: relative; align-self: start; }
+/* Only the first line of the body has to dodge the close button in the corner, so
+   only the kicker keeps a right gutter. Padding the whole column instead leaves a
+   dead strip down the side of every sheet and makes the text look off-centre. */
+.dlg-body { min-width: 0; }
+.dlg-animal { position: relative; display: block; overflow: hidden; }
+.dlg-animal img { position: absolute; object-fit: fill; }
+/* The tail is the one drawn thing that crosses the gutter, so the gutter is sized
+   from the tail rather than from taste: it has to end before the text column
+   begins, or the mouse's speech bubble strikes through the headline. */
+.dlg-tail { position: absolute; right: -36px; top: 46px; width: 38px; height: 26px; overflow: visible; }
+.dlg-tail path { fill: var(--paper); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+/* The nameplate is two lines: who is talking, then what it does. It is the only
+   place the animal is named, which frees the kicker above the headline to say
+   nothing but what stage the page is at. */
+.dlg-plate { display: grid; gap: 3px; margin-top: 10px; font: var(--step--1)/1.35 var(--mono); }
+.dlg-plate b { font-weight: 400; color: var(--ink); }
+.dlg-plate em { font-style: normal; color: var(--ink-3); }
+.dlg-kicker { margin: 2px 44px 6px 0; font: var(--step--1)/1.1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--clay); }
+.dlg-title { margin: 0 0 8px; font: var(--step-2)/1.15 var(--serif); color: var(--ink); max-width: 26ch; }
+.dlg-line { margin: 0 0 12px; color: var(--ink-2); max-width: 46ch; }
+.dlg-beats { list-style: none; margin: 0 0 12px; padding: 10px 0; display: grid; gap: 6px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+/* A wallet that refused in the same tick has no steps to list, and two rules with
+   nothing between them is a band that says nothing. */
+.dlg-beats:empty { display: none; }
+.dlg-beats li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
+.dlg-beats li::before { content: "·"; color: var(--ink-3); }
+.dlg-beats .mark-check::before { content: "✓"; color: var(--moss); }
+.dlg-beats .mark-cross::before { content: "✗"; color: var(--brick); }
+/* The drawer opener is an object on the page like every other control, not a link
+   with an underline. An underlined sentence that wraps and strands its count on the
+   second line reads as a footnote that lost an argument. */
+.dlg-toggle {
+  display: inline-block;
+  padding: 4px 10px;
+  font: var(--step--1)/1.2 var(--mono);
+  color: var(--ink-2);
+  text-align: left;
+}
+.dlg-small { display: none; margin-top: 10px; padding: 12px; border: 1px solid var(--rule); background: var(--paper-sunk); }
+.dlg-small.open { display: grid; gap: 5px; }
+/* One field per line, key in a column that is only as wide as the longest key. A
+   fixed half-width column squeezed a forty-character extension id into three lines
+   of four characters, which is evidence nobody can point at. */
+.dlg-fact { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 8px; font: var(--step--1)/1.55 var(--mono); color: var(--ink-2); }
+.dlg-fact b { font-weight: 400; color: var(--ink); }
+.dlg-fact span { overflow-wrap: anywhere; }
+.dlg-fact.head { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.dlg-fact.head:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.dlg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.dlg-actions:empty { display: none; }
+/* A wallet's own icon, so a person finds their extension by sight and not only by the
+   name the extension chose for itself. */
+.dlg-actions .wallet-icon { width: 18px; height: 18px; margin-right: 7px; border-radius: 5px; vertical-align: -4px; object-fit: contain; }
+/* The verdict sits in the reading column on its own line, so it lands in the same
+   place at every width instead of hopping between columns. */
+.dlg-stamp {
+  display: block;
+  width: max-content;
+  margin: 2px 0 0 auto;
+  transform: rotate(-8deg);
+  padding: 4px 10px;
+  border: 2px solid var(--brick);
+  border-radius: 4px;
+  color: var(--brick);
+  background: var(--paper);
+  font: var(--step--1)/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.dlg[data-tone="good"] .dlg-stamp { border-color: var(--moss); color: var(--moss); }
+.dlg-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font: 15px/1 var(--mono);
+}
+/* On a phone the sheet is one column and the animal sits in a row beside its
+   nameplate, because a 92px column next to a 214px body gives the words three
+   characters per line and nobody reads that. */
+@media (max-width: 620px) {
+  .dlg-sheet { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 16px 16px 18px; }
+  .dlg-stage { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .dlg-animal { flex: 0 0 64px; }
+  .dlg-plate { margin-top: 0; flex: 1 1 130px; }
+  .dlg-tail { display: none; }
+  .dlg-title { max-width: none; }
+  .dlg-actions button { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dlg-sheet { transform: none; }
+}
 
 /* ---------- primitives ---------- */
+/* A button is an object lying on the page, not a text decoration. It has a drawn
+   edge, it sits on its own offset sheet, it lifts toward you when you reach for it
+   and it flattens when you press. The offset moves with the lift so the sheet stays
+   under the object instead of detaching from it. */
 button {
   font: var(--step-0)/1 var(--sans);
   color: var(--ink);
   background: transparent;
-  border: 1px solid var(--rule-strong);
-  border-radius: 8px;
+  border: var(--edge) solid var(--rule-strong);
+  border-radius: 9px;
   padding: 11px 15px;
   cursor: pointer;
-  transition: border-color 0.14s, color 0.14s, background 0.14s;
+  box-shadow: var(--lift) var(--lift) 0 var(--sheet);
+  transition: transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease),
+    border-color var(--t-1) var(--ease), color var(--t-1) var(--ease), background var(--t-1) var(--ease);
 }
-button:hover { border-color: var(--ink-2); }
+button:hover { border-color: var(--ink-2); transform: translate(-1px, -1px); box-shadow: calc(var(--lift) + 1px) calc(var(--lift) + 1px) 0 var(--sheet); }
+button:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--sheet); }
 button:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
-button.primary { background: var(--clay); border-color: var(--clay); color: var(--paper); }
-button.primary:hover { background: #8f4420; border-color: #8f4420; }
-button:disabled { background: var(--paper-sunk); color: var(--ink-3); border-color: var(--rule); cursor: not-allowed; }
+button.primary { background: var(--clay); border-color: var(--ink); color: var(--paper); box-shadow: var(--lift) var(--lift) 0 var(--ink); }
+button.primary:hover { background: #8f4420; border-color: var(--ink); box-shadow: calc(var(--lift) + 1px) calc(var(--lift) + 1px) 0 var(--ink); }
+button.primary:active { box-shadow: 0 0 0 var(--ink); }
+button:disabled { background: var(--paper-sunk); color: var(--ink-3); border-color: var(--rule); box-shadow: none; transform: none; cursor: not-allowed; }
 
 /* ---------- fields ---------- */
 /* Every picker in the build is styled from here rather than from the page that uses
@@ -244,6 +616,79 @@ select {
 select:hover { border-color: var(--ink-2); color: var(--ink); }
 select option { color: var(--ink); background-color: var(--paper); }
 
+/* ---------- paper dropdown ----------
+   Tom Select carries the keyboard, the screen reader and the phone, and this block
+   gives it the same drawn edge as every other field. The menu is a second sheet with
+   a hard offset, never a native OS list, because the native popup is the one surface
+   in the build that cannot follow the palette. */
+.paper-select { position: relative; width: 100%; max-width: 100%; min-width: 0; }
+.paper-select .ts-control {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  width: 100%;
+  padding: 9px 34px 9px 13px !important;
+  border: 1px solid var(--rule-strong);
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--step--1)/1.3 var(--mono);
+  box-shadow: none;
+  transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease);
+}
+.paper-select:hover .ts-control { border-color: var(--ink-3); }
+.paper-select.focus .ts-control,
+.paper-select.dropdown-active .ts-control {
+  border-color: var(--ink);
+  box-shadow: none;
+  background: var(--paper);
+}
+.paper-select .ts-control > .item { color: var(--ink); padding: 0; }
+.paper-select .ts-control > input { display: none !important; }
+/* The caret is two borders, the same grammar as the More button in the masthead. */
+.paper-select::after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  top: calc(50% - 2px);
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+  pointer-events: none;
+  transition: transform var(--t-1) var(--ease);
+}
+.paper-select.dropdown-active::after { transform: translateY(3px) rotate(225deg); }
+.paper-menu.ts-dropdown {
+  z-index: 1200;
+  margin-top: 8px;
+  padding: 5px;
+  border: var(--edge) solid var(--ink);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 4px 4px 0 var(--sheet);
+  font: var(--step--1)/1.3 var(--mono);
+  color: var(--ink);
+}
+.paper-menu .ts-dropdown-content { max-height: 260px; overflow-y: auto; overscroll-behavior: contain; padding: 0; }
+.paper-menu .option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.paper-menu .option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.paper-menu .option > em { font-style: normal; color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+.paper-menu .option:hover,
+.paper-menu .option.active { background: var(--paper-sunk); color: var(--ink); }
+.paper-menu .option.selected { background: var(--clay-wash); color: var(--clay); }
+.paper-menu .option.selected > em { color: var(--clay); }
+
 input[type="range"] {
   appearance: none;
   -webkit-appearance: none;
@@ -279,15 +724,34 @@ input[type="range"]::-moz-range-thumb {
 input:focus-visible,
 select:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
 
-.label { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 16px; }
-.card { border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); padding: 18px; }
-.lede { font: 400 var(--step-2)/1.5 var(--serif); color: var(--ink); border-left: 2px solid var(--rule-strong); padding-left: 15px; }
+/* A label is a caption written in the margin, so it gets the tick a drafter puts
+   in front of a note. Every page already uses this class, which is why one change
+   here repaints the headings of the whole site at once. */
+.label { position: relative; padding-left: 16px; font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 16px; }
+.label::before { content: ""; position: absolute; left: 0; top: 0.42em; width: 9px; height: var(--edge); background: var(--clay); }
+.card { border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); padding: 18px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+.lede { font: 400 var(--step-2)/1.5 var(--serif); color: var(--ink); border-left: 3px solid var(--clay); padding-left: 15px; }
 .lede span { color: var(--ink-2); font: var(--step-0)/1.6 var(--sans); display: block; margin-top: 8px; }
 dd, dt { margin: 0; }
 .quiet { font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
 .quiet kbd { font-family: var(--mono); color: var(--ink-2); border: 1px solid var(--rule); border-radius: 3px; padding: 1px 4px; }
+/* Stands in front of a page of invented examples the moment the reader's own wallet is
+   connected, so a story about the demo cast can never be read as a report about them.
+   It is a small sheet pinned to the corner rather than a paragraph in the flow, because
+   a correction that pushes the page down makes the page itself look wrong. */
+.castnote { position: fixed; left: var(--pad); bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 45; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; width: min(380px, calc(100vw - var(--pad) * 2)); margin: 0; padding: 13px 12px 13px 16px; border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--clay-wash); color: var(--ink); font: var(--step--1)/1.55 var(--mono); box-shadow: var(--lift) var(--lift) 0 var(--sheet); animation: noteIn 320ms var(--ease-spring) both; }
+.castnote::before { content: ""; position: absolute; left: 18px; top: -6px; width: 9px; height: 9px; background: var(--clay-wash); border-left: var(--edge) solid var(--ink); border-top: var(--edge) solid var(--ink); transform: rotate(45deg); }
+.castnote p { margin: 0; }
+.castnote a { color: var(--clay); border-bottom-color: currentColor; }
+.castnote .x { align-self: start; border: 0; background: transparent; color: var(--ink-3); font: 400 17px/1 var(--sans); padding: 2px 6px; cursor: pointer; border-radius: 50%; }
+.castnote .x:hover { color: var(--ink); background: var(--paper); transform: none; }
+@keyframes noteIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (max-width: 560px) {
+  .castnote { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .castnote { animation: none; } }
 .switch { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; font: inherit; color: inherit; background: transparent; border: 0; padding: 0; }
-.switch .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); }
+.switch .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 2.5px var(--rule-strong); }
 .switch.off .dot { background: var(--rule-strong); }
 
 .dots i {
@@ -299,8 +763,10 @@ dd, dt { margin: 0; }
 @keyframes blink { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
 
 /* Scroll reveals. Hidden only when JS is running, so the page is never blank
-   for someone with scripting off. */
-.reveal { opacity: 0; transform: translateY(10px); transition: opacity 0.5s ease, transform 0.5s ease; }
+   for someone with scripting off. The travel is longer and it lands on the
+   spring, which overshoots by a few points and settles, so a block arrives like
+   an object placed on the page rather than like a fade. */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.5s ease, transform 0.62s var(--ease-spring); }
 .reveal.shown { opacity: 1; transform: none; }
 
 /* ---------- story machinery ----------
@@ -308,16 +774,18 @@ dd, dt { margin: 0; }
    drawn exactly like a step on the feature pages. Everything animates from the
    .shown class that reveal() adds, and nothing animates at all under
    prefers-reduced-motion. */
-.steps { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.steps { display: grid; gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 10px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
 .steps > div { background: var(--paper); padding: 18px 20px; display: grid; grid-template-columns: 26px 1fr; gap: 14px; align-items: start; }
 .steps > div > * { min-width: 0; }
-.steps .num { font: var(--step--1)/1.6 var(--mono); color: var(--clay); }
+/* The number goes into a drawn counter rather than sitting loose, because a step
+   in a cartoon is something you point at, and a bare digit is something you read. */
+.steps .num { display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border: var(--edge) solid var(--clay); border-radius: 50%; font: var(--step--1)/1 var(--mono); color: var(--clay); background: var(--clay-wash); }
 .steps h4 { font: 400 var(--step-1)/1.4 var(--serif); margin: 0 0 4px; }
 .steps p { color: var(--ink-2); font-size: var(--step-0); max-width: 62ch; }
 /* Hidden only when the block is also a scroll reveal, so a page that never runs
    the reveal script still shows every step. .stagger is the same arrival for any
    other block, so a grid of cards walks in exactly like a numbered workflow. */
-.reveal.steps > div, .reveal.stagger > * { opacity: 0; transform: translateX(-6px); transition: opacity 0.4s ease, transform 0.4s ease; }
+.reveal.steps > div, .reveal.stagger > * { opacity: 0; transform: translateX(-10px); transition: opacity 0.4s ease, transform 0.55s var(--ease-spring); }
 .reveal.steps.shown > div, .reveal.stagger.shown > * { opacity: 1; transform: none; }
 .reveal.steps.shown > div:nth-child(2), .reveal.stagger.shown > :nth-child(2) { transition-delay: 0.12s; }
 .reveal.steps.shown > div:nth-child(3), .reveal.stagger.shown > :nth-child(3) { transition-delay: 0.24s; }
@@ -326,14 +794,14 @@ dd, dt { margin: 0; }
 
 /* A list that draws itself. Rows arrive in sequence when they first appear and again
    every time a search replaces them, which is the only motion on the read-only pages. */
-.rows > * { animation: arrive 0.42s ease both; }
+.rows > * { animation: arrive 0.5s var(--ease-spring) both; }
 .rows > :nth-child(2) { animation-delay: 0.05s; }
 .rows > :nth-child(3) { animation-delay: 0.1s; }
 .rows > :nth-child(4) { animation-delay: 0.15s; }
 .rows > :nth-child(5) { animation-delay: 0.2s; }
 .rows > :nth-child(6) { animation-delay: 0.25s; }
 .rows > :nth-child(n + 7) { animation-delay: 0.3s; }
-@keyframes arrive { from { opacity: 0; transform: translateY(7px); } }
+@keyframes arrive { from { opacity: 0; transform: translateY(11px); } to { opacity: 1; transform: none; } }
 
 /* A connector between two named ends. It sits still and carries arrowheads, because
    the direction is the information and a dot walking it adds nothing to read. */
@@ -347,19 +815,21 @@ dd, dt { margin: 0; }
 .ends b { display: block; font-weight: 400; color: var(--ink); }
 .ends span { color: var(--ink-3); }
 
-.code { font: var(--step--1)/1.7 var(--mono); color: var(--ink-2); background: var(--paper-sunk); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; overflow-x: auto; white-space: pre; }
+.code { font: var(--step--1)/1.7 var(--mono); color: var(--ink-2); background: var(--paper-sunk); border: var(--edge) solid var(--rule-strong); border-radius: 10px; padding: 16px 18px; overflow-x: auto; white-space: pre; }
 .code em { font-style: normal; color: var(--clay); }
 
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
-.facts > div { background: var(--paper); padding: 16px 18px; }
-.facts .v { font: 400 var(--step-3)/1.2 var(--serif); color: var(--ink); }
+/* A number in a cartoon is set heavier than a number in a document, and the cell
+   it lives in carries the dot screen so the block reads as printed, not as typed. */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 10px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+.facts > div { background: var(--paper); padding: 16px 18px; background-image: var(--dots); background-position: right bottom; }
+.facts .v { font: 400 var(--step-4)/1.2 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
 .facts .k { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
 
 /* One panel that swaps its own children in sequence. Used for the before and after
    telling of the same question, and it steps on a timer rather than on scroll so
    it keeps moving while somebody is reading the caption next to it. */
 .cycle { display: grid; gap: 14px; }
-.cycle .frames { position: relative; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); overflow: hidden; }
+.cycle .frames { position: relative; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
 .cycle .frame { padding: 20px 22px; opacity: 0; transform: translateY(8px); transition: opacity 0.45s ease, transform 0.45s ease; }
 .cycle .frame.on { opacity: 1; transform: none; }
 .cycle .frame:not(.on) { position: absolute; inset: 0; pointer-events: none; }
@@ -386,7 +856,11 @@ dd, dt { margin: 0; }
 .story .node { position: relative; flex: 1; min-width: 0; text-align: center; cursor: pointer; }
 .story .node:hover i { border-color: var(--clay); transform: scale(1.4); }
 .story .node:focus-visible { outline: 1px solid var(--clay); outline-offset: 6px; border-radius: 4px; }
-.story .node i { display: block; width: 10px; height: 10px; margin: 10px auto 0; border-radius: 50%; background: var(--paper); border: 1px solid var(--rule-strong); transition: transform var(--t-2) var(--ease), background var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
+/* The rail's two lines are absolutely positioned and would otherwise paint through a
+   finished node, splitting its circle in half. Lifting the dot onto its own layer with
+   an opaque fill is what makes a reached station read as a circle rather than a bead
+   skewered on the wire. */
+.story .node i { position: relative; z-index: 1; display: block; width: 12px; height: 12px; margin: 9px auto 0; border-radius: 50%; background: var(--paper); border: var(--edge) solid var(--rule-strong); transition: transform var(--t-2) var(--ease-spring), background var(--t-2) var(--ease), border-color var(--t-2) var(--ease); }
 .story .node.reached i { border-color: var(--clay); background: var(--clay-wash); }
 .story .node.live i { transform: scale(1.5); background: var(--clay); border-color: var(--clay); }
 .story .node b { display: block; margin-top: 12px; font: var(--step--1)/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); transition: color var(--t-2) var(--ease); }
@@ -408,7 +882,7 @@ dd, dt { margin: 0; }
 /* ---------- static comparisons and annotated objects ----------
    Not everything earns a movement. A ledger and an annotated card read faster than
    an animation, and a page where every block moves is a page where nothing does. */
-.ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 10px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
 .ledger > div { background: var(--paper); padding: 20px 22px 22px; }
 .ledger > div.warm { background: var(--paper-sunk); }
 .ledger h4 { margin: 0 0 16px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3); }
@@ -420,37 +894,56 @@ dd, dt { margin: 0; }
 .ledger .tot b { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; }
 .ledger .tot span { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
 
-/* One ticket, three endings. The control sits directly above the object it changes
-   and the annotations belong to the state that is showing, so nobody has to guess
-   which of six loose lines explains the number in front of them. */
-.tk { display: grid; gap: 18px; }
-.tk .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 999px; overflow: hidden; }
-.tk .steps button { display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; background: var(--paper); color: var(--ink-3); font: var(--step--1)/1.3 var(--mono); letter-spacing: 0.04em; padding: 13px 10px; cursor: pointer; text-align: center; transition: background var(--t-1) var(--ease), color var(--t-1) var(--ease); }
-.tk .steps button i { font-style: normal; flex: 0 0 auto; width: 19px; height: 19px; border: 1px solid currentColor; border-radius: 50%; display: grid; place-items: center; font-size: 0.75em; }
-.tk .steps button:hover { color: var(--ink); }
-.tk .steps button.on { background: var(--ink); color: var(--paper); }
-.tk .body { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 26px; align-items: start; }
-.tk .ticket { border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper); padding: 20px 22px; }
-.tk .ticket .row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--rule); font-size: var(--step-0); }
-.tk .ticket .row:first-of-type { border-top: 0; }
-.tk .ticket .row span:last-child { font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); text-align: right; }
-.tk .ticket .big { font: 400 var(--step-6)/1 var(--serif); letter-spacing: -0.025em; }
-.tk .ticket .big small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
-.tk .ticket .perf { border-top: 1px dashed var(--rule-strong); margin: 16px -22px 0; padding-top: 14px; }
-.tk .marks { display: grid; gap: 16px; }
-.tk .mark { position: relative; padding-left: 22px; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
-.tk .mark::before { content: ""; position: absolute; top: 8px; left: 0; width: 15px; height: 1px; background: var(--rule-strong); }
-.tk .mark::after { content: ""; position: absolute; top: 6px; left: 15px; width: 5px; height: 5px; border-radius: 50%; background: var(--rule-strong); }
-.tk .mark b { display: block; color: var(--ink); font: var(--step-0)/1.4 var(--sans); font-weight: 400; }
-.tk .mark.hi::before, .tk .mark.hi::after { background: var(--clay); }
-.tk .mark.hi b { color: var(--clay); }
-
 @media (max-width: 820px) {
-  .tk .body { grid-template-columns: 1fr; gap: 20px; }
+  /* Below this width the label and its figure cannot share a line without the figure
+     being clipped by the ledger's rounded edge. Wrapping keeps every figure readable. */
+  .ledger { grid-template-columns: minmax(0, 1fr); }
+  .ledger .line { flex-wrap: wrap; }
+  .ledger .line .d { margin-left: auto; white-space: normal; text-align: right; }
 }
-@media (max-width: 560px) {
-  .tk .steps { grid-template-columns: 1fr; border-radius: 12px; }
-  .tk .steps button { justify-content: flex-start; padding: 13px 16px; }
+
+/* ---------- faces ----------
+   The demo cast each have a drawn portrait in public/assets. They are encoded with
+   `npm run plate -- <name> --from drawing.png --alpha`, which keys the sheet out to
+   real transparency, so a face is a cut-out rather than a wash on a rectangle. That
+   is what makes it safe to sit on a tinted disc, to be cropped to a circle and to be
+   moved at all, none of which a multiply plate can survive. The zoom is a scale on
+   the image inside a clipped box, because the drawings leave generous white margins
+   and a face scaled to fit a 26px chip is a smudge. */
+.av { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; flex: 0 0 auto; background: var(--clay-wash); color: var(--clay); font: var(--step--1)/1 var(--mono); }
+.av img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 34%; transform: scale(1.85); }
+.av.mid { width: 46px; height: 46px; }
+.av.big { width: 96px; height: 96px; }
+/* A person the agent has not been told about gets a dashed empty frame and no face
+   at all. Giving a stranger a stock portrait would be the product lying about the
+   one thing it is supposed to be honest about. */
+.av.none { background: var(--paper-sunk); color: var(--brick); border: var(--edge) dashed var(--rule-strong); border-radius: 6px; }
+
+/* ---------- the spread ----------
+   One section turns its explanation and its object into a spread, words on one leaf
+   and the thing being explained on the other, and the next section mirrors it. This
+   used to live inside the landing page, which is why the five tool pages each
+   invented their own centred column and none of them read as this product. On a
+   narrow screen every spread becomes one column with the words first, because the
+   picture without the sentence is a poster and the sentence without the picture is a
+   manual. */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(30px, 4.6vw, 72px); align-items: center; }
+.split.flip > .split-visual { order: -1; }
+.split-copy { min-width: 0; }
+.split-visual { min-width: 0; }
+.split .lead { margin-bottom: 0; }
+/* Drawings are wider than they are tall, so an even spread shrinks them into the
+   middle and leaves a dead margin beside the words. The art takes the larger share
+   and the words still read at 41 percent. */
+.split.art { grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr); margin-bottom: 36px; }
+.split.art.flip { grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr); }
+.split.art .plate { margin: 0; }
+.split.art .plate figcaption { text-align: left; }
+@media (max-width: 960px) {
+  .split { grid-template-columns: minmax(0, 1fr); gap: 34px; }
+  .split.flip > .split-visual { order: 0; }
+  .split.art, .split.art.flip { grid-template-columns: minmax(0, 1fr); }
+  .split.art { margin-bottom: 30px; }
 }
 
 /* ---------- paper plates ----------
@@ -464,6 +957,13 @@ dd, dt { margin: 0; }
 .plate.narrow { max-width: 400px; margin-left: auto; margin-right: auto; }
 .plate.mid figcaption, .plate.narrow figcaption { text-align: center; }
 
+/* A cut-out plate, produced by `npm run plate -- <name> --from drawing.png --alpha`.
+   The sheet is keyed to transparency instead of multiplied away, so this is the one
+   kind of drawing that may be transformed, floated, parallaxed and tilted, which is
+   every kind of movement the plates above are banned from. Nothing here needs the
+   blend, so the blend is turned off rather than left to fight the transform. */
+.plate.cut img { mix-blend-mode: normal; }
+
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; transition: none; }
   .dots i { animation: none; opacity: 0.6; }
@@ -471,14 +971,17 @@ dd, dt { margin: 0; }
   .stagger > * { opacity: 1; transform: none; transition: none; }
   .rows > * { animation: none; }
   .story .packet { display: none; }
+  .story .node i { transition: none; }
   .story .cap { position: relative; inset: auto; opacity: 1; transform: none; margin-bottom: 18px; }
   .cycle .frame { opacity: 1; transform: none; position: relative; transition: none; }
   .cycle .bars i { background: var(--clay); }
+  /* Nothing drifts toward the pointer and nothing sits crooked, but the press still
+     flattens, because that is the only thing telling a hand that the button heard it.
+     Removing it would trade a motion preference for a feedback bug. */
+  button:hover, .ticket2, .ticket2:hover { transform: none; }
+  button, button:hover, .chip, .card, .ticket2, .hubStage .spot, .hub .mini img { transition: none; }
   * { scroll-behavior: auto !important; }
 }
 
-/* The diagnostic readouts are the one thing a phone masthead can live without, and
-   the wallet identity above carries the state that actually matters. */
-@media (max-width: 719px) {
-  .meta { display: none; }
-}
+/* Nothing hides the readouts on a phone any more. They left the masthead row and
+   live inside the menu sheet, where there is room to read them. */

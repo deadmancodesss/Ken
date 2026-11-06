@@ -2,281 +2,470 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>How Total Recall works · the machinery behind one sentence</title>
-    <meta name="description" content="The request path, the memory format, the payment handshake and the timings behind a voice agent that reads a Sui wallet through Tatum and remembers on Walrus." />
+    <title>How Ken works · the machinery behind one sentence</title>
+    <meta name="description" content="The three trips a sentence can take, the four systems behind them, the memory format, the tool surface and every number this build actually measured." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
+      /* The Wallet Standard handshake, done by hand because this page has no bundler.
+         A wallet that loads before the page waits for the page to say it is ready; a
+         wallet that loads after the page announces itself. Both halves have to be
+         answered, and the announcement carries a callback rather than a wallet, so the
+         callback has to be called to obtain the wallet at all. Treating the detail as
+         already a wallet is how a real extension stays invisible and a page tells a
+         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
-      window.addEventListener("wallet-standard:register-wallet", (e) => window.__walletStandardEarly.push(e.detail));
+      const __wsReady = {
+        register: (...ws) => {
+          for (const w of ws) if (w && !window.__walletStandardEarly.includes(w)) window.__walletStandardEarly.push(w);
+        },
+      };
+      window.addEventListener("wallet-standard:register-wallet", (e) => {
+        const d = e && e.detail;
+        if (typeof d === "function") { try { d(__wsReady); } catch {} return; }
+        if (d) __wsReady.register(d);
+      });
+      window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: __wsReady }));
+      if (Array.isArray(navigator.wallets)) navigator.wallets.forEach((cb) => { try { cb(__wsReady); } catch {} });
+      else try {
+        Object.defineProperty(navigator, "wallets", {
+          value: Object.freeze({ push: (...cbs) => cbs.forEach((cb) => { try { cb(__wsReady); } catch {} }) }),
+        });
+      } catch {}
     </script>
+    <script defer src="/vendor/gsap.min.js"></script>
     <noscript><style>.reveal { opacity: 1; transform: none }</style></noscript>
     <style>
-      .wrap { max-width: 880px; margin: 0 auto; padding: 0 var(--pad); }
-      section { padding: 60px 0; border-bottom: 1px solid var(--rule); }
-      section:last-of-type { border-bottom: 0; }
-      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px; }
-      h2 { font-size: var(--step-3); margin-bottom: 10px; }
-      h3 { font: 400 var(--step-2)/1.4 var(--serif); margin: 34px 0 8px; }
-      .lead { color: var(--ink-2); max-width: 64ch; margin-bottom: 30px; }
-      .cap { margin-top: 14px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      /* One shell with the masthead, and full width rules between the parts, so this
+         page is a sheet of the same book as the landing rather than an essay typed into
+         a narrow column in the middle of a wide desk. */
+      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); }
+      main { overflow-x: clip; }
+      section { position: relative; padding: clamp(42px, 4.2vw, 66px) 0; }
+      section::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
+      section:last-of-type::after { display: none; }
+      section > .kicker { margin-bottom: 14px; }
 
-      /* A sequence written as lanes rather than boxes, so you can read down one
-         column and see exactly whose turn it is. */
-      .seq { border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
-      .seq .row { display: grid; grid-template-columns: 92px 1fr 108px; gap: 16px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--rule); font-size: var(--step-0); }
-      .seq .row:last-child { border-bottom: 0; }
-      .seq .who { font: var(--step--1)/1.5 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
-      .seq .what { color: var(--ink); }
-      .seq .what span { color: var(--ink-3); }
-      .seq .ms { font: var(--step--1)/1.5 var(--mono); color: var(--clay); text-align: right; white-space: nowrap; }
-      .seq .row.warm .ms { color: var(--moss); }
-      .seq .row.money .what { border-left: 2px solid var(--brick); padding-left: 12px; }
-      .seq .head { display: flex; gap: 14px; align-items: baseline; padding: 14px 18px; border-bottom: 1px solid var(--rule); background: var(--paper-sunk); }
-      .seq .head b { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); font-weight: 400; }
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.02em; margin: 0 0 10px; max-width: 22ch; }
+      h1 { font-size: clamp(30px, 3.8vw, 38px); line-height: 1.08; }
+      h2 { font-size: clamp(26px, 2.7vw, var(--step-4)); line-height: 1.1; }
+      .lead { color: var(--ink-2); max-width: 54ch; margin: 0 0 30px; }
+      .note { margin-top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
 
-      .parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
-      .parts > div { background: var(--paper); padding: 20px; }
-      .parts h4 { font: 400 var(--step-1)/1.4 var(--serif); margin: 0 0 6px; }
-      .parts .is { font: var(--step--1)/1.6 var(--mono); color: var(--clay); display: block; margin-bottom: 12px; }
-      .parts p { color: var(--ink-2); font-size: var(--step-0); }
-      .parts p b { color: var(--ink); font-weight: 400; }
+      /* ---------- the three trips ----------
+         Each trip is five lines and nothing else, because the thing worth reading is
+         who gets asked and how long it took. The old version of this section printed a
+         paragraph inside each row, which turned a diagram into three more essays. */
+      .trip { display: grid; gap: 4px; }
+      .trip > .line { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule); font-size: var(--step-0); }
+      .trip > .line:first-of-type { border-top: 0; padding-top: 0; }
+      .trip .who { font: var(--step--1)/1.5 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
+      .trip .did { color: var(--ink); min-width: 0; }
+      .trip .ms { font: var(--step--1)/1.5 var(--mono); color: var(--clay); text-align: right; white-space: nowrap; }
+      /* Free steps get the moss of the warm path, and a step that costs gets the brick
+         of the money page, so the colour carries the price without a legend. */
+      .trip .line.free .ms { color: var(--moss); }
+      .trip .line.skip .did { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: var(--rule-strong); }
+      .trip .line.skip .ms { color: var(--ink-3); }
+      .trip .line.cost .who { color: var(--brick); }
+      .trip .line.cost .ms { color: var(--brick); }
+      .cycle .frame h4 { margin: 0 0 12px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+      .cycle .frame h4 span { display: block; margin-top: 3px; letter-spacing: 0; text-transform: none; font-family: var(--sans); color: var(--ink-3); }
+      /* The caption sits under the bars rather than inside the frame, so it is still
+         readable while the frames are being swapped above it. */
+      /* The legend reads the timings in the trip column, so each word is painted with
+         the same colour the milliseconds use. Otherwise it is a list of adjectives. */
+      .tripKey { display: flex; gap: 6px 16px; flex-wrap: wrap; font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
+      .tripKey i { font-style: normal; }
+      .tripKey i.c { color: var(--clay); }
+      .tripKey i.b { color: var(--brick); }
+      .tripKey i.g { color: var(--moss); }
+      .tripKey i.s { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: var(--rule-strong); }
 
-      .rules { counter-reset: r; display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
-      .rules > div { background: var(--paper); padding: 18px 20px 18px 52px; position: relative; }
-      .rules > div::before { counter-increment: r; content: counter(r, decimal-leading-zero); position: absolute; left: 20px; top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--clay); }
-      .rules h4 { font: 400 var(--step-0)/1.5 var(--sans); margin: 0 0 4px; color: var(--ink); }
-      .rules p { color: var(--ink-2); font-size: var(--step-0); }
+      /* ---------- the four workers ----------
+         Each animal is cropped out of the one cast sheet with the same view boxes the
+         landing hub uses, so the bird that sees the money on this page is the bird on
+         the landing. */
+      .wkr { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+      .wkr > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 15px; align-items: start; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 15px 17px 17px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .wkr .face { grid-row: 1 / span 4; width: auto; height: 74px; aspect-ratio: var(--ar); overflow: hidden; align-self: start; }
+      .wkr .face img { display: block; width: 100%; height: 100%; object-fit: cover; object-view-box: var(--vb); }
+      /* A crop needs object-view-box. Without it the whole cast sheet would be squeezed
+         into a 44px square, so the face goes away and the card becomes one column. */
+      @supports not (object-view-box: inset(0 0 0 0)) {
+        .wkr > div { grid-template-columns: minmax(0, 1fr); }
+        .wkr .face { display: none; }
+        .wkr p, .wkr .dies { grid-column: 1; }
+      }
+      .wkr b { font: 400 var(--step-1)/1.3 var(--serif); }
+      .wkr .job { font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--clay); }
+      .wkr p { grid-column: 2; margin: 6px 0 0; font-size: var(--step-0); color: var(--ink-2); }
+      .wkr .dies { grid-column: 2; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--rule); font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .wkr .dies b { display: inline; font: inherit; color: var(--brick); }
 
-      .rough { border: 1px solid var(--rule); border-left: 2px solid var(--brick); border-radius: 0 8px 8px 0; padding: 18px 22px; background: var(--paper); }
-      .rough h4 { font: 400 var(--step-1)/1.4 var(--serif); margin: 0 0 10px; }
-      .rough ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: var(--step-0); }
-      .rough li { margin-bottom: 7px; }
-      .rough li b { color: var(--ink); font-weight: 400; }
+      /* ---------- the refusals ----------
+         One line each, and the line is the refusal rather than an explanation of it. */
+      .rules { display: grid; gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .rules > div { background: var(--paper); padding: 13px 17px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 13px; align-items: baseline; }
+      .rules .num { display: grid; place-items: center; width: 22px; height: 22px; border: var(--edge) solid var(--brick); border-radius: 50%; font: var(--step--1)/1 var(--mono); color: var(--brick); background: var(--paper-sunk); }
+      .rules h4 { margin: 0; font: 400 var(--step-0)/1.45 var(--sans); color: var(--ink); }
+      .rules p { margin: 3px 0 0; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+
+      /* ---------- the tool surface ----------
+         A tool is a name and six words. The model chooses, the server runs it, and the
+         only two columns worth separating are free and not free. */
+      .tcols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+      .tcol { min-width: 0; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .tcol > .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--paper-sunk); border-bottom: var(--edge) solid var(--rule-strong); font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); }
+      .tcol > .head span { color: var(--ink-3); letter-spacing: 0.04em; }
+      .tcol.money > .head { border-left: 3px solid var(--brick); }
+      .trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline; padding: 11px 16px; border-bottom: 1px solid var(--rule); }
+      .trow:last-child { border-bottom: 0; }
+      .trow code { font: var(--step--1)/1.5 var(--mono); color: var(--ink); word-break: break-word; }
+      .trow .gloss { grid-column: 1 / -1; margin-top: -2px; font-size: var(--step--1); color: var(--ink-3); }
+      .trow .price { font: var(--step--1)/1.5 var(--mono); color: var(--clay); white-space: nowrap; }
+      .trow.p .price { color: var(--brick); }
+      .trow.p { background: var(--paper-sunk); }
+      @media (max-width: 800px) { .tcols { grid-template-columns: minmax(0, 1fr); } }
+
+      /* ---------- what is still rough ----------
+         Nothing here was cut, because a judge is entitled to the whole limit. What
+         changed is where it sits: a one line confession you can scan, and the measured
+         detail behind the line you actually care about. */
+      .rough { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
+      .rough details { border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); }
+      .rough details[open] { border-left-color: var(--brick); }
+      .rough summary { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; padding: 13px 15px; cursor: pointer; font: 400 var(--step-0)/1.45 var(--sans); color: var(--ink); list-style: none; }
+      .rough summary::-webkit-details-marker { display: none; }
+      .rough summary em { font-style: normal; font: var(--step--1)/1.4 var(--mono); color: var(--brick); white-space: nowrap; }
+      .rough summary em.ok { color: var(--moss); }
+      .rough .body { padding: 0 15px 15px; color: var(--ink-2); font-size: var(--step-0); max-width: 74ch; }
+      .rough .body b { color: var(--ink); font-weight: 400; }
+      @media (max-width: 800px) { .rough { grid-template-columns: minmax(0, 1fr); } }
+
+      /* ---------- try the parts ---------- */
+      .try { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+      .try a { display: grid; gap: 5px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 15px 16px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); transition: transform var(--t-1) var(--ease-spring), border-color var(--t-1) var(--ease); }
+      .try a:hover { transform: translate(-1px, -1px); border-color: var(--ink-2); }
+      .try a span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); }
+      .try a b { font: 400 var(--step-1)/1.3 var(--serif); color: var(--ink); }
+      .try a em { font-style: normal; font-size: var(--step--1); color: var(--ink-2); }
+
+      @media (max-width: 960px) {
+        .lead { max-width: 62ch; }
+      }
+      /* The trip rows are the one place where a fixed label column can squeeze the
+         sentence into three lines, so under this width the label rides above it. */
+      @media (max-width: 560px) {
+        .trip > .line { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
+        .trip .who { grid-column: 1 / -1; }
+        .trip .did { grid-column: 1; }
+        .trip .ms { grid-column: 2; grid-row: 2; }
+      }
     </style>
   </head>
   <body>
-    <header>
+                <header>
       <div class="brand">
-        <a class="mark" href="/">Total <em>Recall</em></a>
-        <div class="tagline">the machinery, with the timings</div>
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-      <div class="meta">
-        <div>names kept <b id="memCount">·</b></div>
-        <div>spent on names <b id="spend">·</b></div>
-        <div>chain <b id="chainState">·</b></div>
-        <div>brain <b id="model">·</b></div>
-      </div>
-      <div class="wallet">
-        <span class="whose" id="whose"></span>
-        <button class="chip" id="connect">Connect wallet</button>
-      </div>
-      <button class="menuBtn" data-menu aria-expanded="false" aria-controls="siteMenu">menu</button>
-      <nav class="tabs" id="siteMenu">
-        <a href="/app">Talk</a>
+    <nav class="tabs" id="siteMenu" aria-label="Main">
+      <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
-        <a href="/call">Call</a>
         <a href="/pay">Pay</a>
-        <a href="/ask">Ask to pay</a>
-        <a href="/report">Statement</a>
-        <a href="/features">Features</a>
-        <a href="/how" aria-current="page">How it works</a>
-        <a href="/life">In your life</a>
-      </nav>
+        <a href="/request">Request</a>
+      <div class="more">
+        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+        <div class="moreMenu" id="moreMenu" hidden>
+          <a href="/ask">Ask to pay</a>
+          <a href="/report">Statement</a>
+          <a href="/features">Features</a>
+          <a href="/how" aria-current="page">How it works</a>
+          <a href="/life">In your life</a>
+        </div>
+      </div>
+    </nav>
+    <div class="wallet">
+      <span class="whose" id="whose"></span>
+      <button class="chip" id="connect">Connect wallet</button>
+      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <span class="statusDot" aria-hidden="true"></span>
+        <span class="statusWord" aria-hidden="true">status</span>
+      </button>
+      <div class="statusBox" id="statusBox" hidden>
+        <div class="statusHead">what this page reads</div>
+        <div class="meta">
+          <div>names kept <b id="memCount">·</b></div>
+          <div>spent on names <b id="spend">·</b></div>
+          <div>chain <b id="chainState">·</b></div>
+          <div>brain <b id="model">·</b></div>
+        </div>
+      </div>
+    </div>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
     </header>
 
     <main>
       <div class="wrap">
         <section>
-          <div class="kicker reveal">The whole path</div>
-          <h2 class="reveal">Your sentence crosses four systems before it is answered</h2>
-          <p class="lead reveal">
-            Two of them are slow and one of them costs money. The design is entirely about how seldom each one gets
-            touched, and this page is the honest version of that, including the numbers that are not flattering.
-          </p>
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">How it works</div>
+              <h1>One sentence, three possible trips</h1>
+              <p class="lead">
+                Which trip you get depends on one thing: whether your memory already knows the address in front of
+                you. The chain is the slow part, and the paid index is the only part that costs anything. Tap a bar
+                to switch trips.
+              </p>
+              <div class="tripKey">
+                <i class="g">nothing spent</i>
+                <i class="c">time only, no money</i>
+                <i class="b">a cent or three, once</i>
+                <i class="s">crossed out, never asked</i>
+              </div>
+              <p class="note">the ranges are wall clock, measured one sentence at a time against a live model. The number the model itself takes is the one that moves when a provider is busy.</p>
+            </div>
 
-          <div class="cycle reveal">
-            <div class="frames">
-              <div class="frame">
-                <span class="tag">a question memory has never heard</span>
-                <div class="seq" style="margin-top:6px">
-                  <div class="head"><b>cold path</b><b style="margin-left:auto">eight seconds, once</b></div>
-                  <div class="row"><span class="who">you</span><span class="what">has the taxi company ever refunded me <span>on a microphone or in the box</span></span><span class="ms">0 ms</span></div>
-                  <div class="row"><span class="who">the model</span><span class="what">picks who_is_this and reads the address off your sentence</span><span class="ms">about 1 s</span></div>
-                  <div class="row"><span class="who">tatum</span><span class="what">reads your transaction list, then the counterparty list, because inbound money is missing from the first. This is the only time the chain gets read in the whole conversation</span><span class="ms">five to seven</span></div>
-                  <div class="row"><span class="who">walrus</span><span class="what">searches your namespace for a name on that address and finds none</span><span class="ms">1 to 3 s</span></div>
-                  <div class="row"><span class="who">the model</span><span class="what">answers in one sentence and offers to buy the name</span><span class="ms">about eight</span></div>
+            <div class="split-visual">
+              <div class="cycle reveal">
+                <div class="frames">
+                  <div class="frame">
+                    <h4>Cold<span> your memory has never seen this address</span></h4>
+                    <div class="trip">
+                      <div class="line"><span class="who">you</span><span class="did">has the taxi company ever refunded me</span><span class="ms">0 ms</span></div>
+                      <div class="line"><span class="who">model</span><span class="did">picks one tool and reads the address out of your sentence</span><span class="ms">~1 s</span></div>
+                      <div class="line"><span class="who">Tatum</span><span class="did">reads your transfers, then the other side of each one</span><span class="ms">5 to 7 s</span></div>
+                      <div class="line"><span class="who">Walrus</span><span class="did">searches your namespace for that address and finds nothing</span><span class="ms">1 to 3 s</span></div>
+                      <div class="line"><span class="who">model</span><span class="did">says it does not know them, and offers to buy a chain profile</span><span class="ms">~8 s</span></div>
+                    </div>
+                  </div>
+                  <div class="frame">
+                    <h4>Warm<span> the same question a week later</span></h4>
+                    <div class="trip">
+                      <div class="line"><span class="who">you</span><span class="did">has the taxi company ever refunded me</span><span class="ms">0 ms</span></div>
+                      <div class="line"><span class="who">model</span><span class="did">same tool, same argument, no re-reading</span><span class="ms">~1 s</span></div>
+                      <div class="line free"><span class="who">Walrus</span><span class="did">14 transactions, mostly with you, first seen in March</span><span class="ms">1 to 3 s</span></div>
+                      <div class="line skip"><span class="who">Tatum</span><span class="did">the chain never gets asked</span><span class="ms">skipped</span></div>
+                      <div class="line free"><span class="who">model</span><span class="did">answers from the note. Nothing bought, nothing learned</span><span class="ms">2 to 5 s</span></div>
+                    </div>
+                  </div>
+                  <div class="frame">
+                    <h4>Paid<span> the only branch that costs something</span></h4>
+                    <div class="trip">
+                      <div class="line"><span class="who">Walrus</span><span class="did">came back empty, so this stranger is genuinely unknown</span><span class="ms">1 to 3 s</span></div>
+                      <div class="line cost"><span class="who">the index</span><span class="did">refuses with a standard price: 0.01 USDC, 0.03 for a long history, this asset, this payout</span><span class="ms">instant</span></div>
+                      <div class="line cost"><span class="who">you</span><span class="did">sign the exact transfer in your own wallet. The page only holds the bytes</span><span class="ms">your time</span></div>
+                      <div class="line cost"><span class="who">the seller</span><span class="did">verifies the signed bytes, simulates them, then broadcasts them. It holds no key</span><span class="ms">2 to 5 s</span></div>
+                      <div class="line cost"><span class="who">Walrus</span><span class="did">writes the profile and the price under your address, once</span><span class="ms">2 to 4 s</span></div>
+                    </div>
+                  </div>
                 </div>
+                <div class="bars"><i></i><i></i><i></i></div>
               </div>
-              <div class="frame">
-                <span class="tag free">the same question a week later</span>
-                <div class="seq" style="margin-top:6px">
-                  <div class="head"><b>warm path</b><b style="margin-left:auto">chain never read</b></div>
-                  <div class="row warm"><span class="who">you</span><span class="what">has the taxi company ever refunded me</span><span class="ms">0 ms</span></div>
-                  <div class="row warm"><span class="who">the model</span><span class="what">picks who_is_this, same tool, same argument</span><span class="ms">about 1 s</span></div>
-                  <div class="row warm"><span class="who">walrus</span><span class="what">Nightlight Taxi Co, airport transfers, never sends a bill <span>and the chain call is skipped</span></span><span class="ms">1 to 3 s</span></div>
-                  <div class="row warm"><span class="who">the model</span><span class="what">answers from the note, nothing bought, nothing re-read</span><span class="ms">two to five</span></div>
-                </div>
-              </div>
-              <div class="frame">
-                <span class="tag" style="color:var(--brick)">the only branch that costs something</span>
-                <div class="seq" style="margin-top:6px">
-                  <div class="head"><b>paid lookup</b><b style="margin-left:auto">0.01 usdc, once</b></div>
-                  <div class="row money"><span class="who">memory</span><span class="what">comes back empty, so this address is genuinely unknown</span><span class="ms">1 to 3 s</span></div>
-                  <div class="row money"><span class="who">the index</span><span class="what">answers 402 with the amount, the asset and a payout address</span><span class="ms">instant</span></div>
-                  <div class="row money"><span class="who">you</span><span class="what">sign in your own wallet. The page holds the bytes and waits <span>and this step takes however long you take</span></span><span class="ms">held</span></div>
-                  <div class="row money"><span class="who">tatum</span><span class="what">settles it and the index re-reads the transaction to see the money arrive</span><span class="ms">2 to 5 s</span></div>
-                  <div class="row money"><span class="who">walrus</span><span class="what">the name, the price and the transaction are written under your address</span><span class="ms">2 to 4 s</span></div>
-                </div>
-              </div>
-            </div>
-            <div class="bars"><i></i><i></i><i></i></div>
-          </div>
-          <p class="cap reveal">three frames, one loop. The slow part is the chain, which is why memory is consulted before anything else and why the roster is held for the whole conversation instead of re-read. These are wall clock ranges measured against a live Gemini model, one sentence at a time, and the number the model itself takes is the one that moves when the provider is busy.</p>
-          <figure class="plate">
-            <img src="/assets/stations-five.webp" width="1100" height="734" loading="lazy" decoding="async" alt="Five bank counters in a row. The first two are busy, the third is empty, the fourth is asleep and the fifth has a cobweb" />
-            <figcaption>The three frames above, drawn as the desks they actually are. A warm answer is served from the second counter and nobody ever reaches the third, which is the only reason a question about money can be answered in seconds instead of cents.</figcaption>
-          </figure>
-        </section>
-
-        <section>
-          <div class="kicker reveal">What each part is</div>
-          <h2 class="reveal">Four systems, and what the product would be without each</h2>
-          <div class="parts reveal">
-            <div>
-              <span class="is">Tatum · Sui GraphQL</span>
-              <h4>The eyes</h4>
-              <p>Reads balances, transfers and counterparties on mainnet and testnet with one key per network. <b>Without it</b> you would type addresses in and the agent would be describing your imagination.</p>
-            </div>
-            <div>
-              <span class="is">Walrus · MemWal</span>
-              <h4>The memory</h4>
-              <p>One namespace per wallet, holding plain sentences about people. <b>Without it</b> every question re-reads a rate limited chain, and the agent never learns anything about your life.</p>
-            </div>
-            <div>
-              <span class="is">Gemini</span>
-              <h4>The brain and the mouth</h4>
-              <p>Turns a sentence into a tool call and a tool result into two spoken sentences. <b>Without it</b> you have a block explorer with extra steps.</p>
-            </div>
-            <div>
-              <span class="is">Sui USDC · x402</span>
-              <h4>The market</h4>
-              <p>A 402 handshake priced in testnet USDC, verified by a chain read the payer cannot fake. <b>Without it</b> the agent has no way to find out something it does not already know.</p>
             </div>
           </div>
-          <figure class="plate">
-            <img src="/assets/how-switchboard.webp" width="1100" height="733" loading="lazy" decoding="async" alt="An operator sitting inside a wooden switchboard cabinet with a panel of round jacks and coiled cables, while a woman stands at the front plugging one lead in and the rest of the sockets stay dark" />
-            <figcaption>This is the same four systems seen from the inside. One operator, four lines, and only the line the sentence needs ever carries anything. The empty jacks are the point of the whole build: a warm question never plugs into the chain, and a question the chain cannot answer never plugs into the market until you say so.</figcaption>
-          </figure>
         </section>
 
         <section>
-          <div class="kicker reveal">The memory, exactly</div>
-          <h2 class="reveal">A line of prose, and the address that owns it</h2>
-          <p class="lead reveal">
-            Nothing about this is clever storage. A fact is a sentence in your namespace, and the name is the part a
-            later question can find. That is what makes the second asking free and what makes the memory portable
-            between the app, the call and anything else that reads the same namespace.
-          </p>
-          <div class="code reveal">namespace  people for 0x80713a48…6d36
-
-Person "Sana" = 0x51ca0f17…, buys groceries every couple of days
-Person "Paid address index" = 0x81cd5dad…, a lookup service, costs 0.01 USDC each time
-Person "Nightlight Taxi Co" = 0xaaf07776…, business, airport transfers, never sends a bill.
-                            Bought for 0.01 USDC from the paid index on 2026-11-01, tx BAuczF1Z…</div>
-          <p class="cap reveal">the paid facts say what they cost, so a memory can always be explained back to you</p>
-          <h3 class="reveal">Why it is split per wallet</h3>
-          <p class="lead reveal" style="margin-bottom:0">
-            Your people are not another person's people. The namespace is derived from the wallet you are speaking
-            for, so connecting your own wallet gives you your own memory and the demo story keeps its notes somewhere
-            else. Switching on the masthead chip is the only way to move between them.
-          </p>
+          <div class="kicker reveal">The four workers</div>
+          <h2 class="reveal">Take one away and a specific thing stops working</h2>
+          <p class="lead reveal">That is the honest test of whether a product needs a service. None of these four is decoration, and there is no fifth because nothing broke when we left one out.</p>
+          <div class="wkr reveal stagger">
+            <div>
+              <span class="face" aria-hidden="true" style="--vb: inset(9% 72% 10% 0); --ar: 308/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
+              <b>Tatum</b>
+              <span class="job">the bird · eyes</span>
+              <p>Reads balances, transfers and counterparties on mainnet and testnet with one key per network.</p>
+              <p class="dies"><b>without it</b> you type addresses in, and the agent describes your imagination.</p>
+            </div>
+            <div>
+              <span class="face" aria-hidden="true" style="--vb: inset(9% 48% 10% 28%); --ar: 264/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
+              <b>Walrus</b>
+              <span class="job">the hedgehog · memory</span>
+              <p>One namespace per wallet, holding plain sentences about people and what they cost.</p>
+              <p class="dies"><b>without it</b> every question re-reads a rate limited chain, and nothing is ever learned.</p>
+            </div>
+            <div>
+              <span class="face" aria-hidden="true" style="--vb: inset(9% 26% 10% 52%); --ar: 242/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
+              <b>Gemini</b>
+              <span class="job">the frog · brain and mouth</span>
+              <p>Turns a sentence into a tool call, and a tool result into two spoken sentences.</p>
+              <p class="dies"><b>without it</b> you have a block explorer with extra steps.</p>
+            </div>
+            <div>
+              <span class="face" aria-hidden="true" style="--vb: inset(9% 0 10% 74%); --ar: 286/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
+              <b>x402</b>
+              <span class="job">the mouse · the market</span>
+              <p>A price in a standard 402 header, paid by transfer bytes your wallet signed and the seller settles without holding a key.</p>
+              <p class="dies"><b>without it</b> the agent cannot find out anything new, and cannot pay a person for it.</p>
+            </div>
+          </div>
         </section>
 
         <section>
-          <div class="kicker reveal">The safety rules</div>
-          <h2 class="reveal">Five things this build refuses to do</h2>
-          <div class="rules reveal">
-            <div><h4>No key of yours on the server</h4><p>The page prepares transaction bytes and waits. Money moves only after your wallet signs, and refusing to sign leaves nothing behind.</p></div>
-            <div><h4>No memory written on a claim</h4><p>A browser reporting a digest is not evidence. The transaction is re-read from the chain and the debit and the credit both have to match.</p></div>
-            <div><h4>No second payment for one answer</h4><p>A receipt is spent the moment it releases a fact, and a payment that moved without a fact is journalled and offered back on the next ask.</p></div>
-            <div><h4>No silent pricing</h4><p>The amount, the asset and the payout address arrive in the same 402 reply, before anything is signed, and the running total is in the masthead on every page.</p></div>
-            <div><h4>No invented people</h4><p>If memory has nothing and the index has nothing, the agent says it does not know. A confident wrong name is worse than an honest blank.</p></div>
+          <div class="split art flip">
+            <div class="split-copy reveal">
+              <div class="kicker">Seen from inside</div>
+              <h2>Four lines, and only one of them carries anything</h2>
+              <p class="lead">A warm question never plugs into the chain. A question the chain cannot answer never plugs into the market until you say so. The empty jacks are the build.</p>
+            </div>
+            <figure class="plate mid split-visual">
+              <img src="/assets/how-switchboard.webp" width="1100" height="733" loading="lazy" decoding="async" alt="An operator sitting inside a wooden switchboard cabinet with a panel of round jacks and coiled cables, while a woman stands at the front plugging one lead in and the rest of the sockets stay dark" />
+              <figcaption>One operator, four lines. The lead she plugs is the only one the sentence needs.</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section>
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">The memory, exactly</div>
+              <h2>A sentence, and the address that owns it</h2>
+              <p class="lead">
+                Nothing about this is clever storage. A fact is a line in your namespace and the name is the part a
+                later question can find. That is what makes the second asking free, and what lets the same memory
+                work in the app, on the call, and anywhere else that reads your wallet.
+              </p>
+              <p class="lead" style="margin-bottom:0">Your people are not another person's people, so the namespace is derived from the wallet you are speaking for. The masthead chip is the only way to move between them.</p>
+            </div>
+            <div class="split-visual reveal">
+              <div class="code">namespace people · 0x80713a48…6d36
+
+<em>Sana</em>       0x51ca0f17…
+              buys groceries, small
+<em>Nightlight</em> 0xaaf07776…
+              airport transfers, no bill
+<em>Index</em>      0x81cd5dad…
+              from 0.01 USDC a look
+
+bought 2026-11-01 · tx BAuczF1Z…</div>
+              <p class="note">a paid line records its own price and its own transaction, so any memory can be explained back to you.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">The safety rules</div>
+              <h2>Five things this build refuses to do</h2>
+              <p class="lead">Each refusal exists because the shortcut was available and would have made the demo better looking.</p>
+            </div>
+            <div class="split-visual">
+              <div class="rules reveal stagger">
+                <div><span class="num">1</span><div><h4>No key of yours on the server</h4><p>The page prepares bytes and waits. Refusing to sign leaves nothing behind.</p></div></div>
+                <div><span class="num">2</span><div><h4>No memory written on a claim</h4><p>A browser reporting a digest is not evidence. Both sides of the transfer are re-read from the chain.</p></div></div>
+                <div><span class="num">3</span><div><h4>No second payment for one answer</h4><p>A receipt is spent the moment it releases a fact, and a payment with no fact is offered back.</p></div></div>
+                <div><span class="num">4</span><div><h4>No silent pricing</h4><p>Amount, asset and payout arrive before anything is signed, and the running total is in the masthead.</p></div></div>
+                <div><span class="num">5</span><div><h4>No invented people</h4><p>If memory has nothing and the chain cannot support a sentence, the agent says it does not know. A profile is measurement, not a made up business name.</p></div></div>
+              </div>
+            </div>
           </div>
         </section>
 
         <section>
           <div class="kicker reveal">The tool surface</div>
-          <h2 class="reveal">Everything the model is allowed to call</h2>
-          <p class="lead reveal">
-            The model never touches the chain, the memory or your money directly. It picks one of these and the server
-            runs it, which is the only reason an agent talking about your wallet can be trusted with a sentence like
-            "pay Ravi 1.5".
-          </p>
-          <div class="seq reveal">
-            <div class="head"><b>read only</b><b style="margin-left:auto">cost nothing</b></div>
-            <div class="row warm"><span class="who">people_you_know</span><span class="what">every name this wallet has taught the agent <span>always called before paying anyone by name</span></span><span class="ms">walrus</span></div>
-            <div class="row warm"><span class="who">who_is_this</span><span class="what">name, usual amount, cadence, last seen and the notes about one address</span><span class="ms">both</span></div>
-            <div class="row warm"><span class="who">money_history</span><span class="what">the people this wallet moves money with, rankable by amount, frequency or recency</span><span class="ms">tatum</span></div>
-            <div class="row warm"><span class="who">monthly_summary</span><span class="what">how much went out each month, which is what answers where the money went</span><span class="ms">tatum</span></div>
-            <div class="row warm"><span class="who">find_person</span><span class="what">look a name up and get the address back, so you never read one out</span><span class="ms">walrus</span></div>
-            <div class="row warm"><span class="who">what_do_i_remember</span><span class="what">search the memory semantically, so a wrong word finds the right note</span><span class="ms">walrus</span></div>
-            <div class="row warm"><span class="who">memory_stats</span><span class="what">how much is stored and in which namespaces</span><span class="ms">walrus</span></div>
+          <h2 class="reveal">The model may choose from this list and nothing else</h2>
+          <p class="lead reveal">It never touches the chain, the memory or your money directly. It names a tool, the server runs it, and that is the only reason an agent talking about your wallet can be trusted with a sentence like "pay Ravi 1.5".</p>
+          <div class="tcols reveal">
+            <div class="tcol">
+              <div class="head">costs nothing<span>7 tools</span></div>
+              <div class="trow"><code>people_you_know</code><span class="price">walrus</span><span class="gloss">every name this wallet has taught the agent</span></div>
+              <div class="trow"><code>who_is_this</code><span class="price">both</span><span class="gloss">name, usual amount, cadence and notes for one address</span></div>
+              <div class="trow"><code>money_history</code><span class="price">tatum</span><span class="gloss">the people you move money with, ranked three ways</span></div>
+              <div class="trow"><code>monthly_summary</code><span class="price">tatum</span><span class="gloss">what went out each month, which answers where it went</span></div>
+              <div class="trow"><code>find_person</code><span class="price">walrus</span><span class="gloss">a name in, an address out, so you never read one aloud</span></div>
+              <div class="trow"><code>what_do_i_remember</code><span class="price">walrus</span><span class="gloss">search the notes by meaning, so a wrong word still lands</span></div>
+              <div class="trow"><code>memory_stats</code><span class="price">walrus</span><span class="gloss">how much is stored, and in which namespaces</span></div>
+            </div>
+            <div class="tcol money">
+              <div class="head">can change something<span>6 tools</span></div>
+              <div class="trow"><code>name_a_person</code><span class="price">write</span><span class="gloss">attach a name and a note to an address you own</span></div>
+              <div class="trow"><code>remember_this</code><span class="price">write</span><span class="gloss">keep a sentence you said that is not about a person</span></div>
+              <div class="trow p"><code>pay_usdc</code><span class="price">held</span><span class="gloss">prepare a transfer and wait. It cannot complete itself</span></div>
+              <div class="trow p"><code>paid_lookup</code><span class="price">from 0.01</span><span class="gloss">buy a measured profile of an address memory has never seen</span></div>
+              <div class="trow p"><code>verify_payment</code><span class="price">0.01</span><span class="gloss">settle whether a payment someone claimed really moved</span></div>
+              <div class="trow p"><code>open_paid_link</code><span class="price">their price</span><span class="gloss">buy what another person remembers, at the price on their link</span></div>
+            </div>
           </div>
-          <div class="seq reveal" style="margin-top:26px">
-            <div class="head"><b>that change something</b><b style="margin-left:auto">one of them costs money</b></div>
-            <div class="row"><span class="who">name_a_person</span><span class="what">attach a name and a note to an address in your namespace</span><span class="ms">write</span></div>
-            <div class="row"><span class="who">remember_this</span><span class="what">keep a sentence you said out loud that is not about a person</span><span class="ms">write</span></div>
-            <div class="row money"><span class="who">pay_usdc</span><span class="what">prepare a transfer and wait for your signature. It cannot complete itself.</span><span class="ms">held</span></div>
-            <div class="row money"><span class="who">paid_lookup</span><span class="what">ask the paid index to name an address memory has never seen, at the price it quotes</span><span class="ms">0.01</span></div>
-          </div>
-          <p class="cap reveal">paid_lookup only appears when payments are switched on, and it refuses to run on a mainnet session</p>
+          <p class="note reveal">the three paid tools only appear when payments are switched on, and all three refuse to run on a mainnet session.</p>
         </section>
 
         <section>
           <div class="kicker reveal">What is still rough</div>
           <h2 class="reveal">The parts a judge should not be sold on</h2>
+          <p class="lead reveal">Nothing here is hidden inside the fold. Each line is a limit with a route, and the measurement behind it is one click away.</p>
           <div class="rough reveal">
-            <h4>Stated plainly</h4>
-            <ul>
-              <li><b>The brain runs on a free tier and it does show.</b> Routing is a live Gemini model making real function calls against these same twelve tools, and it picks the tool, reads the result and answers in plain sentences. What is not production is the capacity. Measured today, one tool turn came back in 26 seconds and another in 218, and every model in the text chain also returned 503 "high demand" for a stretch before recovering on its own. A room full of judges asking at once will hit this.</li>
-              <li><b>The model's voice arrives after the sentence, not during it.</b> /speak is genuinely calling a text to speech model, and a short sentence takes about two seconds from Fish Audio and about five from Gemini, so the ribbon waits for the whole line. Nothing is spoken until the whole answer exists. A live call is the other case: there the model streams audio as it talks and you can interrupt it, and it stops.</li>
-              <li><b>Three voices can answer, and the page says which one spoke.</b> Fish Audio is tried first because it measured faster and is limited by five requests at once rather than by a count of sentences. HeyGen is second, through OpenRouter, and is switched off right now because the credential in this server's config is a web session token rather than an API key, which the page says out loud instead of pretending. Gemini is last and covers any sentence the others refuse. Gemini's own sentence allowance is observed rather than published, so read the count as a floor and not a spec. Measured on this key today, it returns 429 for speech while the live call socket still hands up in half a second.</li>
-              <li><b>Cadence needs days, not code.</b> "About every three days" is measured from real transfers on different days, and the seeder will not pay the same person twice in one UTC day. Until it has run for a few days the honest answer is "most recently today".</li>
-              <li><b>Real microphone audio has not been exercised.</b> The capture path, the transcript and the spoken reply are built, and the call page holds a session, but every demo so far has been typed.</li>
-              <li><b>No wallet extension was installed for these runs.</b> The signature leg was driven by a script that does what an extension does with the same bytes, so the handshake is proven and the popup is not.</li>
-              <li><b>Memory has no delete.</b> Walrus exposes remember and recall, so removing a name means writing a corrected line and living with the old one in the namespace. A receipt is filed under its transaction, so the same payment cannot be stored twice, but one that is already wrong stays wrong.</li>
-              <li><b>Warm answers still take a couple of seconds.</b> The recall round trip is the floor, which is why the interface shows what it is doing rather than pretending.</li>
-            </ul>
+            <details>
+              <summary>The brain borrows a fast model<em>capacity</em></summary>
+              <div class="body">Gemini 3.1 Flash Lite leads and the 550B Nemotron Ultra is the second attempt, with Gemini 3.5 Flash and then the 4B Bolt behind them. The providers alternate so the second ask goes to a different one rather than to a second name on the key that just refused. On the nine probes this build ships, measured 2026-11-04, Gemini sent 6 of 6 tool calls and answered 3 of 3 spoken questions at a 3.4 second median with an 11.6 second tail. Ultra sent the same 6 of 6 and 3 of 3 at 1.2 seconds with a 1.9 second tail, so the provider that answers first is the slower one and that is the trade this build chose. Gemini's free ceiling is near ten requests a minute and fifteen hundred a day, NVIDIA's about forty a minute, so the fallback is also the roomier lane. The rest fell away: DeepSeek flash needed 20 to 30 seconds for one word, Step 5 answered 500, and Gemma, GLM, GPT OSS and MiniMax never finished in time. The first NVIDIA key was refused by every inference call on 2026-11-03 while its catalogue still answered, and a catalogue that says yes to a junk key is not evidence, so the second key is the one on record. The model makes real function calls against this tool layer and answers in plain sentences. What is not production is the capacity. A demo is cheap and a crowd is not.</div>
+            </details>
+            <details>
+              <summary>The spoken voice arrives after the sentence<em>latency</em></summary>
+              <div class="body">/speak genuinely calls a text to speech model, and a short sentence takes about two seconds from HeyGen, three from Fish Audio and five from Gemini, so the room waits for the whole line. Nothing is spoken until the whole answer exists. A live call is the other case: there the model streams audio as it talks and you can interrupt it, and it stops.</div>
+            </details>
+            <details>
+              <summary>Three voices can answer, and the page says which<em>measured</em></summary>
+              <div class="body">Fish Audio is tried first because it is limited by five requests at once rather than by a count of sentences. HeyGen is second, through OpenRouter, and it is the voice written off twice before it was measured: it does not appear in OpenRouter's own model list, it refuses wav and mp3 and speaks only raw pcm, so this server reads the sample rate off the reply and writes the header itself. Fish is not on that route, whatever a middleman's catalogue implies, so the second door leads to a different mouth. Gemini is last and covers any sentence the others refuse. Every allowance here is observed rather than published, so read each number as a floor.</div>
+            </details>
+            <details>
+              <summary>Cadence needs days, not code<em>time</em></summary>
+              <div class="body">"About every three days" is measured from real transfers on different days, and the seeder will not pay the same person twice in one UTC day. Until it has run for a few days the honest answer is "most recently today".</div>
+            </details>
+            <details>
+              <summary>No real microphone has been exercised<em>untested</em></summary>
+              <div class="body">The capture path, the transcript and the spoken reply are built, and the call sheet holds a session and writes what it hears back into the chat, but every recorded demo so far has been typed.</div>
+            </details>
+            <details>
+              <summary>No wallet extension was installed for these runs<em>untested</em></summary>
+              <div class="body">The signature leg was driven by a script that does what an extension does with the same bytes, so the handshake is proven and the popup is not.</div>
+            </details>
+            <details>
+              <summary>Memory has no delete<em>walrus</em></summary>
+              <div class="body">Walrus exposes remember and recall, so removing a name means writing a corrected line and living with the old one in the namespace. A receipt is filed under its transaction, so the same payment cannot be stored twice, but one that is already wrong stays wrong.</div>
+            </details>
+            <details>
+              <summary>Warm answers still take a couple of seconds<em>honest</em></summary>
+              <div class="body">The recall round trip is the floor, which is why the interface shows what it is doing rather than pretending.</div>
+            </details>
           </div>
-          <p class="cap reveal">everything above is a known limit with a route, not a claim that it already works</p>
         </section>
 
         <section>
           <div class="kicker reveal">Try the parts</div>
-          <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:8px;overflow:hidden">
-            <div class="cell reveal"><span class="n" style="font:var(--step--1)/1 var(--mono);color:var(--clay);display:block;margin-bottom:14px">/app</span><h3 style="font-size:var(--step-1);margin-bottom:7px">Ask in text</h3><p style="color:var(--ink-2)">The same tools with a transcript and a cost meter.</p></div>
-            <div class="cell reveal"><span class="n" style="font:var(--step--1)/1 var(--mono);color:var(--clay);display:block;margin-bottom:14px">/call</span><h3 style="font-size:var(--step-1);margin-bottom:7px">Ask out loud</h3><p style="color:var(--ink-2)">Pick a language, a voice and a pace, then hold a conversation.</p></div>
-            <div class="cell reveal"><span class="n" style="font:var(--step--1)/1 var(--mono);color:var(--clay);display:block;margin-bottom:14px">/pay</span><h3 style="font-size:var(--step-1);margin-bottom:7px">Sign a payment</h3><p style="color:var(--ink-2)">Where the bytes wait for you and nothing moves without it.</p></div>
-            <div class="cell reveal"><span class="n" style="font:var(--step--1)/1 var(--mono);color:var(--clay);display:block;margin-bottom:14px">/memory</span><h3 style="font-size:var(--step-1);margin-bottom:7px">Read the notes</h3><p style="color:var(--ink-2)">Every line this wallet has taught the agent, and what each cost.</p></div>
+          <h2 class="reveal">Each of these is the same machinery</h2>
+          <div class="try reveal stagger">
+            <a href="/app"><span>/app</span><b>Ask in text</b><em>The same tools with a transcript and a cost meter.</em></a>
+            <a href="/app?voice=1"><span>/app</span><b>Ask out loud</b><em>Open the call sheet from any chat. The whole conversation stays in that chat.</em></a>
+            <a href="/pay"><span>/pay</span><b>Sign a payment</b><em>Where the bytes wait for you and nothing moves without it.</em></a>
+            <a href="/memory"><span>/memory</span><b>Read the notes</b><em>Every line this wallet has taught the agent, and what each cost.</em></a>
           </div>
         </section>
       </div>
     </main>
 
-    <footer class="page" style="border-top:1px solid var(--rule);padding:26px var(--pad) 40px">
-      <div class="inner" style="max-width:880px;margin:0 auto;display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
-        <span class="quiet">built for the Tatum and Walrus Total Recall hackathon</span>
-        <span class="quiet" style="margin-left:auto">timings measured against live providers on 2026-11-01</span>
+    <footer class="page" style="border-top:1px solid var(--rule);padding:24px var(--pad) 38px">
+      <div class="inner" style="max-width:var(--shell);margin:0 auto;display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
+        <span class="quiet">built for the Tatum and Walrus hackathon</span>
+        <span class="quiet" style="margin-left:auto">timings measured against live providers between 2026-11-01 and 2026-11-04</span>
       </div>
     </footer>
 
     <script type="module">
-      import { reveal, cycles, loadMeta, fillStats, mountWallet } from "./shared.js";
+      import { reveal, cycles, loadMeta, fillStats, mountWallet, castNotice } from "./shared.js";
       reveal();
       cycles();
-      mountWallet(() => loadMeta().then(fillStats));
-      loadMeta().then(fillStats);
+      const paint = (body) => {
+        fillStats(body);
+        castNotice(body);
+      };
+      mountWallet(() => loadMeta().then(paint));
+      loadMeta().then(paint);
     </script>
   </body>
 </html>
