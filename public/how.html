@@ -4,17 +4,10 @@
     <meta charset="utf-8" />
     <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>How Ken works · the machinery behind one sentence</title>
-    <meta name="description" content="The three trips a sentence can take, the four systems behind them, the memory format, the tool surface and every number this build actually measured." />
+    <title>How Ken Works · Interactive Workflow Showcase</title>
+    <meta name="description" content="Interactive visual showcase of Ken's six core workflows, four cartoon workers, safety guardrails and 18-tool surface." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
-      /* The Wallet Standard handshake, done by hand because this page has no bundler.
-         A wallet that loads before the page waits for the page to say it is ready; a
-         wallet that loads after the page announces itself. Both halves have to be
-         answered, and the announcement carries a callback rather than a wallet, so the
-         callback has to be called to obtain the wallet at all. Treating the detail as
-         already a wallet is how a real extension stays invisible and a page tells a
-         person with Slush installed that no wallet exists. */
       window.__walletStandardEarly = [];
       const __wsReady = {
         register: (...ws) => {
@@ -37,174 +30,249 @@
     <script defer src="/vendor/gsap.min.js"></script>
     <noscript><style>.reveal { opacity: 1; transform: none }</style></noscript>
     <style>
-      /* One shell with the masthead, and full width rules between the parts, so this
-         page is a sheet of the same book as the landing rather than an essay typed into
-         a narrow column in the middle of a wide desk. */
+      /* ---------- strict parade geometry ----------
+         Every section aligns to --shell (1320px) with identical outer padding, symmetric
+         CSS grid tracks, equal-height cells, and consistent 1.5px ink borders. */
       .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); }
       main { overflow-x: clip; }
-      section { position: relative; padding: clamp(42px, 4.2vw, 66px) 0; }
+      section { position: relative; padding: clamp(44px, 4.4vw, 68px) 0; }
       section::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
       section:last-of-type::after { display: none; }
-      section > .kicker { margin-bottom: 14px; }
 
-      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-      h1, h2 { font-family: var(--serif); font-weight: 400; letter-spacing: -0.02em; margin: 0 0 10px; max-width: 22ch; }
-      h1 { font-size: clamp(30px, 3.8vw, 38px); line-height: 1.08; }
-      h2 { font-size: clamp(26px, 2.7vw, var(--step-4)); line-height: 1.1; }
-      .lead { color: var(--ink-2); max-width: 54ch; margin: 0 0 30px; }
-      .note { margin-top: 18px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      .secHead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; margin-bottom: 24px; }
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+      h1 { font: 400 clamp(30px, 3.8vw, 42px)/1.08 var(--serif); letter-spacing: -0.02em; margin: 0 0 8px; }
+      h2 { font: 400 clamp(26px, 2.8vw, 34px)/1.1 var(--serif); letter-spacing: -0.018em; margin: 0 0 8px; }
+      .lead { color: var(--ink-2); max-width: 64ch; margin: 0; font-size: var(--step-0); }
+      .badgePill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: var(--edge) solid var(--ink); border-radius: 999px; background: var(--paper-sunk); font: 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); box-shadow: var(--lift) var(--lift) 0 var(--sheet); white-space: nowrap; }
+      .badgePill i { width: 7px; height: 7px; border-radius: 50%; background: var(--clay); display: inline-block; }
 
-      /* ---------- the three trips ----------
-         Each trip is five lines and nothing else, because the thing worth reading is
-         who gets asked and how long it took. The old version of this section printed a
-         paragraph inside each row, which turned a diagram into three more essays. */
-      .trip { display: grid; gap: 4px; }
-      .trip > .line { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--rule); font-size: var(--step-0); }
-      .trip > .line:first-of-type { border-top: 0; padding-top: 0; }
-      .trip .who { font: var(--step--1)/1.5 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); }
-      .trip .did { color: var(--ink); min-width: 0; }
-      .trip .ms { font: var(--step--1)/1.5 var(--mono); color: var(--clay); text-align: right; white-space: nowrap; }
-      /* Free steps get the moss of the warm path, and a step that costs gets the brick
-         of the money page, so the colour carries the price without a legend. */
-      .trip .line.free .ms { color: var(--moss); }
-      .trip .line.skip .did { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: var(--rule-strong); }
-      .trip .line.skip .ms { color: var(--ink-3); }
-      .trip .line.cost .who { color: var(--brick); }
-      .trip .line.cost .ms { color: var(--brick); }
-      .cycle .frame h4 { margin: 0 0 12px; font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
-      .cycle .frame h4 span { display: block; margin-top: 3px; letter-spacing: 0; text-transform: none; font-family: var(--sans); color: var(--ink-3); }
-      /* The caption sits under the bars rather than inside the frame, so it is still
-         readable while the frames are being swapped above it. */
-      /* The legend reads the timings in the trip column, so each word is painted with
-         the same colour the milliseconds use. Otherwise it is a list of adjectives. */
-      .tripKey { display: flex; gap: 6px 16px; flex-wrap: wrap; font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
-      .tripKey i { font-style: normal; }
-      .tripKey i.c { color: var(--clay); }
-      .tripKey i.b { color: var(--brick); }
-      .tripKey i.g { color: var(--moss); }
-      .tripKey i.s { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: var(--rule-strong); }
+      /* ---------- cartoon character crop helper ---------- */
+      .charCrop { position: relative; display: block; overflow: hidden; border-radius: 10px; background: var(--paper-sunk); border: 1px solid var(--rule-strong); }
+      .charCrop img { position: absolute; max-width: none; display: block; pointer-events: none; }
+      .charCrop[data-char="bird"] { aspect-ratio: 308 / 509; }
+      .charCrop[data-char="bird"] img { width: 357.1%; height: 123.4%; left: 0%; top: -11.1%; }
+      .charCrop[data-char="hedgehog"] { aspect-ratio: 264 / 509; }
+      .charCrop[data-char="hedgehog"] img { width: 416.6%; height: 123.4%; left: -116.6%; top: -11.1%; }
+      .charCrop[data-char="frog"] { aspect-ratio: 242 / 509; }
+      .charCrop[data-char="frog"] img { width: 454.5%; height: 123.4%; left: -236.3%; top: -11.1%; }
+      .charCrop[data-char="mouse"] { aspect-ratio: 286 / 509; }
+      .charCrop[data-char="mouse"] img { width: 384.6%; height: 123.4%; left: -284.6%; top: -11.1%; }
 
-      /* ---------- the four workers ----------
-         Each animal is cropped out of the one cast sheet with the same view boxes the
-         landing hub uses, so the bird that sees the money on this page is the bird on
-         the landing. */
-      .wkr { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-      .wkr > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 15px; align-items: start; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 15px 17px 17px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
-      .wkr .face { grid-row: 1 / span 4; width: auto; height: 74px; aspect-ratio: var(--ar); overflow: hidden; align-self: start; }
-      .wkr .face img { display: block; width: 100%; height: 100%; object-fit: cover; object-view-box: var(--vb); }
-      /* A crop needs object-view-box. Without it the whole cast sheet would be squeezed
-         into a 44px square, so the face goes away and the card becomes one column. */
-      @supports not (object-view-box: inset(0 0 0 0)) {
-        .wkr > div { grid-template-columns: minmax(0, 1fr); }
-        .wkr .face { display: none; }
-        .wkr p, .wkr .dies { grid-column: 1; }
+      /* ---------- 01: workflow theatre ---------- */
+      .scTabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+      .scTab { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 13px 14px; min-height: 82px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
+      .scTab:hover { border-color: var(--ink); transform: translateY(-1px); }
+      .scTab.on { border-color: var(--ink); background: var(--ink); color: var(--paper); box-shadow: 4px 4px 0 var(--sheet); }
+      .scTabTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .scTab.on .scTabTop { color: var(--rule); }
+      .scTab b { display: block; font: 400 var(--step-0)/1.22 var(--serif); color: var(--ink); }
+      .scTab.on b { color: var(--paper); }
+
+      .theatre { border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper-sunk); background-image: var(--dots); padding: 18px; box-shadow: 7px 7px 0 var(--sheet); display: grid; gap: 16px; }
+
+      .thBar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 12px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); }
+      .thTitleWrap { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
+      .thStepBadge { padding: 5px 10px; border-radius: 999px; background: var(--clay-wash); border: 1px solid var(--clay); color: var(--clay); font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+      .thTitle { font: 400 var(--step-1)/1.2 var(--serif); color: var(--ink); margin: 0; }
+      .thSub { font: 11px/1.3 var(--mono); color: var(--ink-3); }
+
+      .thMeters { display: flex; align-items: center; gap: 8px; }
+      .thMeter { display: flex; align-items: baseline; gap: 6px; padding: 6px 11px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--paper-sunk); font: 11px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
+      .thMeter b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+      .thMeter.free b { color: var(--moss); }
+      .thMeter.paid b { color: var(--brick); }
+
+      .thControls { display: flex; align-items: center; gap: 6px; }
+      .thBtn { padding: 8px 12px; border: var(--edge) solid var(--rule-strong); border-radius: 8px; background: var(--paper); font: 11px/1 var(--mono); letter-spacing: 0.04em; color: var(--ink); cursor: pointer; white-space: nowrap; }
+      .thBtn:hover { border-color: var(--ink); }
+      .thBtn.play { background: var(--ink); border-color: var(--ink); color: var(--paper); min-width: 96px; text-align: center; }
+      .thBtn.play.running { background: var(--clay); border-color: var(--clay); }
+      .thModeSwitch { display: none; align-items: center; border: var(--edge) solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--rule); gap: 1px; margin-right: 4px; }
+      .thModeSwitch.show { display: inline-flex; }
+      .thModeSwitch button { border: 0; border-radius: 0; padding: 7px 10px; font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; background: var(--paper); color: var(--ink-3); cursor: pointer; }
+      .thModeSwitch button.on { background: var(--moss); color: var(--paper); }
+
+      /* ---------- 5-station parade track with movable character courier ---------- */
+      .trackBox { position: relative; padding: 54px 16px 18px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; }
+      .wireLine { position: absolute; left: 10%; right: 10%; top: 30px; height: 2px; background: var(--rule-strong); z-index: 1; }
+      .wireFill { height: 100%; width: 0%; background: var(--clay); transition: width 420ms var(--ease); }
+
+      .courier { position: absolute; top: 8px; left: 10%; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border: var(--edge) solid var(--ink); border-radius: 999px; background: var(--clay-wash); box-shadow: 3px 3px 0 var(--sheet); transition: left 460ms var(--ease-spring), background 200ms var(--ease), border-color 200ms var(--ease); pointer-events: none; }
+      .courier.free { background: #e5efe0; border-color: var(--moss); }
+      .courier.paid { background: #f5e1de; border-color: var(--brick); }
+      .courierDot { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font: 10px/1 var(--mono); }
+      .courierLabel { font: 10px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+
+      .stations { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+      .stCard { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 12px; min-height: 176px; border: var(--edge) solid var(--rule); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
+      .stCard:hover { border-color: var(--ink-2); }
+      .stCard.active { border-color: var(--ink); background: var(--paper-sunk); box-shadow: 4px 4px 0 var(--sheet); transform: translateY(-2px); }
+      .stCard.done { border-color: var(--moss); }
+      .stCard.paid { border-color: var(--brick); }
+      .stCard.skipped { opacity: 0.58; background: var(--paper-sunk); border-style: dashed; }
+
+      .stHead { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+      .stIdx { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .stState { font: 9px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--rule-strong); color: var(--ink-3); background: var(--paper); }
+      .stCard.active .stState { border-color: var(--clay); color: var(--clay); background: var(--clay-wash); }
+      .stCard.done .stState { border-color: var(--moss); color: var(--moss); }
+      .stCard.paid .stState { border-color: var(--brick); color: var(--brick); }
+      .stCard.skipped .stState { text-decoration: line-through; }
+
+      .stActor { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: center; }
+      .stAvatar { width: 44px; height: 54px; flex: 0 0 auto; }
+      .stFace { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--ink); overflow: hidden; background: var(--clay-wash); display: grid; place-items: center; }
+      .stFace img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .stWho b { display: block; font: 400 var(--step-0)/1.2 var(--serif); color: var(--ink); }
+      .stWho span { display: block; font: 10px/1.3 var(--mono); color: var(--ink-3); margin-top: 2px; }
+
+      .stAction { font: var(--step--1)/1.4 var(--sans); color: var(--ink-2); margin: 0; }
+      .stFoot { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px dashed var(--rule); font: 10px/1 var(--mono); color: var(--ink-3); width: 100%; }
+      .stStamp { position: absolute; right: 8px; bottom: 34px; padding: 3px 7px; border: 1.5px solid var(--brick); border-radius: 4px; background: var(--paper); color: var(--brick); font: 9px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; transform: rotate(-7deg); pointer-events: none; }
+      .stCard.done .stStamp { border-color: var(--moss); color: var(--moss); }
+
+      /* ---------- bottom 2-column live deck ---------- */
+      .thDeck { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+      .deckPane { display: flex; flex-direction: column; justify-content: space-between; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; min-height: 250px; }
+      .dpHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--rule); background: var(--paper-sunk); font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+      .dpBody { padding: 16px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
+
+      .simBubble { padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); }
+      .simBubble .lbl { display: block; font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+      .simBubble p { font: 400 var(--step-1)/1.4 var(--serif); color: var(--ink); margin: 0; }
+      .simReply { border-color: var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--sheet); }
+
+      .waveSim { display: flex; align-items: center; gap: 3px; height: 20px; }
+      .waveSim i { display: inline-block; width: 3px; height: 6px; background: var(--clay); border-radius: 2px; transition: height 180ms var(--ease); }
+      .waveSim.on i:nth-child(odd) { height: 18px; }
+      .waveSim.on i:nth-child(even) { height: 11px; }
+
+      .simPills { display: flex; gap: 7px; flex-wrap: wrap; }
+      .simPill { font: 11px/1 var(--mono); padding: 5px 9px; border-radius: 999px; border: 1px solid var(--rule-strong); background: var(--paper-sunk); color: var(--ink-2); }
+      .simPill.ok { border-color: var(--moss); color: var(--moss); }
+      .simPill.warn { border-color: var(--brick); color: var(--brick); }
+
+      .wireBox { font: 12px/1.55 var(--mono); padding: 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; }
+      .wireFoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 11px/1.4 var(--mono); color: var(--ink-3); }
+      .wireStamp { padding: 4px 9px; border: 1.5px solid var(--ink); border-radius: 4px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
+      .wireStamp.good { border-color: var(--moss); color: var(--moss); }
+      .wireStamp.bad { border-color: var(--brick); color: var(--brick); }
+
+      /* ---------- 02: 4-worker switchboard parade ---------- */
+      .wkrGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+      .wkrCard { display: flex; flex-direction: column; justify-content: space-between; gap: 14px; padding: 18px; border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--paper); box-shadow: 5px 5px 0 var(--sheet); transition: opacity var(--t-1) var(--ease), background var(--t-1) var(--ease), border-color var(--t-1) var(--ease); }
+      .wkrCard.off { background: var(--paper-sunk); border-color: var(--brick); border-style: dashed; }
+      .wkrTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .wkrIdx { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .plugBtn { padding: 5px 10px; border: 1.5px solid var(--moss); border-radius: 999px; background: var(--paper); color: var(--moss); font: 10px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+      .wkrCard.off .plugBtn { border-color: var(--brick); color: var(--brick); }
+      .wkrHero { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; }
+      .wkrHero .charCrop { width: 64px; }
+      .wkrHero b { display: block; font: 400 var(--step-2)/1.15 var(--serif); color: var(--ink); }
+      .wkrHero span { display: block; margin-top: 3px; font: 11px/1.3 var(--mono); color: var(--clay); text-transform: uppercase; letter-spacing: 0.05em; }
+      .wkrDesc { font: var(--step--1)/1.5 var(--sans); color: var(--ink-2); margin: 0; }
+      .wkrStatus { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rule-strong); background: var(--paper-sunk); font: 11px/1.45 var(--mono); color: var(--ink-2); }
+      .wkrCard.off .wkrStatus { border-color: var(--brick); color: var(--brick); background: #f7e6e4; }
+
+      .sbBanner { margin-top: 14px; padding: 14px 18px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper-sunk); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
+      .sbBanner b { color: var(--ink); font-weight: 400; }
+
+      /* ---------- 03: interactive safety refusal tester ---------- */
+      .refGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+      .refList { display: grid; grid-template-rows: repeat(5, minmax(0, 1fr)); gap: 10px; }
+      .refBtn { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 15px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease); }
+      .refBtn:hover { border-color: var(--ink); }
+      .refBtn.on { border-color: var(--brick); background: var(--ink); color: var(--paper); box-shadow: 4px 4px 0 var(--sheet); }
+      .refNum { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--brick); display: grid; place-items: center; font: 11px/1 var(--mono); color: var(--brick); }
+      .refBtn.on .refNum { border-color: var(--paper); color: var(--paper); }
+      .refBtn b { display: block; font: 400 var(--step-0)/1.25 var(--serif); color: inherit; }
+      .refBtn small { display: block; font: 11px/1.3 var(--mono); color: var(--ink-3); margin-top: 2px; }
+      .refBtn.on small { color: var(--rule); }
+      .refTag { font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--brick); }
+      .refBtn.on .refTag { color: var(--clay-wash); }
+
+      .refStage { border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--paper); padding: 22px; box-shadow: 6px 6px 0 var(--sheet); display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
+      .refTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+      .refMouseRow { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center; }
+      .refMouseRow .charCrop { width: 72px; }
+      .refBox { padding: 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); font: 12px/1.55 var(--mono); color: var(--ink); }
+
+      /* ---------- 04: symmetric 18-tool matrix ---------- */
+      .tmFilter { display: flex; gap: 8px; flex-wrap: wrap; }
+      .tmFilter button { padding: 8px 14px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; background: var(--paper); font: 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; }
+      .tmFilter button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+      .tmGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+      .tmCard { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 14px 16px; min-height: 108px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
+      .tmCard:hover { border-color: var(--ink); transform: translateY(-1px); }
+      .tmCard.on { border-color: var(--ink); background: var(--paper-sunk); box-shadow: 4px 4px 0 var(--sheet); }
+      .tmCard[hidden] { display: none; }
+      .tmTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+      .tmCode { font: 600 13px/1.2 var(--mono); color: var(--ink); }
+      .tmBadge { font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--rule-strong); color: var(--ink-2); }
+      .tmBadge.free { border-color: var(--moss); color: var(--moss); }
+      .tmBadge.paid { border-color: var(--brick); color: var(--brick); }
+      .tmBadge.write { border-color: var(--clay); color: var(--clay); }
+      .tmDesc { font: var(--step--1)/1.4 var(--sans); color: var(--ink-2); margin: 0; }
+
+      .tmInspector { margin-top: 14px; padding: 16px 20px; border: var(--edge) solid var(--ink); border-radius: 12px; background: var(--paper-sunk); box-shadow: 5px 5px 0 var(--sheet); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: center; }
+      .tmInspector pre { margin: 0; padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--paper); font: 11px/1.5 var(--mono); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+      @media (max-width: 1100px) {
+        .scTabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .stations { grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; padding-bottom: 6px; }
+        .wkrGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tmGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
-      .wkr b { font: 400 var(--step-1)/1.3 var(--serif); }
-      .wkr .job { font: var(--step--1)/1.4 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--clay); }
-      .wkr p { grid-column: 2; margin: 6px 0 0; font-size: var(--step-0); color: var(--ink-2); }
-      .wkr .dies { grid-column: 2; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--rule); font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
-      .wkr .dies b { display: inline; font: inherit; color: var(--brick); }
-
-      /* ---------- the refusals ----------
-         One line each, and the line is the refusal rather than an explanation of it. */
-      .rules { display: grid; gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
-      .rules > div { background: var(--paper); padding: 13px 17px; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 13px; align-items: baseline; }
-      .rules .num { display: grid; place-items: center; width: 22px; height: 22px; border: var(--edge) solid var(--brick); border-radius: 50%; font: var(--step--1)/1 var(--mono); color: var(--brick); background: var(--paper-sunk); }
-      .rules h4 { margin: 0; font: 400 var(--step-0)/1.45 var(--sans); color: var(--ink); }
-      .rules p { margin: 3px 0 0; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
-
-      /* ---------- the tool surface ----------
-         A tool is a name and six words. The model chooses, the server runs it, and the
-         only two columns worth separating are free and not free. */
-      .tcols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
-      .tcol { min-width: 0; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
-      .tcol > .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--paper-sunk); border-bottom: var(--edge) solid var(--rule-strong); font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-2); }
-      .tcol > .head span { color: var(--ink-3); letter-spacing: 0.04em; }
-      .tcol.money > .head { border-left: 3px solid var(--brick); }
-      .trow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline; padding: 11px 16px; border-bottom: 1px solid var(--rule); }
-      .trow:last-child { border-bottom: 0; }
-      .trow code { font: var(--step--1)/1.5 var(--mono); color: var(--ink); word-break: break-word; }
-      .trow .gloss { grid-column: 1 / -1; margin-top: -2px; font-size: var(--step--1); color: var(--ink-3); }
-      .trow .price { font: var(--step--1)/1.5 var(--mono); color: var(--clay); white-space: nowrap; }
-      .trow.p .price { color: var(--brick); }
-      .trow.p { background: var(--paper-sunk); }
-      @media (max-width: 800px) { .tcols { grid-template-columns: minmax(0, 1fr); } }
-
-      /* ---------- what is still rough ----------
-         Nothing here was cut, because a judge is entitled to the whole limit. What
-         changed is where it sits: a one line confession you can scan, and the measured
-         detail behind the line you actually care about. */
-      .rough { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
-      .rough details { border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); }
-      .rough details[open] { border-left-color: var(--brick); }
-      .rough summary { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: baseline; padding: 13px 15px; cursor: pointer; font: 400 var(--step-0)/1.45 var(--sans); color: var(--ink); list-style: none; }
-      .rough summary::-webkit-details-marker { display: none; }
-      .rough summary em { font-style: normal; font: var(--step--1)/1.4 var(--mono); color: var(--brick); white-space: nowrap; }
-      .rough summary em.ok { color: var(--moss); }
-      .rough .body { padding: 0 15px 15px; color: var(--ink-2); font-size: var(--step-0); max-width: 74ch; }
-      .rough .body b { color: var(--ink); font-weight: 400; }
-      @media (max-width: 800px) { .rough { grid-template-columns: minmax(0, 1fr); } }
-
-      /* ---------- try the parts ---------- */
-      .try { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-      .try a { display: grid; gap: 5px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); padding: 15px 16px; box-shadow: var(--lift) var(--lift) 0 var(--sheet); transition: transform var(--t-1) var(--ease-spring), border-color var(--t-1) var(--ease); }
-      .try a:hover { transform: translate(-1px, -1px); border-color: var(--ink-2); }
-      .try a span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); }
-      .try a b { font: 400 var(--step-1)/1.3 var(--serif); color: var(--ink); }
-      .try a em { font-style: normal; font-size: var(--step--1); color: var(--ink-2); }
-
-      @media (max-width: 960px) {
-        .lead { max-width: 62ch; }
-      }
-      /* The trip rows are the one place where a fixed label column can squeeze the
-         sentence into three lines, so under this width the label rides above it. */
-      @media (max-width: 560px) {
-        .trip > .line { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; }
-        .trip .who { grid-column: 1 / -1; }
-        .trip .did { grid-column: 1; }
-        .trip .ms { grid-column: 2; grid-row: 2; }
+      @media (max-width: 780px) {
+        .secHead { grid-template-columns: minmax(0, 1fr); }
+        .scTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .thBar { grid-template-columns: minmax(0, 1fr); }
+        .thDeck, .refGrid, .tmInspector { grid-template-columns: minmax(0, 1fr); }
+        .wkrGrid, .tmGrid { grid-template-columns: minmax(0, 1fr); }
       }
     </style>
   </head>
   <body>
-                <header>
+    <header>
       <div class="brand">
         <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
       </div>
-    <nav class="tabs" id="siteMenu" aria-label="Main">
-      <div class="navExtra" id="navExtra"></div>
+      <nav class="tabs" id="siteMenu" aria-label="Main">
+        <div class="navExtra" id="navExtra"></div>
         <a href="/app">Chat</a>
         <a href="/memory">Memory</a>
         <a href="/pay">Pay</a>
         <a href="/request">Request</a>
-      <div class="more">
-        <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
-        <div class="moreMenu" id="moreMenu" hidden>
-          <a href="/ask">Ask to pay</a>
-          <a href="/report">Statement</a>
-          <a href="/features">Features</a>
-          <a href="/how" aria-current="page">How it works</a>
-          <a href="/life">In your life</a>
+        <div class="more">
+          <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+          <div class="moreMenu" id="moreMenu" hidden>
+            <a href="/ask">Ask to pay</a>
+            <a href="/report">Statement</a>
+            <a href="/features">Features</a>
+            <a href="/how" aria-current="page">How it works</a>
+            <a href="/life">In your life</a>
+          </div>
+        </div>
+      </nav>
+      <div class="wallet">
+        <span class="whose" id="whose"></span>
+        <button class="chip" id="connect">Connect wallet</button>
+        <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+          <span class="statusDot" aria-hidden="true"></span>
+          <span class="statusWord" aria-hidden="true">status</span>
+        </button>
+        <div class="statusBox" id="statusBox" hidden>
+          <div class="statusHead">what this page reads</div>
+          <div class="meta">
+            <div>names kept <b id="memCount">·</b></div>
+            <div>spent on names <b id="spend">·</b></div>
+            <div>chain <b id="chainState">·</b></div>
+            <div>brain <b id="model">·</b></div>
+          </div>
         </div>
       </div>
-    </nav>
-    <div class="wallet">
-      <span class="whose" id="whose"></span>
-      <button class="chip" id="connect">Connect wallet</button>
-      <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
-        <span class="statusDot" aria-hidden="true"></span>
-        <span class="statusWord" aria-hidden="true">status</span>
-      </button>
-      <div class="statusBox" id="statusBox" hidden>
-        <div class="statusHead">what this page reads</div>
-        <div class="meta">
-          <div>names kept <b id="memCount">·</b></div>
-          <div>spent on names <b id="spend">·</b></div>
-          <div>chain <b id="chainState">·</b></div>
-          <div>brain <b id="model">·</b></div>
-        </div>
-      </div>
-    </div>
       <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
         <span class="bars" aria-hidden="true"><i></i><i></i></span>
       </button>
@@ -212,260 +280,1345 @@
 
     <main>
       <div class="wrap">
-        <section>
-          <div class="split">
-            <div class="split-copy reveal">
-              <div class="kicker">How it works</div>
-              <h1>One sentence, three possible trips</h1>
-              <p class="lead">
-                Which trip you get depends on one thing: whether your memory already knows the address in front of
-                you. The chain is the slow part, and the paid index is the only part that costs anything. Tap a bar
-                to switch trips.
-              </p>
-              <div class="tripKey">
-                <i class="g">nothing spent</i>
-                <i class="c">time only, no money</i>
-                <i class="b">a cent or three, once</i>
-                <i class="s">crossed out, never asked</i>
+        <!-- ==================== SECTION 01: INTERACTIVE WORKFLOW THEATRE ==================== -->
+        <section id="simulator">
+          <div class="secHead">
+            <div>
+              <div class="kicker">01 · Interactive Workflow Theatre</div>
+              <h1>Watch the characters run every workflow step by step.</h1>
+              <p class="lead">Pick any of the six workflows below, press Play or click a station, and watch the packet travel between Gemini, Walrus, Tatum and the x402 Purse Mouse. Pure showcase — connect a wallet when you are ready to run it live.</p>
+            </div>
+            <div class="badgePill"><i></i><span>6 interactive workflows · showcase mode</span></div>
+          </div>
+
+          <div class="scTabs" id="scTabs" role="tablist" aria-label="Workflow scenarios"></div>
+
+          <div class="theatre">
+            <div class="thBar">
+              <div class="thTitleWrap">
+                <span class="thStepBadge" id="thStepBadge">STEP 1 OF 5</span>
+                <div>
+                  <h3 class="thTitle" id="thTitle">Ask Once, Free Forever</h3>
+                  <div class="thSub" id="thSub">First time pays 0.01 USDC to the x402 index; every ask after hits Walrus for $0.00.</div>
+                </div>
               </div>
-              <p class="note">the ranges are wall clock, measured one sentence at a time against a live model. The number the model itself takes is the one that moves when a provider is busy.</p>
+
+              <div class="thMeters">
+                <div class="thModeSwitch show" id="tripSwitch" role="group" aria-label="Cold vs Warm trip">
+                  <button type="button" class="on" data-trip="cold">Trip 1 · Cold (0.01 USDC)</button>
+                  <button type="button" data-trip="warm">Trip 2 · Warm (Free)</button>
+                </div>
+                <div class="thMeter" id="thCostMeter"><span>cost</span><b id="thCost">0.00 USDC</b></div>
+                <div class="thMeter"><span>clock</span><b id="thClock">0.0 s</b></div>
+              </div>
+
+              <div class="thControls">
+                <button type="button" class="thBtn" id="btnPrev" aria-label="Previous step">◀ Prev</button>
+                <button type="button" class="thBtn play" id="btnPlay">▶ Play</button>
+                <button type="button" class="thBtn" id="btnNext" aria-label="Next step">Next ▶</button>
+              </div>
             </div>
 
-            <div class="split-visual">
-              <div class="cycle reveal">
-                <div class="frames">
-                  <div class="frame">
-                    <h4>Cold<span> your memory has never seen this address</span></h4>
-                    <div class="trip">
-                      <div class="line"><span class="who">you</span><span class="did">has the taxi company ever refunded me</span><span class="ms">0 ms</span></div>
-                      <div class="line"><span class="who">model</span><span class="did">picks one tool and reads the address out of your sentence</span><span class="ms">~1 s</span></div>
-                      <div class="line"><span class="who">Tatum</span><span class="did">reads your transfers, then the other side of each one</span><span class="ms">5 to 7 s</span></div>
-                      <div class="line"><span class="who">Walrus</span><span class="did">searches your namespace for that address and finds nothing</span><span class="ms">1 to 3 s</span></div>
-                      <div class="line"><span class="who">model</span><span class="did">says it does not know them, and offers to buy a chain profile</span><span class="ms">~8 s</span></div>
-                    </div>
+            <div class="trackBox">
+              <div class="wireLine"><div class="wireFill" id="wireFill"></div></div>
+              <div class="courier" id="courier">
+                <span class="courierDot" id="courierIdx">1</span>
+                <span class="courierLabel" id="courierLabel">spoken sentence</span>
+              </div>
+              <div class="stations" id="stations"></div>
+            </div>
+
+            <div class="thDeck">
+              <div class="deckPane">
+                <div class="dpHead">
+                  <span>Voice &amp; Tool Trace</span>
+                  <div class="waveSim" id="waveSim" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                </div>
+                <div class="dpBody">
+                  <div class="simBubble">
+                    <span class="lbl">You said</span>
+                    <p id="simAsked">"Who did I send money to at 0x81cd…8d8f?"</p>
                   </div>
-                  <div class="frame">
-                    <h4>Warm<span> the same question a week later</span></h4>
-                    <div class="trip">
-                      <div class="line"><span class="who">you</span><span class="did">has the taxi company ever refunded me</span><span class="ms">0 ms</span></div>
-                      <div class="line"><span class="who">model</span><span class="did">same tool, same argument, no re-reading</span><span class="ms">~1 s</span></div>
-                      <div class="line free"><span class="who">Walrus</span><span class="did">14 transactions, mostly with you, first seen in March</span><span class="ms">1 to 3 s</span></div>
-                      <div class="line skip"><span class="who">Tatum</span><span class="did">the chain never gets asked</span><span class="ms">skipped</span></div>
-                      <div class="line free"><span class="who">model</span><span class="did">answers from the note. Nothing bought, nothing learned</span><span class="ms">2 to 5 s</span></div>
-                    </div>
+                  <div class="simBubble simReply">
+                    <span class="lbl" id="simSpeaker">Ken · active station</span>
+                    <p id="simSaid">Turning your spoken question into a tool call…</p>
                   </div>
-                  <div class="frame">
-                    <h4>Paid<span> the only branch that costs something</span></h4>
-                    <div class="trip">
-                      <div class="line"><span class="who">Walrus</span><span class="did">came back empty, so this stranger is genuinely unknown</span><span class="ms">1 to 3 s</span></div>
-                      <div class="line cost"><span class="who">the index</span><span class="did">refuses with a standard price: 0.01 USDC, 0.03 for a long history, this asset, this payout</span><span class="ms">instant</span></div>
-                      <div class="line cost"><span class="who">you</span><span class="did">sign the exact transfer in your own wallet. The page only holds the bytes</span><span class="ms">your time</span></div>
-                      <div class="line cost"><span class="who">the seller</span><span class="did">verifies the signed bytes, simulates them, then broadcasts them. It holds no key</span><span class="ms">2 to 5 s</span></div>
-                      <div class="line cost"><span class="who">Walrus</span><span class="did">writes the profile and the price under your address, once</span><span class="ms">2 to 4 s</span></div>
-                    </div>
+                  <div class="simPills" id="simPills"></div>
+                </div>
+              </div>
+
+              <div class="deckPane">
+                <div class="dpHead">
+                  <span id="wireTitle">Live Wire &amp; Ticket Inspector</span>
+                  <span id="wireRoute">sui:mainnet · walrus</span>
+                </div>
+                <div class="dpBody">
+                  <div class="wireBox" id="wireBox"></div>
+                  <div class="wireFoot">
+                    <span id="wireNote">No private key ever touches this server.</span>
+                    <span class="wireStamp" id="wireStamp">READY</span>
                   </div>
                 </div>
-                <div class="bars"><i></i><i></i><i></i></div>
               </div>
             </div>
           </div>
         </section>
 
-        <section>
-          <div class="kicker reveal">The four workers</div>
-          <h2 class="reveal">Take one away and a specific thing stops working</h2>
-          <p class="lead reveal">That is the honest test of whether a product needs a service. None of these four is decoration, and there is no fifth because nothing broke when we left one out.</p>
-          <div class="wkr reveal stagger">
+        <!-- ==================== SECTION 02: 4-WORKER SWITCHBOARD PARADE ==================== -->
+        <section id="workers">
+          <div class="secHead">
             <div>
-              <span class="face" aria-hidden="true" style="--vb: inset(9% 72% 10% 0); --ar: 308/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
-              <b>Tatum</b>
-              <span class="job">the bird · eyes</span>
-              <p>Reads balances, transfers and counterparties on mainnet and testnet with one key per network.</p>
-              <p class="dies"><b>without it</b> you type addresses in, and the agent describes your imagination.</p>
+              <div class="kicker">02 · The Four Cartoon Workers</div>
+              <h2>Unplug any worker to see what breaks.</h2>
+              <p class="lead">Nothing here is decoration. Toggle any of the four services off and inspect the exact capability that stops working.</p>
             </div>
-            <div>
-              <span class="face" aria-hidden="true" style="--vb: inset(9% 48% 10% 28%); --ar: 264/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
-              <b>Walrus</b>
-              <span class="job">the hedgehog · memory</span>
-              <p>One namespace per wallet, holding plain sentences about people and what they cost.</p>
-              <p class="dies"><b>without it</b> every question re-reads a rate limited chain, and nothing is ever learned.</p>
+            <div class="badgePill"><i></i><span id="wkrSummary">4 of 4 workers online</span></div>
+          </div>
+
+          <div class="wkrGrid" id="wkrGrid">
+            <div class="wkrCard" data-wkr="tatum">
+              <div class="wkrTop">
+                <span class="wkrIdx">01 · chain eyes</span>
+                <button type="button" class="plugBtn" data-toggle="tatum">● Plugged in</button>
+              </div>
+              <div class="wkrHero">
+                <span class="charCrop" data-char="bird"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Tatum bird" /></span>
+                <div>
+                  <b>Tatum</b>
+                  <span>the bird · sui graphql</span>
+                </div>
+              </div>
+              <p class="wkrDesc">Reads SUI &amp; USDC balances, walks counterparty transfers on both sides, and verifies settled transaction digests.</p>
+              <div class="wkrStatus" data-status="tatum">ONLINE · Reading mainnet &amp; testnet checkpoints and verifying both sides of every USDC transfer.</div>
             </div>
-            <div>
-              <span class="face" aria-hidden="true" style="--vb: inset(9% 26% 10% 52%); --ar: 242/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
-              <b>Gemini</b>
-              <span class="job">the frog · brain and mouth</span>
-              <p>Turns a sentence into a tool call, and a tool result into two spoken sentences.</p>
-              <p class="dies"><b>without it</b> you have a block explorer with extra steps.</p>
+
+            <div class="wkrCard" data-wkr="walrus">
+              <div class="wkrTop">
+                <span class="wkrIdx">02 · wallet memory</span>
+                <button type="button" class="plugBtn" data-toggle="walrus">● Plugged in</button>
+              </div>
+              <div class="wkrHero">
+                <span class="charCrop" data-char="hedgehog"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Walrus hedgehog" /></span>
+                <div>
+                  <b>Walrus</b>
+                  <span>the hedgehog · memwal</span>
+                </div>
+              </div>
+              <p class="wkrDesc">Stores every named person, note, and purchased x402 profile on Mainnet under a namespace derived from your wallet.</p>
+              <div class="wkrStatus" data-status="walrus">ONLINE · Warm lookups return in ~2s for $0.00 without touching the chain or paying twice.</div>
             </div>
-            <div>
-              <span class="face" aria-hidden="true" style="--vb: inset(9% 0 10% 74%); --ar: 286/509"><img src="/assets/cast-four-cut.webp" width="1100" height="628" loading="lazy" decoding="async" alt="" /></span>
-              <b>x402</b>
-              <span class="job">the mouse · the market</span>
-              <p>A price in a standard 402 header, paid by transfer bytes your wallet signed and the seller settles without holding a key.</p>
-              <p class="dies"><b>without it</b> the agent cannot find out anything new, and cannot pay a person for it.</p>
+
+            <div class="wkrCard" data-wkr="gemini">
+              <div class="wkrTop">
+                <span class="wkrIdx">03 · brain &amp; voice</span>
+                <button type="button" class="plugBtn" data-toggle="gemini">● Plugged in</button>
+              </div>
+              <div class="wkrHero">
+                <span class="charCrop" data-char="frog"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Gemini frog" /></span>
+                <div>
+                  <b>Gemini</b>
+                  <span>the frog · tool router</span>
+                </div>
+              </div>
+              <p class="wkrDesc">Picks from 18 deterministic tools, grounds every figure against tool output, and speaks answers in five voices.</p>
+              <div class="wkrStatus" data-status="gemini">ONLINE · Routing spoken sentences to deterministic tools with automatic NVIDIA fallback.</div>
             </div>
+
+            <div class="wkrCard" data-wkr="x402">
+              <div class="wkrTop">
+                <span class="wkrIdx">04 · paid index</span>
+                <button type="button" class="plugBtn" data-toggle="x402">● Plugged in</button>
+              </div>
+              <div class="wkrHero">
+                <span class="charCrop" data-char="mouse"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="x402 purse mouse" /></span>
+                <div>
+                  <b>x402</b>
+                  <span>the mouse · exact wall</span>
+                </div>
+              </div>
+              <p class="wkrDesc">Quotes a price in HTTP 402 headers for unknown wallets, locked notes, and receipt checks; facilitator settles signed bytes.</p>
+              <div class="wkrStatus" data-status="x402">ONLINE · Charging 0.01–0.03 USDC once per unknown fact and releasing only after on-chain settlement.</div>
+            </div>
+          </div>
+
+          <div class="sbBanner" id="sbBanner">
+            <span><b>Switchboard diagnosis:</b> All four workers are connected. Warm questions stop at Walrus; cold questions pay once through x402 and write back to Walrus.</span>
+            <button type="button" class="thBtn" id="resetWorkers">Restore all 4 workers</button>
           </div>
         </section>
 
-        <section>
-          <div class="split art flip">
-            <div class="split-copy reveal">
-              <div class="kicker">Seen from inside</div>
-              <h2>Four lines, and only one of them carries anything</h2>
-              <p class="lead">A warm question never plugs into the chain. A question the chain cannot answer never plugs into the market until you say so. The empty jacks are the build.</p>
+        <!-- ==================== SECTION 03: SAFETY GUARDRAILS & REFUSALS ==================== -->
+        <section id="guardrails">
+          <div class="secHead">
+            <div>
+              <div class="kicker">03 · Deterministic Guardrails</div>
+              <h2>Test the five shortcuts Ken refuses to take.</h2>
+              <p class="lead">Click any dangerous shortcut on the left to watch how the server and Purse Mouse block it before a single cent or fake memory can slip through.</p>
             </div>
-            <figure class="plate mid split-visual">
-              <img src="/assets/how-switchboard.webp" width="1100" height="733" loading="lazy" decoding="async" alt="An operator sitting inside a wooden switchboard cabinet with a panel of round jacks and coiled cables, while a woman stands at the front plugging one lead in and the rest of the sockets stay dark" />
-              <figcaption>One operator, four lines. The lead she plugs is the only one the sentence needs.</figcaption>
-            </figure>
+            <div class="badgePill"><i></i><span>5 hard refusals · zero server keys</span></div>
           </div>
-        </section>
 
-        <section>
-          <div class="split">
-            <div class="split-copy reveal">
-              <div class="kicker">The memory, exactly</div>
-              <h2>A sentence, and the address that owns it</h2>
-              <p class="lead">
-                Nothing about this is clever storage. A fact is a line in your namespace and the name is the part a
-                later question can find. That is what makes the second asking free, and what lets the same memory
-                work in the app, on the call, and anywhere else that reads your wallet.
-              </p>
-              <p class="lead" style="margin-bottom:0">Your people are not another person's people, so the namespace is derived from the wallet you are speaking for. The masthead chip is the only way to move between them.</p>
-            </div>
-            <div class="split-visual reveal">
-              <div class="code">namespace people · 0x80713a48…6d36
-
-<em>Sana</em>       0x51ca0f17…
-              buys groceries, small
-<em>Nightlight</em> 0xaaf07776…
-              airport transfers, no bill
-<em>Index</em>      0x81cd5dad…
-              from 0.01 USDC a look
-
-bought 2026-11-01 · tx BAuczF1Z…</div>
-              <p class="note">a paid line records its own price and its own transaction, so any memory can be explained back to you.</p>
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <div class="split">
-            <div class="split-copy reveal">
-              <div class="kicker">The safety rules</div>
-              <h2>Five things this build refuses to do</h2>
-              <p class="lead">Each refusal exists because the shortcut was available and would have made the demo better looking.</p>
-            </div>
-            <div class="split-visual">
-              <div class="rules reveal stagger">
-                <div><span class="num">1</span><div><h4>No key of yours on the server</h4><p>The page prepares bytes and waits. Refusing to sign leaves nothing behind.</p></div></div>
-                <div><span class="num">2</span><div><h4>No memory written on a claim</h4><p>A browser reporting a digest is not evidence. Both sides of the transfer are re-read from the chain.</p></div></div>
-                <div><span class="num">3</span><div><h4>No second payment for one answer</h4><p>A receipt is spent the moment it releases a fact, and a payment with no fact is offered back.</p></div></div>
-                <div><span class="num">4</span><div><h4>No silent pricing</h4><p>Amount, asset and payout arrive before anything is signed, and the running total is in the masthead.</p></div></div>
-                <div><span class="num">5</span><div><h4>No invented people</h4><p>If memory has nothing and the chain cannot support a sentence, the agent says it does not know. A profile is measurement, not a made up business name.</p></div></div>
+          <div class="refGrid">
+            <div class="refList" id="refList"></div>
+            <div class="refStage">
+              <div class="refTop">
+                <span class="kicker" style="margin:0" id="refKicker">GUARDRAIL 01 · NO SERVER SIGNING KEY</span>
+                <span class="wireStamp bad" id="refStamp">REFUSED COLD</span>
+              </div>
+              <div class="refMouseRow">
+                <span class="charCrop" data-char="mouse"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Purse mouse" /></span>
+                <div>
+                  <h3 class="thTitle" id="refTitle">Spoken words only build unsigned bytes</h3>
+                  <p class="wkrDesc" id="refExplain" style="margin-top:6px"></p>
+                </div>
+              </div>
+              <div class="refBox" id="refCode"></div>
+              <div class="wireFoot">
+                <span id="refFile">Enforced in src/server.ts &amp; src/tools.ts</span>
+                <span>100% deterministic check</span>
               </div>
             </div>
           </div>
         </section>
 
-        <section>
-          <div class="kicker reveal">The tool surface</div>
-          <h2 class="reveal">The model may choose from this list and nothing else</h2>
-          <p class="lead reveal">It never touches the chain, the memory or your money directly. It names a tool, the server runs it, and that is the only reason an agent talking about your wallet can be trusted with a sentence like "pay Ravi 1.5".</p>
-          <div class="tcols reveal">
-            <div class="tcol">
-              <div class="head">costs nothing<span>7 tools</span></div>
-              <div class="trow"><code>people_you_know</code><span class="price">walrus</span><span class="gloss">every name this wallet has taught the agent</span></div>
-              <div class="trow"><code>who_is_this</code><span class="price">both</span><span class="gloss">name, usual amount, cadence and notes for one address</span></div>
-              <div class="trow"><code>money_history</code><span class="price">tatum</span><span class="gloss">the people you move money with, ranked three ways</span></div>
-              <div class="trow"><code>monthly_summary</code><span class="price">tatum</span><span class="gloss">what went out each month, which answers where it went</span></div>
-              <div class="trow"><code>find_person</code><span class="price">walrus</span><span class="gloss">a name in, an address out, so you never read one aloud</span></div>
-              <div class="trow"><code>what_do_i_remember</code><span class="price">walrus</span><span class="gloss">search the notes by meaning, so a wrong word still lands</span></div>
-              <div class="trow"><code>memory_stats</code><span class="price">walrus</span><span class="gloss">how much is stored, and in which namespaces</span></div>
+        <!-- ==================== SECTION 04: 18-TOOL SURFACE MATRIX ==================== -->
+        <section id="tools">
+          <div class="secHead">
+            <div>
+              <div class="kicker">04 · Complete 18-Tool Surface</div>
+              <h2>Every tool the model is allowed to call.</h2>
+              <p class="lead">The model never touches Tatum, Walrus, or your wallet directly. Click any tool in the grid to inspect its exact parameters and return payload.</p>
             </div>
-            <div class="tcol money">
-              <div class="head">can change something<span>6 tools</span></div>
-              <div class="trow"><code>name_a_person</code><span class="price">write</span><span class="gloss">attach a name and a note to an address you own</span></div>
-              <div class="trow"><code>remember_this</code><span class="price">write</span><span class="gloss">keep a sentence you said that is not about a person</span></div>
-              <div class="trow p"><code>pay_usdc</code><span class="price">held</span><span class="gloss">prepare a transfer and wait. It cannot complete itself</span></div>
-              <div class="trow p"><code>paid_lookup</code><span class="price">from 0.01</span><span class="gloss">buy a measured profile of an address memory has never seen</span></div>
-              <div class="trow p"><code>verify_payment</code><span class="price">0.01</span><span class="gloss">settle whether a payment someone claimed really moved</span></div>
-              <div class="trow p"><code>open_paid_link</code><span class="price">their price</span><span class="gloss">buy what another person remembers, at the price on their link</span></div>
+            <div class="tmFilter" id="tmFilter" role="group" aria-label="Filter tools">
+              <button type="button" class="on" data-filter="all">All 18</button>
+              <button type="button" data-filter="free">Free Reads (9)</button>
+              <button type="button" data-filter="write">Guarded Writes (5)</button>
+              <button type="button" data-filter="paid">Money &amp; x402 (4)</button>
             </div>
           </div>
-          <p class="note reveal">the three paid tools only appear when payments are switched on, and all three refuse to run on a mainnet session.</p>
-        </section>
 
-        <section>
-          <div class="kicker reveal">What is still rough</div>
-          <h2 class="reveal">The parts a judge should not be sold on</h2>
-          <p class="lead reveal">Nothing here is hidden inside the fold. Each line is a limit with a route, and the measurement behind it is one click away.</p>
-          <div class="rough reveal">
-            <details>
-              <summary>The brain borrows a fast model<em>capacity</em></summary>
-              <div class="body">Gemini 3.1 Flash Lite leads and the 550B Nemotron Ultra is the second attempt, with Gemini 3.5 Flash and then the 4B Bolt behind them. The providers alternate so the second ask goes to a different one rather than to a second name on the key that just refused. On the nine probes this build ships, measured 2026-11-04, Gemini sent 6 of 6 tool calls and answered 3 of 3 spoken questions at a 3.4 second median with an 11.6 second tail. Ultra sent the same 6 of 6 and 3 of 3 at 1.2 seconds with a 1.9 second tail, so the provider that answers first is the slower one and that is the trade this build chose. Gemini's free ceiling is near ten requests a minute and fifteen hundred a day, NVIDIA's about forty a minute, so the fallback is also the roomier lane. The rest fell away: DeepSeek flash needed 20 to 30 seconds for one word, Step 5 answered 500, and Gemma, GLM, GPT OSS and MiniMax never finished in time. The first NVIDIA key was refused by every inference call on 2026-11-03 while its catalogue still answered, and a catalogue that says yes to a junk key is not evidence, so the second key is the one on record. The model makes real function calls against this tool layer and answers in plain sentences. What is not production is the capacity. A demo is cheap and a crowd is not.</div>
-            </details>
-            <details>
-              <summary>The spoken voice arrives after the sentence<em>latency</em></summary>
-              <div class="body">/speak genuinely calls a text to speech model, and a short sentence takes about two seconds from HeyGen, three from Fish Audio and five from Gemini, so the room waits for the whole line. Nothing is spoken until the whole answer exists. A live call is the other case: there the model streams audio as it talks and you can interrupt it, and it stops.</div>
-            </details>
-            <details>
-              <summary>Three voices can answer, and the page says which<em>measured</em></summary>
-              <div class="body">Fish Audio is tried first because it is limited by five requests at once rather than by a count of sentences. HeyGen is second, through OpenRouter, and it is the voice written off twice before it was measured: it does not appear in OpenRouter's own model list, it refuses wav and mp3 and speaks only raw pcm, so this server reads the sample rate off the reply and writes the header itself. Fish is not on that route, whatever a middleman's catalogue implies, so the second door leads to a different mouth. Gemini is last and covers any sentence the others refuse. Every allowance here is observed rather than published, so read each number as a floor.</div>
-            </details>
-            <details>
-              <summary>Cadence needs days, not code<em>time</em></summary>
-              <div class="body">"About every three days" is measured from real transfers on different days, and the seeder will not pay the same person twice in one UTC day. Until it has run for a few days the honest answer is "most recently today".</div>
-            </details>
-            <details>
-              <summary>No real microphone has been exercised<em>untested</em></summary>
-              <div class="body">The capture path, the transcript and the spoken reply are built, and the call sheet holds a session and writes what it hears back into the chat, but every recorded demo so far has been typed.</div>
-            </details>
-            <details>
-              <summary>No wallet extension was installed for these runs<em>untested</em></summary>
-              <div class="body">The signature leg was driven by a script that does what an extension does with the same bytes, so the handshake is proven and the popup is not.</div>
-            </details>
-            <details>
-              <summary>Memory has no delete<em>walrus</em></summary>
-              <div class="body">Walrus exposes remember and recall, so removing a name means writing a corrected line and living with the old one in the namespace. A receipt is filed under its transaction, so the same payment cannot be stored twice, but one that is already wrong stays wrong.</div>
-            </details>
-            <details>
-              <summary>Warm answers still take a couple of seconds<em>honest</em></summary>
-              <div class="body">The recall round trip is the floor, which is why the interface shows what it is doing rather than pretending.</div>
-            </details>
-          </div>
-        </section>
+          <div class="tmGrid" id="tmGrid"></div>
 
-        <section>
-          <div class="kicker reveal">Try the parts</div>
-          <h2 class="reveal">Each of these is the same machinery</h2>
-          <div class="try reveal stagger">
-            <a href="/app"><span>/app</span><b>Ask in text</b><em>The same tools with a transcript and a cost meter.</em></a>
-            <a href="/app?voice=1"><span>/app</span><b>Ask out loud</b><em>Open the call sheet from any chat. The whole conversation stays in that chat.</em></a>
-            <a href="/pay"><span>/pay</span><b>Sign a payment</b><em>Where the bytes wait for you and nothing moves without it.</em></a>
-            <a href="/memory"><span>/memory</span><b>Read the notes</b><em>Every line this wallet has taught the agent, and what each cost.</em></a>
+          <div class="tmInspector">
+            <div>
+              <div class="kicker" id="tiGroup" style="margin-bottom:6px">TOOL INSPECTOR · FREE READ</div>
+              <h3 class="thTitle" id="tiName">people_you_know</h3>
+              <p class="wkrDesc" id="tiDesc" style="margin-top:8px">Lists every person saved in your wallet's Walrus namespace with their alias, address and note.</p>
+            </div>
+            <pre id="tiPayload"></pre>
           </div>
         </section>
       </div>
     </main>
 
-    <footer class="page" style="border-top:1px solid var(--rule);padding:24px var(--pad) 38px">
-      <div class="inner" style="max-width:var(--shell);margin:0 auto;display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
-        <span class="quiet">built for the Tatum and Walrus hackathon</span>
-        <span class="quiet" style="margin-left:auto">timings measured against live providers between 2026-11-01 and 2026-11-04</span>
-      </div>
-    </footer>
-
     <script type="module">
-      import { reveal, cycles, loadMeta, fillStats, mountWallet, castNotice } from "./shared.js";
-      reveal();
-      cycles();
-      const paint = (body) => {
-        fillStats(body);
-        castNotice(body);
+      import { $, mountWallet, mountNetwork, loadMeta } from "./shared.js";
+
+      mountNetwork(() => loadMeta());
+      mountWallet(() => loadMeta());
+      loadMeta();
+
+      /* ==================== 01. WORKFLOW THEATRE DATA ==================== */
+      const SCENARIOS = [
+        {
+          id: "cold-warm",
+          idx: "01",
+          tag: "walrus · x402",
+          title: "Cold vs. Warm Memory",
+          sub: "Trip 1 buys an unknown profile once (0.01 USDC); Trip 2 answers from Walrus for $0.00.",
+          hasTripToggle: true,
+          trips: {
+            cold: {
+              asked: '"Who did I send money to at 0x81cd…8d8f?"',
+              steps: [
+                {
+                  who: "You",
+                  role: "voice or text",
+                  face: "/assets/face-sana.webp",
+                  state: "active",
+                  action: "Ask about an unknown 0x address.",
+                  ms: "0.0 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "spoken question",
+                  said: "Hearing your question and extracting address 0x81cd…8d8f.",
+                  pills: [["voice transcript", "ok"], ["session: wallet", ""]],
+                  wireTitle: "1. Input Transcript",
+                  wire: `POST /turn\n{\n  "text": "Who did I send money to at 0x81cd5dad…8d8f?",\n  "wallet": "connected"\n}`,
+                  stamp: "HEARD",
+                  stampTone: "",
+                },
+                {
+                  who: "Walrus",
+                  role: "the hedgehog",
+                  char: "hedgehog",
+                  state: "active",
+                  action: "Searches your wallet namespace first.",
+                  ms: "1.4 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "recall query",
+                  said: "Checked namespace people-mainnet — 0 matches for 0x81cd…8d8f.",
+                  pills: [["who_is_this", "ok"], ["walrus: miss", "warn"]],
+                  wireTitle: "2. Walrus Namespace Lookup",
+                  wire: `MemWal.recall({\n  namespace: "people-mainnet-<wallet>",\n  query: "0x81cd5dad14a509f6…"\n})\n→ 0 hits (stranger address)`,
+                  stamp: "CACHE MISS",
+                  stampTone: "bad",
+                },
+                {
+                  who: "Tatum",
+                  role: "the bird",
+                  char: "bird",
+                  state: "active",
+                  action: "Walks both sides of your Sui transfers.",
+                  ms: "3.2 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "graphql read",
+                  said: "Found 3 outgoing transfers to 0x81cd…8d8f, but no human name on chain.",
+                  pills: [["tatum graphql", "ok"], ["3 transfers found", ""]],
+                  wireTitle: "3. Tatum Sui GraphQL Read",
+                  wire: `query { transactions(filter: { affectedAddress: "0x81cd…" }) {\n  nodes { digest effects { balanceChanges } }\n}}\n→ 3 flows, no alias on chain`,
+                  stamp: "UNNAMED",
+                  stampTone: "",
+                },
+                {
+                  who: "x402 Index",
+                  role: "the purse mouse",
+                  char: "mouse",
+                  state: "paid",
+                  action: "Quotes 0.01 USDC; your wallet signs bytes.",
+                  ms: "5.1 s",
+                  cost: "0.01 USDC",
+                  costTone: "paid",
+                  courier: "0.01 USDC ticket",
+                  said: "Seller quoted 0.01 USDC via HTTP 402. Your wallet signed the exact transfer; facilitator settled on-chain.",
+                  pills: [["paid_lookup", "ok"], ["HTTP 402 → 200", "warn"], ["0.01 USDC", "warn"]],
+                  wireTitle: "4. x402 Exact Payment & Settlement",
+                  wire: `HTTP/1.1 402 Payment Required\nx-payment-required: { "scheme": "exact", "amount": "0.01", "asset": "USDC" }\n\n→ Wallet signs bytes → Facilitator settles tx BAuczF1Z…`,
+                  stamp: "PAID 0.01 USDC",
+                  stampTone: "bad",
+                },
+                {
+                  who: "Walrus",
+                  role: "the hedgehog",
+                  char: "hedgehog",
+                  state: "done",
+                  action: "Writes the bought profile under your address.",
+                  ms: "6.8 s",
+                  cost: "0.01 USDC",
+                  costTone: "paid",
+                  courier: "saved forever",
+                  said: '"Harbor Print Studio — 19 transactions, 0.01 USDC paid once and written to Walrus so I never pay again."',
+                  pills: [["walrus: rememberAndWait", "ok"], ["saved to namespace", "ok"]],
+                  wireTitle: "5. Written Permanently to Walrus",
+                  wire: `MemWal.rememberAndWait(\n  'Profile 0x81cd… = "Harbor Print Studio", 19 txns · paid 0.01 USDC (tx BAuczF1Z…)'\n)\n→ blob_id: "_OcDylhBVR5qRpeQ5PadK1"`,
+                  stamp: "REMEMBERED",
+                  stampTone: "good",
+                },
+              ],
+            },
+            warm: {
+              asked: '"Who was 0x81cd…8d8f again?" (Asked a second time)',
+              steps: [
+                {
+                  who: "You",
+                  role: "voice or text",
+                  face: "/assets/face-sana.webp",
+                  state: "active",
+                  action: "Ask the exact same question again.",
+                  ms: "0.0 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "repeat question",
+                  said: "Hearing your repeat question about 0x81cd…8d8f.",
+                  pills: [["voice transcript", "ok"], ["warm path", "ok"]],
+                  wireTitle: "1. Repeat Question Arrives",
+                  wire: `POST /turn\n{\n  "text": "Who was 0x81cd5dad…8d8f again?"\n}`,
+                  stamp: "WARM ASK",
+                  stampTone: "good",
+                },
+                {
+                  who: "Walrus",
+                  role: "the hedgehog",
+                  char: "hedgehog",
+                  state: "done",
+                  action: "Instant hit inside your wallet namespace!",
+                  ms: "1.6 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "walrus hit ($0)",
+                  said: "Found Harbor Print Studio in Walrus memory immediately! Skipping Tatum and skipping x402.",
+                  pills: [["walrus: hit", "ok"], ["0.00 USDC", "ok"]],
+                  wireTitle: "2. Walrus Memory Hit (Free)",
+                  wire: `MemWal.recall({ namespace: "people-mainnet-<wallet>" })\n→ HIT: "Harbor Print Studio" (blob _OcDylhBVR5q…)\n→ Cost: 0.00 USDC`,
+                  stamp: "HIT · $0.00",
+                  stampTone: "good",
+                },
+                {
+                  who: "Tatum",
+                  role: "the bird",
+                  char: "bird",
+                  state: "skipped",
+                  action: "Skipped — chain read not needed.",
+                  ms: "1.6 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "chain skipped",
+                  said: "Tatum GraphQL was never called because Walrus already answered.",
+                  pills: [["tatum: skipped", "ok"], ["0 rpc calls", "ok"]],
+                  wireTitle: "3. Tatum Chain Read Skipped",
+                  wire: `// SKIPPED\n// Memory already holds the verified profile.\n// Zero GraphQL quota spent.`,
+                  stamp: "SKIPPED",
+                  stampTone: "good",
+                },
+                {
+                  who: "x402 Index",
+                  role: "the purse mouse",
+                  char: "mouse",
+                  state: "skipped",
+                  action: "Skipped — never pays twice for one fact.",
+                  ms: "1.6 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "toll skipped",
+                  said: "x402 seller was never contacted. Ken refuses to pay twice for a fact it already owns.",
+                  pills: [["x402: skipped", "ok"], ["saved 0.01 USDC", "ok"]],
+                  wireTitle: "4. x402 Paywall Skipped",
+                  wire: `// SKIPPED\n// knownProfile("0x81cd…") returned true.\n// Refusing to build a second 402 ticket.`,
+                  stamp: "ALREADY OWNED",
+                  stampTone: "good",
+                },
+                {
+                  who: "Gemini",
+                  role: "the frog",
+                  char: "frog",
+                  state: "done",
+                  action: "Speaks the answer out loud for $0.00.",
+                  ms: "3.4 s",
+                  cost: "0.00 USDC",
+                  costTone: "free",
+                  courier: "spoken free",
+                  said: '"Already written down on Walrus: Harbor Print Studio. Asking twice costs nothing and touches neither the chain nor the paid index."',
+                  pills: [["read Walrus only", "ok"], ["total: 0.00 USDC", "ok"]],
+                  wireTitle: "5. Grounded Answer Spoken",
+                  wire: `{\n  "from": "memory",\n  "cost_usdc": 0,\n  "said": "Already written down on Walrus: Harbor Print Studio."\n}`,
+                  stamp: "FREE FOREVER",
+                  stampTone: "good",
+                },
+              ],
+            },
+          },
+        },
+        {
+          id: "voice-pay",
+          idx: "02",
+          tag: "sui · usdc",
+          title: "Voice-to-Ticket Payment",
+          sub: "Speak a name and amount; Ken builds unsigned USDC bytes and waits for your wallet extension.",
+          hasTripToggle: false,
+          steps: [
+            {
+              who: "You",
+              role: "live call",
+              face: "/assets/face-sana.webp",
+              state: "active",
+              action: 'Say "Pay Sana 0.95 USDC for groceries."',
+              ms: "0.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "voice command",
+              said: 'Heard "Pay Sana 0.95 USDC for groceries" on the live call.',
+              pills: [["live call", "ok"], ["intent: pay_usdc", ""]],
+              wireTitle: "1. Spoken Payment Intent",
+              wire: `POST /turn\n{\n  "text": "Pay Sana 0.95 USDC for groceries"\n}`,
+              stamp: "SPOKEN",
+              stampTone: "",
+            },
+            {
+              who: "Walrus",
+              role: "the hedgehog",
+              char: "hedgehog",
+              state: "done",
+              action: "Resolves Sana → 0x51ca…11dc (exact match).",
+              ms: "1.1 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "address resolved",
+              said: "Exact-matched Sana in your Walrus roster: 0x51ca0f17…11dc.",
+              pills: [["resolvePerson('Sana')", "ok"], ["spam check: clean", "ok"]],
+              wireTitle: "2. Exact Roster Resolution",
+              wire: `resolvePerson("Sana")\n→ { alias: "Sana", address: "0x51ca0f179e06…2bca11dc" }\nspamMarkFor("0x51ca…") → null`,
+              stamp: "RESOLVED",
+              stampTone: "good",
+            },
+            {
+              who: "Purse Mouse",
+              role: "ticket builder",
+              char: "mouse",
+              state: "active",
+              action: "Builds unsigned Circle USDC PTB bytes.",
+              ms: "1.9 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "unsigned bytes",
+              said: "Built 0.95 USDC transfer bytes and held Ticket #001. Server has no key, so money cannot move yet.",
+              pills: [["prepareUsdc()", "ok"], ["awaiting_signature", "warn"]],
+              wireTitle: "3. Unsigned Ticket Held in Seat",
+              wire: `Ticket #001 (HELD, UNSIGNED)\nTo:    Sana (0x51ca…11dc)\nCoin:  Circle USDC (950000 base units)\nBytes: AAACAAgA… (waiting for wallet extension)`,
+              stamp: "UNSIGNED",
+              stampTone: "",
+            },
+            {
+              who: "Your Wallet",
+              role: "extension seal",
+              face: "/assets/face-dev.webp",
+              state: "paid",
+              action: "You approve inside Slush / Sui Wallet.",
+              ms: "4.2 s",
+              cost: "0.95 USDC",
+              costTone: "paid",
+              courier: "wallet signature",
+              said: "Your wallet signed and broadcast digest 9xK2pL… on Sui.",
+              pills: [["signAndExecute()", "ok"], ["0.95 USDC sent", "warn"]],
+              wireTitle: "4. Signed in Browser Wallet Extension",
+              wire: `wallet.signAndExecuteTransaction({ transaction: bytes })\n→ digest: "9xK2pL8vQr7m…"\n→ POST /pending/settle { digest }`,
+              stamp: "SIGNED BY YOU",
+              stampTone: "good",
+            },
+            {
+              who: "Tatum + Walrus",
+              role: "proof & receipt",
+              char: "bird",
+              state: "done",
+              action: "Verifies balance delta on chain, then saves receipt.",
+              ms: "5.6 s",
+              cost: "0.95 USDC",
+              costTone: "paid",
+              courier: "verified receipt",
+              said: '"0.95 USDC to Sana was verified on chain through Tatum and recorded in your Walrus memory."',
+              pills: [["usdcProof: -0.95 / +0.95", "ok"], ["walrus receipt saved", "ok"]],
+              wireTitle: "5. On-Chain Verification & Memory Write",
+              wire: `usdcProof("9xK2pL8vQr7m…")\n→ sender -950000 USDC, recipient +950000 USDC (SUCCESS)\n→ Remembered on Walrus with Suiscan digest link.`,
+              stamp: "SETTLED",
+              stampTone: "good",
+            },
+          ],
+        },
+        {
+          id: "spam-guard",
+          idx: "03",
+          tag: "pre-flight guard",
+          title: "Spam Mark Pre-Flight Stop",
+          sub: "Flagged addresses stop cold before a single transfer byte is built, repeating your own reason.",
+          hasTripToggle: false,
+          steps: [
+            {
+              who: "You",
+              role: "mark spam",
+              face: "/assets/face-imran.webp",
+              state: "active",
+              action: '"Mark 0xdead…1111 as spam: fake airdrop."',
+              ms: "0.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "mark_spam",
+              said: "Marking 0xdead…1111 as spam for your wallet with reason: fake airdrop.",
+              pills: [["mark_spam", "ok"], ["reason stored", "ok"]],
+              wireTitle: "1. User Flags Address as Spam",
+              wire: `markSpam({\n  owner: "wallet:0x…",\n  address: "0xdead…1111",\n  reason: "fake airdrop"\n})`,
+              stamp: "FLAGGED",
+              stampTone: "bad",
+            },
+            {
+              who: "You",
+              role: "later payment",
+              face: "/assets/face-imran.webp",
+              state: "active",
+              action: '"Send 5 USDC to 0xdead…1111."',
+              ms: "0.8 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "pay_usdc(5)",
+              said: "Attempting to send 5 USDC to 0xdead…1111…",
+              pills: [["pay_usdc", "warn"], ["amount: 5 USDC", ""]],
+              wireTitle: "2. Payment Attempt to Flagged Address",
+              wire: `runTool("pay_usdc", {\n  to: "0xdead…1111",\n  amount: 5\n})`,
+              stamp: "CHECKING",
+              stampTone: "",
+            },
+            {
+              who: "Purse Mouse",
+              role: "spam guard",
+              char: "mouse",
+              state: "paid",
+              action: "Intercepts call before prepareUsdc() runs!",
+              ms: "0.9 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "STOPPED COLD",
+              said: "STOPPED: 0xdead…1111 is marked spam (fake airdrop). Zero bytes were built and zero money moved.",
+              pills: [["stopped: marked as spam", "warn"], ["0 bytes built", "ok"]],
+              wireTitle: "3. Pre-Flight Spam Interception",
+              wire: `{\n  "marked_spam": true,\n  "amount": 5,\n  "reason": "fake airdrop",\n  "note": "Nothing was built and no money moved."\n}`,
+              stamp: "STOPPED · SPAM",
+              stampTone: "bad",
+            },
+            {
+              who: "Tatum",
+              role: "the bird",
+              char: "bird",
+              state: "skipped",
+              action: "Skipped — no transaction prepared.",
+              ms: "0.9 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "0 bytes built",
+              said: "prepareUsdc() was never called. Your wallet popup was never triggered.",
+              pills: [["prepareUsdc: skipped", "ok"]],
+              wireTitle: "4. Transaction Builder Bypassed",
+              wire: `// BLOCKED BEFORE BYTES EXIST\n// A warning after signing is a receipt, not a warning.`,
+              stamp: "NOT BUILT",
+              stampTone: "good",
+            },
+            {
+              who: "Gemini",
+              role: "the frog",
+              char: "frog",
+              state: "done",
+              action: "Repeats your reason and asks if you are sure.",
+              ms: "1.8 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "warning spoken",
+              said: '"I stopped that 5 USDC payment because you marked 0xdead…1111 as spam: fake airdrop. Say yes if you still want to send it."',
+              pills: [["grounded: 5 USDC", "ok"], ["awaiting explicit yes", "ok"]],
+              wireTitle: "5. Grounded Warning Spoken",
+              wire: `"I stopped that 5 USDC payment because you marked 0xdead…1111 as spam (fake airdrop). Nothing was built."`,
+              stamp: "PROTECTED",
+              stampTone: "good",
+            },
+          ],
+        },
+        {
+          id: "reminder-loop",
+          idx: "04",
+          tag: "server clock",
+          title: "Timed Reminder Delivery",
+          sub: "Deterministic server-side time arithmetic that writes the reminder back into your active thread.",
+          hasTripToggle: false,
+          steps: [
+            {
+              who: "You",
+              role: "voice or text",
+              face: "/assets/face-dev.webp",
+              state: "active",
+              action: '"Remind me in 30 seconds to check Dev\'s split."',
+              ms: "0.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "remind_me",
+              said: 'Heard "Remind me in 30 seconds to check Dev\'s split."',
+              pills: [["remind_me", "ok"], ["when: in 30 seconds", ""]],
+              wireTitle: "1. Spoken Time Expression",
+              wire: `runTool("remind_me", {\n  what: "check Dev's split",\n  when: "in 30 seconds"\n})`,
+              stamp: "HEARD",
+              stampTone: "",
+            },
+            {
+              who: "Server Clock",
+              role: "parseWhen()",
+              char: "frog",
+              state: "done",
+              action: "Parses exact timestamp in deterministic code.",
+              ms: "0.2 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "+30,000 ms",
+              said: "Parsed 'in 30 seconds' deterministically on the server — model never guesses clock arithmetic.",
+              pills: [["parseWhen: +30s", "ok"], ["reminders.sqlite", "ok"]],
+              wireTitle: "2. Deterministic Time Parser",
+              wire: `parseWhen("in 30 seconds")\n→ due_at: Date.now() + 30_000\n→ Stored in reminders.sqlite for owner wallet:0x…`,
+              stamp: "SCHEDULED",
+              stampTone: "good",
+            },
+            {
+              who: "5s Ticker",
+              role: "background loop",
+              char: "hedgehog",
+              state: "active",
+              action: "Server interval checks dueReminders() every 5s.",
+              ms: "15.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "ticking…",
+              said: "Background ticker polling reminders.sqlite while the server stays up…",
+              pills: [["setInterval(5000)", "ok"], ["waiting for due_at", ""]],
+              wireTitle: "3. Always-On Server Ticker",
+              wire: `setInterval(() => {\n  for (const r of dueReminders(Date.now())) {\n    markReminderFired(r.id);\n    chats.append(r.chat, { said: "Reminder: " + r.what });\n  }\n}, 5000);`,
+              stamp: "TICKING",
+              stampTone: "",
+            },
+            {
+              who: "Chat Store",
+              role: "chats.sqlite",
+              char: "mouse",
+              state: "done",
+              action: "Appends reminder turn into your active thread.",
+              ms: "30.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "turn appended",
+              said: 'Timer fired! Appended "Reminder: check Dev\'s split" directly into your conversation thread.',
+              pills: [["fired: true", "ok"], ["thread updated", "ok"]],
+              wireTitle: "4. Injected Into Active Thread",
+              wire: `chats.append("wallet:0x…::main", {\n  asked: "",\n  said: "Reminder: check Dev's split",\n  at: 1794002400000\n})`,
+              stamp: "FIRED ON TIME",
+              stampTone: "good",
+            },
+            {
+              who: "Your Screen",
+              role: "live redraw",
+              face: "/assets/face-dev.webp",
+              state: "done",
+              action: "Chat polls /chats and renders the reminder bubble.",
+              ms: "30.5 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "delivered",
+              said: '"Reminder: check Dev\'s split" appears in your chat log and survives any page reload.',
+              pills: [["delivered to chat", "ok"], ["0.00 USDC", "ok"]],
+              wireTitle: "5. Visible in Chat & Spoken",
+              wire: `GET /chats → turns[last]:\n"Reminder: check Dev's split"`,
+              stamp: "DELIVERED",
+              stampTone: "good",
+            },
+          ],
+        },
+        {
+          id: "x402-note",
+          idx: "05",
+          tag: "x402 market",
+          title: "Sell & Open a Locked Memory",
+          sub: "Lock any Walrus memory behind a USDC price; buyers pay on-chain through the x402 facilitator.",
+          hasTripToggle: false,
+          steps: [
+            {
+              who: "Seller (You)",
+              role: "/ask page",
+              face: "/assets/face-tara.webp",
+              state: "active",
+              action: "Pick a Walrus blob and price it at 0.02 USDC.",
+              ms: "0.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "lock blob",
+              said: "Selected a Walrus memory line and locked it behind /ask/k9x2m4p8 at 0.02 USDC.",
+              pills: [["POST /ask/from-memory", "ok"], ["price: 0.02 USDC", ""]],
+              wireTitle: "1. Memory Locked Behind x402 Link",
+              wire: `POST /ask/from-memory\n{\n  "blob": "iHntlg4AuNtZDQMkcwhR…",\n  "usdc": 0.02\n}\n→ link: "/ask/k9x2m4p8"`,
+              stamp: "LOCKED",
+              stampTone: "",
+            },
+            {
+              who: "Buyer Agent",
+              role: "open_paid_link",
+              char: "frog",
+              state: "active",
+              action: "Requests note:k9x2m4p8 from Seller port 8788.",
+              ms: "0.6 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "GET /facts",
+              said: "Buyer asks Seller process (:8788) for note:k9x2m4p8 without a receipt.",
+              pills: [["GET :8788/facts", "ok"]],
+              wireTitle: "2. Unpaid Request Hits Seller Wall",
+              wire: `GET http://127.0.0.1:8788/facts/note:k9x2m4p8\n→ Seller checks receipts.sqlite: unpaid`,
+              stamp: "402 WALL",
+              stampTone: "bad",
+            },
+            {
+              who: "x402 Seller",
+              role: "the purse mouse",
+              char: "mouse",
+              state: "paid",
+              action: "Returns HTTP 402 with exact payout terms.",
+              ms: "0.8 s",
+              cost: "0.02 USDC",
+              costTone: "paid",
+              courier: "402 terms",
+              said: "Seller answers HTTP 402: pay 0.02 USDC to seller wallet on sui:mainnet.",
+              pills: [["HTTP 402", "warn"], ["scheme: exact", ""]],
+              wireTitle: "3. Standard x402 v2 Challenge",
+              wire: `HTTP/1.1 402 Payment Required\n{\n  "scheme": "exact",\n  "network": "sui:mainnet",\n  "amount": "20000",\n  "payTo": "0x81cd5dad…"\n}`,
+              stamp: "0.02 USDC QUOTED",
+              stampTone: "bad",
+            },
+            {
+              who: "Facilitator",
+              role: "verify & settle",
+              char: "bird",
+              state: "paid",
+              action: "Checks buyer's signed bytes, simulates & broadcasts.",
+              ms: "3.1 s",
+              cost: "0.02 USDC",
+              costTone: "paid",
+              courier: "settled on sui",
+              said: "Buyer signed bytes in wallet; Seller's facilitator verified the exact USDC transfer and settled on Sui.",
+              pills: [["facilitator.settle()", "ok"], ["tx verified", "ok"]],
+              wireTitle: "4. Keyless Facilitator Settlement",
+              wire: `verifyAndSettle(signedBytes, signature, terms)\n→ Simulated & broadcast on Sui\n→ Recorded in sales journal (replay-proof)`,
+              stamp: "VERIFIED",
+              stampTone: "good",
+            },
+            {
+              who: "Walrus",
+              role: "the hedgehog",
+              char: "hedgehog",
+              state: "done",
+              action: "Releases secret note & writes to buyer's Walrus.",
+              ms: "4.5 s",
+              cost: "0.02 USDC",
+              costTone: "paid",
+              courier: "note unlocked",
+              said: "Words released to buyer and saved to buyer's Walrus namespace. Re-opening the link is free forever.",
+              pills: [["fact released", "ok"], ["replays: $0.00", "ok"]],
+              wireTitle: "5. Unlocked & Journalled Forever",
+              wire: `HTTP/1.1 200 OK\n{\n  "fact": { "kind": "note", "title": "Cloud storage vendor", "body": "…" },\n  "charged": 0.02\n}`,
+              stamp: "UNLOCKED",
+              stampTone: "good",
+            },
+          ],
+        },
+        {
+          id: "statement-card",
+          idx: "06",
+          tag: "vector proof",
+          title: "Zero-Model Vector Statement",
+          sub: "Chain amounts from Tatum + names from Walrus typeset directly into SVG, PDF and CSV.",
+          hasTripToggle: false,
+          steps: [
+            {
+              who: "You",
+              role: "voice or /report",
+              face: "/assets/face-sana.webp",
+              state: "active",
+              action: '"Give me a statement of what I paid this month."',
+              ms: "0.0 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "make_report",
+              said: "Requesting monthly statement and budget meter.",
+              pills: [["make_report", "ok"], ["route: /report", ""]],
+              wireTitle: "1. Statement Request",
+              wire: `runTool("make_report", {})\n// Or open /report directly`,
+              stamp: "REQUESTED",
+              stampTone: "",
+            },
+            {
+              who: "Tatum",
+              role: "the bird",
+              char: "bird",
+              state: "done",
+              action: "Sums outgoing & incoming USDC across checkpoints.",
+              ms: "1.8 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "chain sums",
+              said: "Read every transfer from Tatum GraphQL and summed exact monthly totals in deterministic TypeScript.",
+              pills: [["counterparties()", "ok"], ["monthSpend()", "ok"]],
+              wireTitle: "2. Deterministic Chain Arithmetic",
+              wire: `totalOut: "24.50 USDC"\ntotalIn:  "8.00 USDC"\nmonths:   [{ label: "Sep", amount: 11.2 }, { label: "Oct", amount: 24.5 }]`,
+              stamp: "MEASURED",
+              stampTone: "good",
+            },
+            {
+              who: "Walrus",
+              role: "the hedgehog",
+              char: "hedgehog",
+              state: "done",
+              action: "Joins human names & cadence notes to addresses.",
+              ms: "2.4 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "names joined",
+              said: "Matched 0x51ca… → Sana, 0xaf95… → Dev, 0x5aad… → Tara from your Walrus namespace.",
+              pills: [["peopleRoster()", "ok"], ["cadence measured", "ok"]],
+              wireTitle: "3. Walrus Identity Join",
+              wire: `0x51ca…11dc → "Sana" (every ~3 days)\n0xaf95…dda5 → "Dev" (bill splits)\n0x5aad…d283 → "Tara" (cloud subscription)`,
+              stamp: "NAMED",
+              stampTone: "good",
+            },
+            {
+              who: "Cap Gauge",
+              role: "cap.sqlite",
+              char: "mouse",
+              state: "done",
+              action: "Compares monthly spend against your USDC limit.",
+              ms: "2.5 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "green / amber / red",
+              said: "Checked your monthly cap (25.00 USDC): 24.50 USDC spent (98% — amber warning, never blocks).",
+              pills: [["capMeter()", "ok"], ["98% of cap", "warn"]],
+              wireTitle: "4. Monthly Budget Gauge",
+              wire: `capMeter(24.50, 25.00)\n→ { spent: 24.5, monthly: 25, left: 0.5, state: "amber" }`,
+              stamp: "CHECKED",
+              stampTone: "good",
+            },
+            {
+              who: "Typesetter",
+              role: "cardSvg()",
+              char: "frog",
+              state: "done",
+              action: "Renders vector SVG, printable PDF & CSV sheet.",
+              ms: "2.6 s",
+              cost: "0.00 USDC",
+              costTone: "free",
+              courier: "no model digits",
+              said: "Typeset 1080×1350 vector statement card. Zero image models touched a single digit.",
+              pills: [["/report.svg", "ok"], ["PDF & CSV ready", "ok"], ["seal: NO MODEL", "ok"]],
+              wireTitle: "5. Vector Statement Card Ready",
+              wire: `GET /report.svg → 1080x1350 vector SVG\nExport options: Save SVG · Print PDF · Download CSV\nProvenance seal: NO MODEL WROTE THESE NUMBERS`,
+              stamp: "TYPESET",
+              stampTone: "good",
+            },
+          ],
+        },
+      ];
+
+      let activeScIdx = 0;
+      let activeTrip = "cold";
+      let activeStepIdx = 0;
+      let timer = null;
+
+      const scTabsEl = $("scTabs");
+      const stationsEl = $("stations");
+
+      function currentSteps() {
+        const sc = SCENARIOS[activeScIdx];
+        return sc.hasTripToggle ? sc.trips[activeTrip].steps : sc.steps;
+      }
+
+      function currentAsked() {
+        const sc = SCENARIOS[activeScIdx];
+        return sc.hasTripToggle ? sc.trips[activeTrip].asked : sc.steps[0].asked || `"${sc.steps[0].action}"`;
+      }
+
+      function renderTabs() {
+        scTabsEl.innerHTML = "";
+        SCENARIOS.forEach((sc, i) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `scTab${i === activeScIdx ? " on" : ""}`;
+          btn.setAttribute("role", "tab");
+          btn.setAttribute("aria-selected", String(i === activeScIdx));
+          btn.innerHTML = `
+            <span class="scTabTop"><span>${sc.idx}</span><span>${sc.tag}</span></span>
+            <b>${sc.title}</b>
+          `;
+          btn.addEventListener("click", () => {
+            stopPlay();
+            activeScIdx = i;
+            activeStepIdx = 0;
+            renderTabs();
+            renderStage();
+          });
+          scTabsEl.append(btn);
+        });
+      }
+
+      function actorMarkup(st) {
+        if (st.char) {
+          return `<span class="charCrop stAvatar" data-char="${st.char}"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="" /></span>`;
+        }
+        return `<span class="stFace"><img src="${st.face || "/assets/face-sana.webp"}" alt="" /></span>`;
+      }
+
+      function renderStage() {
+        const sc = SCENARIOS[activeScIdx];
+        const steps = currentSteps();
+        const step = steps[activeStepIdx] || steps[0];
+
+        $("thStepBadge").textContent = `STEP ${activeStepIdx + 1} OF ${steps.length}`;
+        $("thTitle").textContent = sc.title;
+        $("thSub").textContent = sc.sub;
+
+        const sw = $("tripSwitch");
+        sw.classList.toggle("show", Boolean(sc.hasTripToggle));
+        for (const b of sw.querySelectorAll("button")) {
+          b.classList.toggle("on", b.dataset.trip === activeTrip);
+        }
+
+        const costMeter = $("thCostMeter");
+        costMeter.className = `thMeter ${step.costTone || "free"}`;
+        $("thCost").textContent = step.cost;
+        $("thClock").textContent = step.ms;
+
+        // Courier position along the 5 stations (10%, 30%, 50%, 70%, 90%)
+        const pct = 10 + activeStepIdx * 20;
+        const courier = $("courier");
+        courier.style.left = `${pct}%`;
+        courier.className = `courier ${step.costTone || ""}`;
+        $("courierIdx").textContent = String(activeStepIdx + 1);
+        $("courierLabel").textContent = step.courier;
+        $("wireFill").style.width = `${activeStepIdx * 25}%`;
+
+        stationsEl.innerHTML = "";
+        steps.forEach((s, idx) => {
+          const card = document.createElement("button");
+          card.type = "button";
+          const isCurrent = idx === activeStepIdx;
+          const isPast = idx < activeStepIdx;
+          let cls = "stCard";
+          if (isCurrent) cls += " active";
+          else if (s.state === "skipped" && isPast) cls += " skipped";
+          else if (isPast && s.state === "paid") cls += " paid";
+          else if (isPast) cls += " done";
+          if (isCurrent && s.state === "skipped") cls += " skipped";
+          if (isCurrent && s.state === "paid") cls += " paid";
+
+          const stateLabel =
+            s.state === "skipped"
+              ? "skipped"
+              : isCurrent
+                ? "active"
+                : isPast
+                  ? "done"
+                  : "waiting";
+
+          card.className = cls;
+          card.innerHTML = `
+            <div class="stHead">
+              <span class="stIdx">0${idx + 1}</span>
+              <span class="stState">${stateLabel}</span>
+            </div>
+            <div class="stActor">
+              ${actorMarkup(s)}
+              <div class="stWho">
+                <b>${s.who}</b>
+                <span>${s.role}</span>
+              </div>
+            </div>
+            <p class="stAction">${s.action}</p>
+            <div class="stFoot">
+              <span>${s.ms}</span>
+              <span>${s.cost}</span>
+            </div>
+            ${isCurrent || isPast ? `<span class="stStamp">${s.stamp}</span>` : ""}
+          `;
+          card.addEventListener("click", () => {
+            stopPlay();
+            activeStepIdx = idx;
+            renderStage();
+          });
+          stationsEl.append(card);
+        });
+
+        $("simAsked").textContent = sc.hasTripToggle ? currentAsked() : steps[0].action;
+        $("simSpeaker").textContent = `Station 0${activeStepIdx + 1} · ${step.who} (${step.role})`;
+        $("simSaid").textContent = step.said;
+
+        const pillsEl = $("simPills");
+        pillsEl.innerHTML = "";
+        (step.pills || []).forEach(([txt, tone]) => {
+          const p = document.createElement("span");
+          p.className = `simPill ${tone || ""}`;
+          p.textContent = txt;
+          pillsEl.append(p);
+        });
+
+        $("wireTitle").textContent = step.wireTitle;
+        $("wireBox").textContent = step.wire;
+        const stEl = $("wireStamp");
+        stEl.textContent = step.stamp;
+        stEl.className = `wireStamp ${step.stampTone || ""}`;
+      }
+
+      function startPlay() {
+        stopPlay();
+        const btn = $("btnPlay");
+        btn.textContent = "⏸ Pause";
+        btn.classList.add("running");
+        $("waveSim").classList.add("on");
+        timer = setInterval(() => {
+          const steps = currentSteps();
+          if (activeStepIdx < steps.length - 1) {
+            activeStepIdx++;
+            renderStage();
+          } else {
+            stopPlay();
+          }
+        }, 1800);
+      }
+
+      function stopPlay() {
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        const btn = $("btnPlay");
+        if (btn) {
+          btn.textContent = "▶ Play";
+          btn.classList.remove("running");
+        }
+        $("waveSim")?.classList.remove("on");
+      }
+
+      $("btnPlay").addEventListener("click", () => {
+        if (timer) stopPlay();
+        else {
+          const steps = currentSteps();
+          if (activeStepIdx >= steps.length - 1) activeStepIdx = 0;
+          renderStage();
+          startPlay();
+        }
+      });
+
+      $("btnPrev").addEventListener("click", () => {
+        stopPlay();
+        const steps = currentSteps();
+        activeStepIdx = (activeStepIdx - 1 + steps.length) % steps.length;
+        renderStage();
+      });
+
+      $("btnNext").addEventListener("click", () => {
+        stopPlay();
+        const steps = currentSteps();
+        activeStepIdx = (activeStepIdx + 1) % steps.length;
+        renderStage();
+      });
+
+      $("tripSwitch").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-trip]");
+        if (!btn) return;
+        stopPlay();
+        activeTrip = btn.dataset.trip;
+        activeStepIdx = 0;
+        renderStage();
+      });
+
+      renderTabs();
+      renderStage();
+
+      /* ==================== 02. FOUR WORKERS SWITCHBOARD ==================== */
+      const WORKER_COPY = {
+        tatum: {
+          on: "ONLINE · Reading mainnet & testnet checkpoints and verifying both sides of every USDC transfer.",
+          off: "UNPLUGGED · Balances, counterparty history, and on-chain receipt verification are blind.",
+        },
+        walrus: {
+          on: "ONLINE · Warm lookups return in ~2s for $0.00 without touching the chain or paying twice.",
+          off: "UNPLUGGED · Agent has amnesia. Every question re-reads the chain and unknown names are forgotten on restart.",
+        },
+        gemini: {
+          on: "ONLINE · Routing spoken sentences to deterministic tools with automatic NVIDIA fallback.",
+          off: "UNPLUGGED · Natural speech and tool selection stop; only manual forms on /pay and /request remain.",
+        },
+        x402: {
+          on: "ONLINE · Charging 0.01–0.03 USDC once per unknown fact and releasing only after on-chain settlement.",
+          off: "UNPLUGGED · Unknown wallet profiles, paid receipt checks, and locked memory links cannot be bought.",
+        },
       };
-      mountWallet(() => loadMeta().then(paint));
-      loadMeta().then(paint);
+
+      const workerState = { tatum: true, walrus: true, gemini: true, x402: true };
+
+      function syncWorkers() {
+        let online = 0;
+        for (const [k, isOn] of Object.entries(workerState)) {
+          if (isOn) online++;
+          const card = document.querySelector(`.wkrCard[data-wkr="${k}"]`);
+          const btn = document.querySelector(`[data-toggle="${k}"]`);
+          const st = document.querySelector(`[data-status="${k}"]`);
+          card?.classList.toggle("off", !isOn);
+          if (btn) btn.textContent = isOn ? "● Plugged in" : "○ Unplugged";
+          if (st) st.textContent = isOn ? WORKER_COPY[k].on : WORKER_COPY[k].off;
+        }
+        $("wkrSummary").textContent = `${online} of 4 workers online`;
+        const offList = Object.entries(workerState)
+          .filter(([, v]) => !v)
+          .map(([k]) => k.toUpperCase());
+        const banner = $("sbBanner").querySelector("span");
+        if (!offList.length) {
+          banner.innerHTML = "<b>Switchboard diagnosis:</b> All four workers are connected. Warm questions stop at Walrus; cold questions pay once through x402 and write back to Walrus.";
+        } else {
+          banner.innerHTML = `<b>Switchboard warning (${offList.join(", ")} unplugged):</b> Remove any one worker and its exact job fails immediately — proving zero decorative dependencies.`;
+        }
+      }
+
+      document.getElementById("wkrGrid").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-toggle]");
+        if (!btn) return;
+        const k = btn.dataset.toggle;
+        workerState[k] = !workerState[k];
+        syncWorkers();
+      });
+
+      $("resetWorkers").addEventListener("click", () => {
+        workerState.tatum = true;
+        workerState.walrus = true;
+        workerState.gemini = true;
+        workerState.x402 = true;
+        syncWorkers();
+      });
+
+      /* ==================== 03. SAFETY GUARDRAILS TESTER ==================== */
+      const REFUSALS = [
+        {
+          idx: "01",
+          title: "Auto-Sign Without Wallet",
+          sub: "Try to move USDC from a spoken sentence alone",
+          tag: "keyless server",
+          kicker: "GUARDRAIL 01 · NO SERVER SIGNING KEY",
+          headline: "Spoken words only ever build unsigned bytes",
+          explain: "The server holds zero user private keys. Calling pay_usdc prepares the exact Circle USDC transfer bytes and parks them in your seat until your browser wallet signs.",
+          code: `// src/tools.ts — pay_usdc\nconst p = await prepareUsdc(session().wallet, address, usdc);\nconst held = hold({ sender: p.sender, to: p.to, usdc: p.usdc, bytes: p.bytes });\nreturn { awaiting_signature: true, id: held.id, where: "the ticket under this reply" };`,
+          file: "Enforced in src/tools.ts & src/wallet.ts",
+        },
+        {
+          idx: "02",
+          title: "Fake Digest Claim",
+          sub: "Submit a bogus or failed transaction digest to /pending/settle",
+          tag: "chain proof",
+          kicker: "GUARDRAIL 02 · ON-CHAIN BALANCE DELTA PROOF",
+          headline: "A browser claiming it paid is never trusted",
+          explain: "Before any payment is marked settled or written to Walrus, usdcProof() reads the transaction back from Tatum and verifies that exact USDC left your address and arrived at the recipient.",
+          code: `// src/server.ts — usdcProof()\nconst left = proof.changes.find(c => c.amount === -expected && isUsdc(c.coinType));\nconst arrived = proof.changes.find(c => c.amount === expected && isUsdc(c.coinType));\nif (!left || !arrived) return "that transaction is not the expected USDC transfer";`,
+          file: "Enforced in src/server.ts (usdcProof)",
+        },
+        {
+          idx: "03",
+          title: "Double-Charge Same Fact",
+          sub: "Ask for an address profile or paid note a second time",
+          tag: "replay journal",
+          kicker: "GUARDRAIL 03 · WALRUS + JOURNAL DEDUPLICATION",
+          headline: "Never pays twice for a fact it already bought",
+          explain: "Every paid lookup checks Walrus memory first and journals the signed envelope before settlement. If a network drop happens mid-flight, retryStuck() replays the receipt instead of charging again.",
+          code: `// src/tools.ts — paid_lookup\nconst remembered = await knownProfile(address);\nif (remembered) {\n  return { cost_usdc: 0, from: "memory", said: "I already bought this profile" };\n}`,
+          file: "Enforced in src/tools.ts & src/x402.ts",
+        },
+        {
+          idx: "04",
+          title: "Pay Flagged Spam Address",
+          sub: "Send USDC to an address you previously marked as spam",
+          tag: "pre-flight stop",
+          kicker: "GUARDRAIL 04 · SPAM MARK PRE-FLIGHT INTERCEPTION",
+          headline: "Stops cold before a single byte is built",
+          explain: "If an address is in your spam list, both pay_usdc and POST /send abort before calling prepareUsdc(), repeating your own stored reason and requiring explicit confirmation.",
+          code: `// src/tools.ts — pay_usdc\nconst mark = spamMarkFor(address);\nif (mark && String(a.confirm_spam ?? "").toLowerCase() !== "yes") {\n  return { marked_spam: true, amount: usdc, reason: mark.reason };\n}`,
+          file: "Enforced in src/spam.ts, src/tools.ts & src/server.ts",
+        },
+        {
+          idx: "05",
+          title: "Hallucinate Numbers or Names",
+          sub: "Model invents a dollar figure or guesses a partial address",
+          tag: "groundAnswer()",
+          kicker: "GUARDRAIL 05 · DETERMINISTIC NUMBER GROUNDING",
+          headline: "Every spoken number is checked against tool output",
+          explain: "groundAnswer() inspects every digit the model writes against the raw JSON returned by tools in that turn. Unconfirmed numbers are stripped, and unknown names trigger needs_address instead of guessing.",
+          code: `// src/brain.ts & src/tools.ts\nif (!full && !person) {\n  return { needs_address: true, who: raw, amount: usdc };\n}`,
+          file: "Enforced in src/brain.ts & src/tools.ts",
+        },
+      ];
+
+      let activeRefIdx = 0;
+      const refListEl = $("refList");
+
+      function renderRefusals() {
+        refListEl.innerHTML = "";
+        REFUSALS.forEach((r, i) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `refBtn${i === activeRefIdx ? " on" : ""}`;
+          btn.innerHTML = `
+            <span class="refNum">${r.idx}</span>
+            <span><b>${r.title}</b><small>${r.sub}</small></span>
+            <span class="refTag">${r.tag}</span>
+          `;
+          btn.addEventListener("click", () => {
+            activeRefIdx = i;
+            renderRefusals();
+          });
+          refListEl.append(btn);
+        });
+
+        const cur = REFUSALS[activeRefIdx];
+        $("refKicker").textContent = cur.kicker;
+        $("refTitle").textContent = cur.headline;
+        $("refExplain").textContent = cur.explain;
+        $("refCode").textContent = cur.code;
+        $("refFile").textContent = cur.file;
+      }
+
+      renderRefusals();
+
+      /* ==================== 04. 18-TOOL SURFACE MATRIX ==================== */
+      const TOOLS = [
+        { name: "people_you_know", kind: "free", badge: "walrus · free", desc: "Lists every named person in your wallet's Walrus namespace.", wire: `args: {}\nreturns: { count: 5, people: [{ alias: "Sana", address: "0x51ca…", note: "groceries" }] }` },
+        { name: "find_person", kind: "free", badge: "walrus · free", desc: "Fuzzy-matches a spoken name to a saved address or opens the address field.", wire: `args: { name: "Sana" }\nreturns: { alias: "Sana", address: "0x51ca…11dc", confidence: 1 }` },
+        { name: "who_is_this", kind: "free", badge: "both · free", desc: "Combines Walrus notes and Tatum transfer cadence for one address.", wire: `args: { address: "0x51ca…11dc" }\nreturns: { name: "Sana", flows: 6, net: "14.80", asset: "USDC" }` },
+        { name: "money_history", kind: "free", badge: "tatum · free", desc: "Ranks counterparties by total volume, frequency, and recency.", wire: `args: {}\nreturns: { counterparties: 5, top_by_amount: ["Sana 14.80 USDC"] }` },
+        { name: "monthly_summary", kind: "free", badge: "tatum · free", desc: "Sums outgoing and incoming transfers month by month.", wire: `args: {}\nreturns: { months: [{ month: "2026-11", out: "24.50 USDC" }] }` },
+        { name: "what_is_due", kind: "free", badge: "rhythm · free", desc: "Detects recurring payment rhythms and flags overdue bills.", wire: `args: {}\nreturns: { due: 1, late: 0, committed: [{ per_month: "12.00 USDC" }] }` },
+        { name: "what_do_i_remember", kind: "free", badge: "walrus · free", desc: "Semantic search across all notes and receipts stored on Walrus.", wire: `args: { query: "groceries" }\nreturns: { matched: 2, people: ["Sana"], memories: [...] }` },
+        { name: "memory_stats", kind: "free", badge: "walrus · free", desc: "Counts stored blobs in your people and counterparties namespaces.", wire: `args: {}\nreturns: { total: 14, namespaces: [{ name: "people-mainnet-…", memories: 9 }] }` },
+        { name: "make_report", kind: "free", badge: "proof · free", desc: "Builds the deterministic monthly statement at /report.", wire: `args: {}\nreturns: { where: "/report", headline: "24.50 USDC", total_out: "24.50 USDC" }` },
+        { name: "name_a_person", kind: "write", badge: "walrus · write", desc: "Permanently binds a human name and note to a 0x address on Walrus.", wire: `args: { name: "Ravi", address: "0xc239…e1df", note: "plumber, Fridays" }\nreturns: { alias: "Ravi", blobId: "SePaTTwd…" }` },
+        { name: "remember_this", kind: "write", badge: "walrus · write", desc: "Writes a standalone fact to your wallet's Walrus namespace.", wire: `args: { text: "Split rent with Dev on the 1st" }\nreturns: { stored: "86NzBryz…" }` },
+        { name: "set_monthly_limit", kind: "write", badge: "cap · write", desc: "Sets or reads your monthly USDC budget gauge on /report.", wire: `args: { usdc: 25 }\nreturns: { monthly: 25, spent: 14.8, left: 10.2, state: "ok" }` },
+        { name: "mark_spam", kind: "write", badge: "guard · write", desc: "Flags an address as spam with a reason so future payments stop cold.", wire: `args: { who: "0xdead…1111", reason: "fake airdrop" }\nreturns: { marked: true, reason: "fake airdrop" }` },
+        { name: "remind_me", kind: "write", badge: "timer · write", desc: "Parses a time phrase on the server and schedules an in-chat reminder.", wire: `args: { what: "check Dev's split", when: "in 30 seconds" }\nreturns: { set: true, due_at: "2026-11-07T…" }` },
+        { name: "request_money", kind: "paid", badge: "link · usdc", desc: "Opens the single-use payment request & QR generator for your wallet.", wire: `args: { usdc: 5, what_for: "lunch split", minutes: 30 }\nreturns: { needs_request_fields: true, usdc: 5, minutes: 30 }` },
+        { name: "pay_usdc", kind: "paid", badge: "ticket · usdc", desc: "Checks spam marks and builds unsigned USDC bytes for your wallet to sign.", wire: `args: { to: "Sana", amount: 0.95 }\nreturns: { awaiting_signature: true, to: "Sana", usdc: 0.95 }` },
+        { name: "paid_lookup", kind: "paid", badge: "x402 · 0.01", desc: "Quotes and settles an x402 profile lookup for an unknown wallet once.", wire: `args: { address: "0x81cd…8d8f" }\nreturns: { awaiting_signature: true, to: "Paid chain index", usdc: 0.01 }` },
+        { name: "open_paid_link", kind: "paid", badge: "x402 · link", desc: "Quotes and unlocks another user's priced Walrus memory link (/ask/:id).", wire: `args: { id: "k9x2m4p8" }\nreturns: { awaiting_signature: true, usdc: 0.02, what: "locked memory" }` },
+      ];
+
+      let activeToolFilter = "all";
+      let activeToolName = TOOLS[0].name;
+      const tmGridEl = $("tmGrid");
+
+      function renderTools() {
+        tmGridEl.innerHTML = "";
+        TOOLS.forEach((t, i) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `tmCard${t.name === activeToolName ? " on" : ""}`;
+          btn.hidden = activeToolFilter !== "all" && t.kind !== activeToolFilter;
+          btn.innerHTML = `
+            <div class="tmTop">
+              <span class="tmCode">${String(i + 1).padStart(2, "0")} · ${t.name}</span>
+              <span class="tmBadge ${t.kind}">${t.badge}</span>
+            </div>
+            <p class="tmDesc">${t.desc}</p>
+          `;
+          btn.addEventListener("click", () => {
+            activeToolName = t.name;
+            renderTools();
+          });
+          tmGridEl.append(btn);
+        });
+
+        const cur = TOOLS.find((t) => t.name === activeToolName) || TOOLS[0];
+        $("tiGroup").textContent = `TOOL INSPECTOR · ${cur.badge.toUpperCase()}`;
+        $("tiName").textContent = cur.name;
+        $("tiDesc").textContent = cur.desc;
+        $("tiPayload").textContent = cur.wire;
+      }
+
+      document.getElementById("tmFilter").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-filter]");
+        if (!btn) return;
+        activeToolFilter = btn.dataset.filter;
+        for (const b of document.querySelectorAll("#tmFilter button")) {
+          b.classList.toggle("on", b === btn);
+        }
+        const firstVisible = TOOLS.find((t) => activeToolFilter === "all" || t.kind === activeToolFilter);
+        if (firstVisible) activeToolName = firstVisible.name;
+        renderTools();
+      });
+
+      renderTools();
     </script>
   </body>
 </html>
