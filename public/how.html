@@ -4,8 +4,11 @@
     <meta charset="utf-8" />
     <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>How Ken Works · Interactive Workflow Showcase</title>
-    <meta name="description" content="Interactive visual showcase of Ken's six core workflows, four cartoon workers, safety guardrails and 18-tool surface." />
+    <title>How Ken Works · A Simple Visual Story</title>
+    <meta
+      name="description"
+      content="See how Ken works in plain English: four friendly cartoon helpers that listen, remember your friends, check your balance, and never touch your money without your approval."
+    />
     <link rel="stylesheet" href="/theme.css" />
     <script>
       window.__walletStandardEarly = [];
@@ -27,217 +30,730 @@
         });
       } catch {}
     </script>
-    <script defer src="/vendor/gsap.min.js"></script>
-    <noscript><style>.reveal { opacity: 1; transform: none }</style></noscript>
     <style>
-      /* ---------- strict parade geometry ----------
-         Every section aligns to --shell (1320px) with identical outer padding, symmetric
-         CSS grid tracks, equal-height cells, and consistent 1.5px ink borders. */
-      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); }
-      main { overflow-x: clip; }
-      section { position: relative; padding: clamp(44px, 4.4vw, 68px) 0; }
-      section::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
-      section:last-of-type::after { display: none; }
-
-      .secHead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: end; margin-bottom: 24px; }
-      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
-      h1 { font: 400 clamp(30px, 3.8vw, 42px)/1.08 var(--serif); letter-spacing: -0.02em; margin: 0 0 8px; }
-      h2 { font: 400 clamp(26px, 2.8vw, 34px)/1.1 var(--serif); letter-spacing: -0.018em; margin: 0 0 8px; }
-      .lead { color: var(--ink-2); max-width: 64ch; margin: 0; font-size: var(--step-0); }
-      .badgePill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: var(--edge) solid var(--ink); border-radius: 999px; background: var(--paper-sunk); font: 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); box-shadow: var(--lift) var(--lift) 0 var(--sheet); white-space: nowrap; }
-      .badgePill i { width: 7px; height: 7px; border-radius: 50%; background: var(--clay); display: inline-block; }
-
-      /* ---------- cartoon character crop helper ---------- */
-      .charCrop { position: relative; display: block; overflow: hidden; border-radius: 10px; background: var(--paper-sunk); border: 1px solid var(--rule-strong); }
-      .charCrop img { position: absolute; max-width: none; display: block; pointer-events: none; }
-      .charCrop[data-char="bird"] { aspect-ratio: 308 / 509; }
-      .charCrop[data-char="bird"] img { width: 357.1%; height: 123.4%; left: 0%; top: -11.1%; }
-      .charCrop[data-char="hedgehog"] { aspect-ratio: 264 / 509; }
-      .charCrop[data-char="hedgehog"] img { width: 416.6%; height: 123.4%; left: -116.6%; top: -11.1%; }
-      .charCrop[data-char="frog"] { aspect-ratio: 242 / 509; }
-      .charCrop[data-char="frog"] img { width: 454.5%; height: 123.4%; left: -236.3%; top: -11.1%; }
-      .charCrop[data-char="mouse"] { aspect-ratio: 286 / 509; }
-      .charCrop[data-char="mouse"] img { width: 384.6%; height: 123.4%; left: -284.6%; top: -11.1%; }
-
-      /* ---------- 01: workflow theatre ---------- */
-      .scTabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-      .scTab { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 13px 14px; min-height: 82px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
-      .scTab:hover { border-color: var(--ink); transform: translateY(-1px); }
-      .scTab.on { border-color: var(--ink); background: var(--ink); color: var(--paper); box-shadow: 4px 4px 0 var(--sheet); }
-      .scTabTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-      .scTab.on .scTabTop { color: var(--rule); }
-      .scTab b { display: block; font: 400 var(--step-0)/1.22 var(--serif); color: var(--ink); }
-      .scTab.on b { color: var(--paper); }
-
-      .theatre { border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper-sunk); background-image: var(--dots); padding: 18px; box-shadow: 7px 7px 0 var(--sheet); display: grid; gap: 16px; }
-
-      .thBar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; align-items: center; padding: 12px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); }
-      .thTitleWrap { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }
-      .thStepBadge { padding: 5px 10px; border-radius: 999px; background: var(--clay-wash); border: 1px solid var(--clay); color: var(--clay); font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
-      .thTitle { font: 400 var(--step-1)/1.2 var(--serif); color: var(--ink); margin: 0; }
-      .thSub { font: 11px/1.3 var(--mono); color: var(--ink-3); }
-
-      .thMeters { display: flex; align-items: center; gap: 8px; }
-      .thMeter { display: flex; align-items: baseline; gap: 6px; padding: 6px 11px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--paper-sunk); font: 11px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
-      .thMeter b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-      .thMeter.free b { color: var(--moss); }
-      .thMeter.paid b { color: var(--brick); }
-
-      .thControls { display: flex; align-items: center; gap: 6px; }
-      .thBtn { padding: 8px 12px; border: var(--edge) solid var(--rule-strong); border-radius: 8px; background: var(--paper); font: 11px/1 var(--mono); letter-spacing: 0.04em; color: var(--ink); cursor: pointer; white-space: nowrap; }
-      .thBtn:hover { border-color: var(--ink); }
-      .thBtn.play { background: var(--ink); border-color: var(--ink); color: var(--paper); min-width: 96px; text-align: center; }
-      .thBtn.play.running { background: var(--clay); border-color: var(--clay); }
-      .thModeSwitch { display: none; align-items: center; border: var(--edge) solid var(--ink); border-radius: 8px; overflow: hidden; background: var(--rule); gap: 1px; margin-right: 4px; }
-      .thModeSwitch.show { display: inline-flex; }
-      .thModeSwitch button { border: 0; border-radius: 0; padding: 7px 10px; font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.06em; background: var(--paper); color: var(--ink-3); cursor: pointer; }
-      .thModeSwitch button.on { background: var(--moss); color: var(--paper); }
-
-      /* ---------- 5-station parade track with movable character courier ---------- */
-      .trackBox { position: relative; padding: 54px 16px 18px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; }
-      .wireLine { position: absolute; left: 10%; right: 10%; top: 30px; height: 2px; background: var(--rule-strong); z-index: 1; }
-      .wireFill { height: 100%; width: 0%; background: var(--clay); transition: width 420ms var(--ease); }
-
-      .courier { position: absolute; top: 8px; left: 10%; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 5px; border: var(--edge) solid var(--ink); border-radius: 999px; background: var(--clay-wash); box-shadow: 3px 3px 0 var(--sheet); transition: left 460ms var(--ease-spring), background 200ms var(--ease), border-color 200ms var(--ease); pointer-events: none; }
-      .courier.free { background: #e5efe0; border-color: var(--moss); }
-      .courier.paid { background: #f5e1de; border-color: var(--brick); }
-      .courierDot { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid; place-items: center; font: 10px/1 var(--mono); }
-      .courierLabel { font: 10px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
-
-      .stations { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-      .stCard { position: relative; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 12px; min-height: 176px; border: var(--edge) solid var(--rule); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
-      .stCard:hover { border-color: var(--ink-2); }
-      .stCard.active { border-color: var(--ink); background: var(--paper-sunk); box-shadow: 4px 4px 0 var(--sheet); transform: translateY(-2px); }
-      .stCard.done { border-color: var(--moss); }
-      .stCard.paid { border-color: var(--brick); }
-      .stCard.skipped { opacity: 0.58; background: var(--paper-sunk); border-style: dashed; }
-
-      .stHead { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
-      .stIdx { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-      .stState { font: 9px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--rule-strong); color: var(--ink-3); background: var(--paper); }
-      .stCard.active .stState { border-color: var(--clay); color: var(--clay); background: var(--clay-wash); }
-      .stCard.done .stState { border-color: var(--moss); color: var(--moss); }
-      .stCard.paid .stState { border-color: var(--brick); color: var(--brick); }
-      .stCard.skipped .stState { text-decoration: line-through; }
-
-      .stActor { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: center; }
-      .stAvatar { width: 44px; height: 54px; flex: 0 0 auto; }
-      .stFace { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--ink); overflow: hidden; background: var(--clay-wash); display: grid; place-items: center; }
-      .stFace img { width: 100%; height: 100%; object-fit: cover; display: block; }
-      .stWho b { display: block; font: 400 var(--step-0)/1.2 var(--serif); color: var(--ink); }
-      .stWho span { display: block; font: 10px/1.3 var(--mono); color: var(--ink-3); margin-top: 2px; }
-
-      .stAction { font: var(--step--1)/1.4 var(--sans); color: var(--ink-2); margin: 0; }
-      .stFoot { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px dashed var(--rule); font: 10px/1 var(--mono); color: var(--ink-3); width: 100%; }
-      .stStamp { position: absolute; right: 8px; bottom: 34px; padding: 3px 7px; border: 1.5px solid var(--brick); border-radius: 4px; background: var(--paper); color: var(--brick); font: 9px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; transform: rotate(-7deg); pointer-events: none; }
-      .stCard.done .stStamp { border-color: var(--moss); color: var(--moss); }
-
-      /* ---------- bottom 2-column live deck ---------- */
-      .thDeck { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-      .deckPane { display: flex; flex-direction: column; justify-content: space-between; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; min-height: 250px; }
-      .dpHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--rule); background: var(--paper-sunk); font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
-      .dpBody { padding: 16px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 14px; }
-
-      .simBubble { padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); }
-      .simBubble .lbl { display: block; font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
-      .simBubble p { font: 400 var(--step-1)/1.4 var(--serif); color: var(--ink); margin: 0; }
-      .simReply { border-color: var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--sheet); }
-
-      .waveSim { display: flex; align-items: center; gap: 3px; height: 20px; }
-      .waveSim i { display: inline-block; width: 3px; height: 6px; background: var(--clay); border-radius: 2px; transition: height 180ms var(--ease); }
-      .waveSim.on i:nth-child(odd) { height: 18px; }
-      .waveSim.on i:nth-child(even) { height: 11px; }
-
-      .simPills { display: flex; gap: 7px; flex-wrap: wrap; }
-      .simPill { font: 11px/1 var(--mono); padding: 5px 9px; border-radius: 999px; border: 1px solid var(--rule-strong); background: var(--paper-sunk); color: var(--ink-2); }
-      .simPill.ok { border-color: var(--moss); color: var(--moss); }
-      .simPill.warn { border-color: var(--brick); color: var(--brick); }
-
-      .wireBox { font: 12px/1.55 var(--mono); padding: 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; }
-      .wireFoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font: 11px/1.4 var(--mono); color: var(--ink-3); }
-      .wireStamp { padding: 4px 9px; border: 1.5px solid var(--ink); border-radius: 4px; font: 10px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink); }
-      .wireStamp.good { border-color: var(--moss); color: var(--moss); }
-      .wireStamp.bad { border-color: var(--brick); color: var(--brick); }
-
-      /* ---------- 02: 4-worker switchboard parade ---------- */
-      .wkrGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
-      .wkrCard { display: flex; flex-direction: column; justify-content: space-between; gap: 14px; padding: 18px; border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--paper); box-shadow: 5px 5px 0 var(--sheet); transition: opacity var(--t-1) var(--ease), background var(--t-1) var(--ease), border-color var(--t-1) var(--ease); }
-      .wkrCard.off { background: var(--paper-sunk); border-color: var(--brick); border-style: dashed; }
-      .wkrTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-      .wkrIdx { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
-      .plugBtn { padding: 5px 10px; border: 1.5px solid var(--moss); border-radius: 999px; background: var(--paper); color: var(--moss); font: 10px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
-      .wkrCard.off .plugBtn { border-color: var(--brick); color: var(--brick); }
-      .wkrHero { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; }
-      .wkrHero .charCrop { width: 64px; }
-      .wkrHero b { display: block; font: 400 var(--step-2)/1.15 var(--serif); color: var(--ink); }
-      .wkrHero span { display: block; margin-top: 3px; font: 11px/1.3 var(--mono); color: var(--clay); text-transform: uppercase; letter-spacing: 0.05em; }
-      .wkrDesc { font: var(--step--1)/1.5 var(--sans); color: var(--ink-2); margin: 0; }
-      .wkrStatus { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rule-strong); background: var(--paper-sunk); font: 11px/1.45 var(--mono); color: var(--ink-2); }
-      .wkrCard.off .wkrStatus { border-color: var(--brick); color: var(--brick); background: #f7e6e4; }
-
-      .sbBanner { margin-top: 14px; padding: 14px 18px; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper-sunk); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: var(--step--1)/1.5 var(--mono); color: var(--ink-2); }
-      .sbBanner b { color: var(--ink); font-weight: 400; }
-
-      /* ---------- 03: interactive safety refusal tester ---------- */
-      .refGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
-      .refList { display: grid; grid-template-rows: repeat(5, minmax(0, 1fr)); gap: 10px; }
-      .refBtn { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 15px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), background var(--t-1) var(--ease); }
-      .refBtn:hover { border-color: var(--ink); }
-      .refBtn.on { border-color: var(--brick); background: var(--ink); color: var(--paper); box-shadow: 4px 4px 0 var(--sheet); }
-      .refNum { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--brick); display: grid; place-items: center; font: 11px/1 var(--mono); color: var(--brick); }
-      .refBtn.on .refNum { border-color: var(--paper); color: var(--paper); }
-      .refBtn b { display: block; font: 400 var(--step-0)/1.25 var(--serif); color: inherit; }
-      .refBtn small { display: block; font: 11px/1.3 var(--mono); color: var(--ink-3); margin-top: 2px; }
-      .refBtn.on small { color: var(--rule); }
-      .refTag { font: 10px/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--brick); }
-      .refBtn.on .refTag { color: var(--clay-wash); }
-
-      .refStage { border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--paper); padding: 22px; box-shadow: 6px 6px 0 var(--sheet); display: flex; flex-direction: column; justify-content: space-between; gap: 16px; }
-      .refTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
-      .refMouseRow { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center; }
-      .refMouseRow .charCrop { width: 72px; }
-      .refBox { padding: 14px; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--paper-sunk); font: 12px/1.55 var(--mono); color: var(--ink); }
-
-      /* ---------- 04: symmetric 18-tool matrix ---------- */
-      .tmFilter { display: flex; gap: 8px; flex-wrap: wrap; }
-      .tmFilter button { padding: 8px 14px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; background: var(--paper); font: 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; }
-      .tmFilter button.on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
-
-      .tmGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
-      .tmCard { display: flex; flex-direction: column; justify-content: space-between; gap: 8px; padding: 14px 16px; min-height: 108px; border: var(--edge) solid var(--rule-strong); border-radius: 10px; background: var(--paper); text-align: left; cursor: pointer; transition: border-color var(--t-1) var(--ease), transform var(--t-1) var(--ease), box-shadow var(--t-1) var(--ease); }
-      .tmCard:hover { border-color: var(--ink); transform: translateY(-1px); }
-      .tmCard.on { border-color: var(--ink); background: var(--paper-sunk); box-shadow: 4px 4px 0 var(--sheet); }
-      .tmCard[hidden] { display: none; }
-      .tmTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
-      .tmCode { font: 600 13px/1.2 var(--mono); color: var(--ink); }
-      .tmBadge { font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--rule-strong); color: var(--ink-2); }
-      .tmBadge.free { border-color: var(--moss); color: var(--moss); }
-      .tmBadge.paid { border-color: var(--brick); color: var(--brick); }
-      .tmBadge.write { border-color: var(--clay); color: var(--clay); }
-      .tmDesc { font: var(--step--1)/1.4 var(--sans); color: var(--ink-2); margin: 0; }
-
-      .tmInspector { margin-top: 14px; padding: 16px 20px; border: var(--edge) solid var(--ink); border-radius: 12px; background: var(--paper-sunk); box-shadow: 5px 5px 0 var(--sheet); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px; align-items: center; }
-      .tmInspector pre { margin: 0; padding: 12px 14px; border: 1px solid var(--rule-strong); border-radius: 8px; background: var(--paper); font: 11px/1.5 var(--mono); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-
-      @media (max-width: 1100px) {
-        .scTabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .stations { grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; padding-bottom: 6px; }
-        .wkrGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .tmGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .wrap {
+        width: 100%;
+        max-width: var(--shell);
+        margin: 0 auto;
+        padding: 0 var(--pad);
       }
-      @media (max-width: 780px) {
-        .secHead { grid-template-columns: minmax(0, 1fr); }
-        .scTabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .thBar { grid-template-columns: minmax(0, 1fr); }
-        .thDeck, .refGrid, .tmInspector { grid-template-columns: minmax(0, 1fr); }
-        .wkrGrid, .tmGrid { grid-template-columns: minmax(0, 1fr); }
+      main {
+        overflow-x: clip;
+      }
+      section {
+        position: relative;
+        padding: clamp(42px, 4.5vw, 66px) 0;
+      }
+      section::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: 0;
+        width: 100vw;
+        height: 1px;
+        background: var(--rule);
+        transform: translateX(-50%);
+      }
+      section:last-of-type::after {
+        display: none;
+      }
+
+      .kicker {
+        font: 600 var(--step--1)/1 var(--mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--clay);
+        margin-bottom: 10px;
+      }
+      h1, h2 {
+        font-family: var(--serif);
+        font-weight: 400;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+        margin: 0 0 12px;
+      }
+      h1 {
+        font-size: clamp(34px, 4.3vw, 50px);
+        line-height: 1.05;
+        max-width: 18ch;
+      }
+      h2 {
+        font-size: clamp(26px, 3vw, 36px);
+        line-height: 1.1;
+      }
+      .lead {
+        font-size: var(--step-1);
+        line-height: 1.55;
+        color: var(--ink-2);
+        max-width: 52ch;
+        margin: 0;
+      }
+
+      /* ---------- CARTOON CHARACTER CROPS ---------- */
+      .charCrop {
+        position: relative;
+        overflow: hidden;
+        border-radius: 50%;
+        border: var(--edge);
+        background: var(--paper-sunk);
+        flex-shrink: 0;
+      }
+      .charCrop img {
+        position: absolute;
+        max-width: none;
+        width: 400%;
+        height: auto;
+        top: -8%;
+        mix-blend-mode: multiply;
+        pointer-events: none;
+      }
+      .charCrop[data-char="bird"] img { left: -2%; }
+      .charCrop[data-char="hedgehog"] img { left: -102%; }
+      .charCrop[data-char="frog"] img { left: -202%; }
+      .charCrop[data-char="mouse"] img { left: -302%; }
+
+      /* ---------- HERO (OPEN 2-COLUMN) ---------- */
+      .heroGrid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+        gap: 44px;
+        align-items: center;
+      }
+      .heroPills {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+      }
+      .heroPill {
+        padding: 14px 16px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+      }
+      .heroPill b {
+        display: block;
+        font: 400 var(--step-2)/1.1 var(--serif);
+        color: var(--ink);
+        margin-bottom: 4px;
+      }
+      .heroPill span {
+        display: block;
+        font: var(--step--1)/1.35 var(--sans);
+        color: var(--ink-2);
+      }
+      .heroArt {
+        margin: 0;
+      }
+      .heroArt img {
+        display: block;
+        width: 100%;
+        height: auto;
+        mix-blend-mode: multiply;
+      }
+      .heroArt figcaption {
+        margin-top: 8px;
+        font: var(--step--1)/1.5 var(--mono);
+        color: var(--ink-3);
+        text-align: center;
+      }
+
+      /* ---------- SECTION HEADER ---------- */
+      .secHead {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 24px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .secHead p {
+        margin: 0;
+        color: var(--ink-2);
+        max-width: 48ch;
+        font-size: var(--step-0);
+        line-height: 1.5;
+      }
+
+      /* ---------- 01. STORY TABS (4 EQUAL BUTTONS IN A PARADE ROW) ---------- */
+      .storyTabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 28px;
+      }
+      .storyTab {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 104px;
+        padding: 16px 18px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.14s var(--ease), background 0.14s var(--ease);
+      }
+      .storyTab:hover {
+        transform: translate(-1px, -1px);
+        background: var(--paper-sunk);
+      }
+      .storyTab.on {
+        background: var(--ink);
+        color: var(--paper);
+      }
+      .storyTabTop {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--clay);
+      }
+      .storyTab.on .storyTabTop {
+        color: #f6c1a7;
+      }
+      .storyTab b {
+        font: 600 var(--step-0)/1.25 var(--sans);
+        color: inherit;
+      }
+      .storyTab small {
+        font: var(--step--1)/1.35 var(--sans);
+        color: var(--ink-2);
+      }
+      .storyTab.on small {
+        color: color-mix(in srgb, var(--paper) 78%, transparent);
+      }
+
+      /* ---------- ANIMATED 4-CHARACTER PARADE TRACK (OPEN ON PAPER) ---------- */
+      .trackBar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+      }
+      .trackStatus {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font: 600 12px/1 var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      .trackControls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ctrlBtn {
+        font: 600 12px/1 var(--mono);
+        padding: 9px 15px;
+        border-radius: 999px;
+        border: var(--edge);
+        background: var(--paper);
+        color: var(--ink);
+        box-shadow: var(--lift);
+        cursor: pointer;
+        transition: transform 0.12s var(--ease), background 0.12s var(--ease);
+      }
+      .ctrlBtn.primary {
+        background: var(--clay);
+        color: var(--paper);
+      }
+      .ctrlBtn:hover {
+        transform: translate(-1px, -1px);
+      }
+
+      .paradeTrack {
+        position: relative;
+        padding-top: 46px;
+        margin-bottom: 24px;
+      }
+      .railLine {
+        position: absolute;
+        top: 18px;
+        left: 12.5%;
+        right: 12.5%;
+        height: 4px;
+        background: var(--rule-strong);
+        border-radius: 999px;
+        z-index: 1;
+      }
+      .railFill {
+        height: 100%;
+        width: 0%;
+        background: var(--clay);
+        border-radius: 999px;
+        transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      /* Gliding Courier Pill */
+      .glider {
+        position: absolute;
+        top: 2px;
+        left: 12.5%;
+        transform: translateX(-50%);
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        border: var(--edge);
+        background: var(--ink);
+        color: var(--paper);
+        box-shadow: var(--lift);
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+        transition: left 0.55s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s var(--ease);
+      }
+      .glider.good { background: var(--moss); }
+      .glider.warn { background: var(--brick); }
+      .gliderDot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #fff;
+        animation: pulseDot 1s ease-in-out infinite alternate;
+      }
+      @keyframes pulseDot {
+        from { transform: scale(0.8); opacity: 0.6; }
+        to { transform: scale(1.25); opacity: 1; }
+      }
+
+      /* 4 Equal Character Stations */
+      .stageGrid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+        align-items: stretch;
+      }
+      .stageCard {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 196px;
+        padding: 18px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.18s var(--ease), background 0.18s var(--ease), border-color 0.18s var(--ease);
+      }
+      .stageCard:hover {
+        transform: translateY(-2px);
+      }
+      .stageCard.active {
+        border-color: var(--clay);
+        background: color-mix(in srgb, var(--clay) 9%, var(--paper));
+        transform: translateY(-4px);
+      }
+      .stageCard.done {
+        border-color: var(--moss);
+        background: color-mix(in srgb, var(--moss) 6%, var(--paper));
+      }
+      .stageTop {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .stageAvatar {
+        width: 58px;
+        height: 58px;
+        transition: transform 0.25s var(--ease);
+      }
+      .stageCard.active .stageAvatar {
+        transform: scale(1.08) rotate(-3deg);
+      }
+      .stageWho small {
+        display: block;
+        font: 600 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        margin-bottom: 4px;
+      }
+      .stageWho b {
+        display: block;
+        font: 400 var(--step-1)/1.15 var(--serif);
+        color: var(--ink);
+      }
+      .stageWhat {
+        margin: 0;
+        font: var(--step--1)/1.45 var(--sans);
+        color: var(--ink-2);
+        flex: 1;
+      }
+      .stagePill {
+         align-self: flex-start;
+        font: 600 10px/1 var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--rule-strong);
+        background: var(--paper-sunk);
+        color: var(--ink-2);
+      }
+      .stageCard.active .stagePill {
+        background: var(--clay);
+        border-color: var(--clay);
+        color: var(--paper);
+      }
+      .stageCard.done .stagePill {
+        background: color-mix(in srgb, var(--moss) 15%, var(--paper));
+        border-color: var(--moss);
+        color: var(--moss);
+      }
+
+      /* ---------- CLEAN 2-COLUMN OUTCOME ROW (1 VOICE CARD + 1 PERFORATED TICKET) ---------- */
+      .outcomeGrid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 20px;
+        align-items: stretch;
+      }
+      .voiceCard {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 24px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+      }
+      .voiceRow {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .voiceRow img {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: var(--edge);
+        object-fit: cover;
+        flex-shrink: 0;
+      }
+      .voiceRow small {
+        display: block;
+        font: 600 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        margin-bottom: 4px;
+      }
+      .voiceRow b {
+        font: 400 var(--step-2)/1.2 var(--serif);
+        color: var(--ink);
+      }
+      .voiceDivider {
+        height: 1px;
+        background: var(--rule);
+      }
+      .kenAnswer {
+        display: flex;
+         flex-direction: column;
+        gap: 6px;
+      }
+      .kenAnswer small {
+        font: 600 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--clay);
+      }
+      .kenAnswer p {
+        margin: 0;
+        font: 400 var(--step-1)/1.4 var(--serif);
+        color: var(--ink);
+      }
+
+      /* Right Card: Perforated Paper Ticket */
+      .slipCard {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 24px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper-sunk);
+        box-shadow: var(--lift);
+      }
+      .slipTop {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .slipBadge {
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--moss) 15%, var(--paper));
+        color: var(--moss);
+        border: 1px solid var(--moss);
+      }
+      .slipBadge.clay {
+        background: color-mix(in srgb, var(--clay) 15%, var(--paper));
+        color: var(--clay);
+        border-color: var(--clay);
+      }
+      .slipBadge.warn {
+        background: color-mix(in srgb, var(--brick) 14%, var(--paper));
+        color: var(--brick);
+        border-color: var(--brick);
+      }
+      .slipStamp {
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 5px 10px;
+        border: 1.5px solid var(--ink);
+        border-radius: 4px;
+        transform: rotate(-2deg);
+        background: var(--paper);
+      }
+      .slipTitle {
+        font: 400 var(--step-2)/1.15 var(--serif);
+        margin: 0;
+        color: var(--ink);
+      }
+      .slipBody {
+        font: var(--step-0)/1.5 var(--sans);
+        color: var(--ink-2);
+        margin: 0;
+      }
+      .actionBtn {
+        align-self: flex-start;
+        font: 600 12px/1 var(--mono);
+        letter-spacing: 0.04em;
+        padding: 12px 18px;
+        border-radius: 999px;
+        border: var(--edge);
+        background: var(--ink);
+        color: var(--paper);
+        box-shadow: var(--lift);
+        cursor: pointer;
+        transition: transform 0.12s var(--ease), background 0.12s var(--ease);
+      }
+      .actionBtn:hover {
+        background: var(--clay);
+        transform: translate(-1px, -1px);
+      }
+      .actionBtn.done {
+        background: var(--moss);
+      }
+
+      /* ---------- 02. MEET THE 4 ANIMAL HELPERS (4 EQUAL COLUMNS) ---------- */
+      .helpersGrid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        align-items: stretch;
+      }
+      .helperCard {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 22px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+        transition: background 0.16s var(--ease);
+      }
+      .helperCard.asleep {
+        background: color-mix(in srgb, var(--brick) 8%, var(--paper-sunk));
+        border-color: var(--brick);
+      }
+      .helperTop {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .helperAvatar {
+        width: 66px;
+        height: 66px;
+      }
+      .helperCard.asleep .helperAvatar {
+        filter: grayscale(1);
+        opacity: 0.6;
+      }
+      .helperName small {
+        display: block;
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--clay);
+        margin-bottom: 4px;
+      }
+      .helperName h3 {
+        font: 400 var(--step-2)/1.1 var(--serif);
+        margin: 0;
+        color: var(--ink);
+      }
+      .helperDesc {
+        font: var(--step-0)/1.5 var(--sans);
+        color: var(--ink-2);
+        margin: 0;
+        flex: 1;
+      }
+      .helperCard.asleep .helperDesc {
+        color: var(--brick);
+        font-weight: 500;
+      }
+      .helperToggle {
+        width: 100%;
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 10px 12px;
+        border-radius: 999px;
+        border: var(--edge);
+        background: var(--paper-sunk);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .helperCard.asleep .helperToggle {
+        background: var(--brick);
+        color: var(--paper);
+      }
+
+      /* ---------- 03. THREE GOLDEN PROMISES (3 EQUAL COLUMNS) ---------- */
+      .rulesGrid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+        align-items: stretch;
+      }
+      .ruleCard {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 24px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper);
+        box-shadow: var(--lift);
+      }
+      .ruleArt {
+        height: 176px;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .ruleArt img {
+        max-width: 100%;
+        max-height: 168px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        mix-blend-mode: multiply;
+      }
+      .ruleNum {
+        font: 600 11px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--moss);
+      }
+      .ruleCard h3 {
+        font: 400 var(--step-2)/1.15 var(--serif);
+        margin: 0;
+        color: var(--ink);
+      }
+      .ruleCard p {
+        font: var(--step-0)/1.5 var(--sans);
+        color: var(--ink-2);
+        margin: 0;
+      }
+
+      .ctaBanner {
+        margin-top: 32px;
+        padding: 24px 28px;
+        border: var(--edge);
+        border-radius: var(--r-md);
+        background: var(--paper-sunk);
+        box-shadow: var(--lift);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .ctaBanner h3 {
+        font: 400 var(--step-2)/1.15 var(--serif);
+        margin: 0 0 4px;
+      }
+      .ctaBanner p {
+        margin: 0;
+        color: var(--ink-2);
+        font: var(--step-0)/1.45 var(--sans);
+      }
+      .ctaButtons {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 980px) {
+        .heroGrid,
+        .outcomeGrid {
+          grid-template-columns: 1fr;
+        }
+        .storyTabs,
+        .stageGrid,
+        .helpersGrid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .railLine,
+        .glider {
+          display: none;
+        }
+        .paradeTrack {
+          padding-top: 0;
+        }
+        .rulesGrid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (max-width: 580px) {
+        .storyTabs,
+        .stageGrid,
+        .helpersGrid,
+        .heroPills {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
     <header>
       <div class="brand">
-        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
+        <a class="mark" href="/" aria-label="Ken, home">
+          <img src="/assets/ken-mark.svg" width="32" height="32" alt="" />
+          <span class="word">en<i>.</i></span>
+        </a>
       </div>
       <nav class="tabs" id="siteMenu" aria-label="Main">
         <div class="navExtra" id="navExtra"></div>
@@ -246,7 +762,15 @@
         <a href="/pay">Pay</a>
         <a href="/request">Request</a>
         <div class="more">
-          <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu" aria-label="More, this page is in the menu">More</button>
+          <button
+            class="moreBtn"
+            type="button"
+            aria-expanded="false"
+            aria-controls="moreMenu"
+            aria-label="More, this page is in the menu"
+          >
+            More
+          </button>
           <div class="moreMenu" id="moreMenu" hidden>
             <a href="/ask">Ask to pay</a>
             <a href="/report">Statement</a>
@@ -259,7 +783,13 @@
       <div class="wallet">
         <span class="whose" id="whose"></span>
         <button class="chip" id="connect">Connect wallet</button>
-        <button class="statusBtn" type="button" aria-expanded="false" aria-controls="statusBox" aria-label="What this page reads">
+        <button
+          class="statusBtn"
+          type="button"
+          aria-expanded="false"
+          aria-controls="statusBox"
+          aria-label="What this page reads"
+        >
           <span class="statusDot" aria-hidden="true"></span>
           <span class="statusWord" aria-hidden="true">status</span>
         </button>
@@ -273,1352 +803,807 @@
           </div>
         </div>
       </div>
-      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+      <button
+        class="menuBtn"
+        type="button"
+        data-menu
+        aria-expanded="false"
+        aria-controls="siteMenu"
+        aria-label="Open menu"
+      >
         <span class="bars" aria-hidden="true"><i></i><i></i></span>
       </button>
     </header>
 
     <main>
       <div class="wrap">
-        <!-- ==================== SECTION 01: INTERACTIVE WORKFLOW THEATRE ==================== -->
-        <section id="simulator">
+        <!-- ==================== HERO ==================== -->
+        <section>
+          <div class="heroGrid">
+            <div>
+              <div class="kicker">How Ken works · in plain English</div>
+              <h1>You speak in names. Four helpers do the rest.</h1>
+              <p class="lead">
+                Never copy-paste a 66-character wallet address again. Teach Ken a friend's name once, talk to your wallet like a person, and approve payments with your own thumbprint.
+              </p>
+              <div class="heroPills">
+                <div class="heroPill">
+                  <b>$0.00</b>
+                  <span>Every time Ken remembers a friend's name</span>
+                </div>
+                <div class="heroPill">
+                  <b>$0.01</b>
+                  <span>Only the first time Ken looks up a stranger</span>
+                </div>
+                <div class="heroPill">
+                  <b>100% Yours</b>
+                  <span>Money never moves until you tap Approve</span>
+                </div>
+              </div>
+            </div>
+            <figure class="heroArt">
+              <img
+                src="/assets/how-switchboard.webp"
+                width="1100"
+                height="628"
+                fetchpriority="high"
+                decoding="async"
+                alt="Four cartoon helpers passing a message across a wooden desk"
+              />
+              <figcaption>
+                One simple desk: Listen → Check Notebook → Prepare Slip → Wait for Your Approval.
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <!-- ==================== 01. INTERACTIVE STORYBOOK ==================== -->
+        <section id="stories">
           <div class="secHead">
             <div>
-              <div class="kicker">01 · Interactive Workflow Theatre</div>
-              <h1>Watch the characters run every workflow step by step.</h1>
-              <p class="lead">Pick any of the six workflows below, press Play or click a station, and watch the packet travel between Gemini, Walrus, Tatum and the x402 Purse Mouse. Pure showcase — connect a wallet when you are ready to run it live.</p>
+              <div class="kicker">01 · Interactive Cartoon Walkthrough</div>
+              <h2>Pick an everyday moment and watch the helpers move</h2>
             </div>
-            <div class="badgePill"><i></i><span>6 interactive workflows · showcase mode</span></div>
+            <p>
+              Tap any of the 4 stories below, press <b>Play story</b>, or click any character along the track.
+            </p>
           </div>
 
-          <div class="scTabs" id="scTabs" role="tablist" aria-label="Workflow scenarios"></div>
+          <!-- 4 Equal Story Buttons -->
+          <div class="storyTabs" id="storyTabs" role="tablist" aria-label="Everyday stories"></div>
 
-          <div class="theatre">
-            <div class="thBar">
-              <div class="thTitleWrap">
-                <span class="thStepBadge" id="thStepBadge">STEP 1 OF 5</span>
+          <!-- Track Control Bar -->
+          <div class="trackBar">
+            <div class="trackStatus" id="relayProgress">Step 1 of 4 · Pay a Friend by Name</div>
+            <div class="trackControls">
+              <button class="ctrlBtn primary" id="btnAutoPlay" type="button">▶ Play story</button>
+              <button class="ctrlBtn" id="btnNextStep" type="button">Next step →</button>
+            </div>
+          </div>
+
+          <!-- Open Animated 4-Character Track -->
+          <div class="paradeTrack">
+            <div class="railLine"><div class="railFill" id="railFill"></div></div>
+            <div class="glider" id="glider">
+              <span class="gliderDot"></span>
+              <span id="gliderText">Listening…</span>
+            </div>
+            <div class="stageGrid" id="stageGrid"></div>
+          </div>
+
+          <!-- Clean 2-Column Outcome Row (Left: Spoken Words, Right: Interactive Ticket) -->
+          <div class="outcomeGrid">
+            <div class="voiceCard">
+              <div class="voiceRow">
+                <img id="speakerFace" src="/assets/face-sana.webp" alt="" />
                 <div>
-                  <h3 class="thTitle" id="thTitle">Ask Once, Free Forever</h3>
-                  <div class="thSub" id="thSub">First time pays 0.01 USDC to the x402 index; every ask after hits Walrus for $0.00.</div>
+                  <small>What you said out loud</small>
+                  <b id="youSaidText">"Pay Sana 95 cents for groceries."</b>
                 </div>
               </div>
-
-              <div class="thMeters">
-                <div class="thModeSwitch show" id="tripSwitch" role="group" aria-label="Cold vs Warm trip">
-                  <button type="button" class="on" data-trip="cold">Trip 1 · Cold (0.01 USDC)</button>
-                  <button type="button" data-trip="warm">Trip 2 · Warm (Free)</button>
-                </div>
-                <div class="thMeter" id="thCostMeter"><span>cost</span><b id="thCost">0.00 USDC</b></div>
-                <div class="thMeter"><span>clock</span><b id="thClock">0.0 s</b></div>
-              </div>
-
-              <div class="thControls">
-                <button type="button" class="thBtn" id="btnPrev" aria-label="Previous step">◀ Prev</button>
-                <button type="button" class="thBtn play" id="btnPlay">▶ Play</button>
-                <button type="button" class="thBtn" id="btnNext" aria-label="Next step">Next ▶</button>
+              <div class="voiceDivider"></div>
+              <div class="kenAnswer">
+                <small id="activeHelperLabel">Step 1 · The Frog</small>
+                <p id="kenSpokenReply"></p>
               </div>
             </div>
 
-            <div class="trackBox">
-              <div class="wireLine"><div class="wireFill" id="wireFill"></div></div>
-              <div class="courier" id="courier">
-                <span class="courierDot" id="courierIdx">1</span>
-                <span class="courierLabel" id="courierLabel">spoken sentence</span>
+            <div class="slipCard">
+              <div class="slipTop">
+                <span class="slipBadge" id="slipBadge">Listening</span>
+                <span class="slipStamp" id="slipStamp">FREE</span>
               </div>
-              <div class="stations" id="stations"></div>
-            </div>
-
-            <div class="thDeck">
-              <div class="deckPane">
-                <div class="dpHead">
-                  <span>Voice &amp; Tool Trace</span>
-                  <div class="waveSim" id="waveSim" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                </div>
-                <div class="dpBody">
-                  <div class="simBubble">
-                    <span class="lbl">You said</span>
-                    <p id="simAsked">"Who did I send money to at 0x81cd…8d8f?"</p>
-                  </div>
-                  <div class="simBubble simReply">
-                    <span class="lbl" id="simSpeaker">Ken · active station</span>
-                    <p id="simSaid">Turning your spoken question into a tool call…</p>
-                  </div>
-                  <div class="simPills" id="simPills"></div>
-                </div>
-              </div>
-
-              <div class="deckPane">
-                <div class="dpHead">
-                  <span id="wireTitle">Live Wire &amp; Ticket Inspector</span>
-                  <span id="wireRoute">sui:mainnet · walrus</span>
-                </div>
-                <div class="dpBody">
-                  <div class="wireBox" id="wireBox"></div>
-                  <div class="wireFoot">
-                    <span id="wireNote">No private key ever touches this server.</span>
-                    <span class="wireStamp" id="wireStamp">READY</span>
-                  </div>
-                </div>
-              </div>
+              <h3 class="slipTitle" id="slipTitle"></h3>
+              <p class="slipBody" id="slipBody"></p>
+              <button type="button" class="actionBtn" id="slipActionBtn"></button>
             </div>
           </div>
         </section>
 
-        <!-- ==================== SECTION 02: 4-WORKER SWITCHBOARD PARADE ==================== -->
-        <section id="workers">
+        <!-- ==================== 02. MEET THE 4 HELPERS ==================== -->
+        <section id="helpers">
           <div class="secHead">
             <div>
-              <div class="kicker">02 · The Four Cartoon Workers</div>
-              <h2>Unplug any worker to see what breaks.</h2>
-              <p class="lead">Nothing here is decoration. Toggle any of the four services off and inspect the exact capability that stops working.</p>
+              <div class="kicker">02 · Meet the crew</div>
+              <h2>Four helpers, each with one simple job</h2>
             </div>
-            <div class="badgePill"><i></i><span id="wkrSummary">4 of 4 workers online</span></div>
+            <p>
+              Want to see why each helper is needed? Tap <b>"Put to sleep"</b> on any card below to see what happens without them.
+            </p>
           </div>
 
-          <div class="wkrGrid" id="wkrGrid">
-            <div class="wkrCard" data-wkr="tatum">
-              <div class="wkrTop">
-                <span class="wkrIdx">01 · chain eyes</span>
-                <button type="button" class="plugBtn" data-toggle="tatum">● Plugged in</button>
-              </div>
-              <div class="wkrHero">
-                <span class="charCrop" data-char="bird"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Tatum bird" /></span>
-                <div>
-                  <b>Tatum</b>
-                  <span>the bird · sui graphql</span>
+          <div class="helpersGrid" id="helpersGrid">
+            <article class="helperCard" data-helper="frog">
+              <div class="helperTop">
+                <span class="charCrop helperAvatar" data-char="frog">
+                  <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="The Frog" />
+                </span>
+                <div class="helperName">
+                  <small>Helper 01 · Voice</small>
+                  <h3>The Frog</h3>
                 </div>
               </div>
-              <p class="wkrDesc">Reads SUI &amp; USDC balances, walks counterparty transfers on both sides, and verifies settled transaction digests.</p>
-              <div class="wkrStatus" data-status="tatum">ONLINE · Reading mainnet &amp; testnet checkpoints and verifying both sides of every USDC transfer.</div>
-            </div>
+              <p
+                class="helperDesc"
+                data-awake="Listens to your everyday voice or text and turns it into a clear request—without ever touching your money."
+                data-asleep="Zzz… Without the Frog, Ken cannot hear your voice or speak answers back to you!"
+              >
+                Listens to your everyday voice or text and turns it into a clear request—without ever touching your money.
+              </p>
+              <button class="helperToggle" type="button" data-sleep="frog">● Awake &amp; working · Tap to put to sleep</button>
+            </article>
 
-            <div class="wkrCard" data-wkr="walrus">
-              <div class="wkrTop">
-                <span class="wkrIdx">02 · wallet memory</span>
-                <button type="button" class="plugBtn" data-toggle="walrus">● Plugged in</button>
-              </div>
-              <div class="wkrHero">
-                <span class="charCrop" data-char="hedgehog"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Walrus hedgehog" /></span>
-                <div>
-                  <b>Walrus</b>
-                  <span>the hedgehog · memwal</span>
+            <article class="helperCard" data-helper="hedgehog">
+              <div class="helperTop">
+                <span class="charCrop helperAvatar" data-char="hedgehog">
+                  <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="The Hedgehog" />
+                </span>
+                <div class="helperName">
+                  <small>Helper 02 · Notebook</small>
+                  <h3>The Hedgehog</h3>
                 </div>
               </div>
-              <p class="wkrDesc">Stores every named person, note, and purchased x402 profile on Mainnet under a namespace derived from your wallet.</p>
-              <div class="wkrStatus" data-status="walrus">ONLINE · Warm lookups return in ~2s for $0.00 without touching the chain or paying twice.</div>
-            </div>
+              <p
+                class="helperDesc"
+                data-awake="Keeps a private notebook for your wallet so 'Sana' or 'Dev' is remembered forever for $0.00."
+                data-asleep="Zzz… Without the Hedgehog, Ken forgets every friend's name the moment you close the page!"
+              >
+                Keeps a private notebook for your wallet so "Sana" or "Dev" is remembered forever for $0.00.
+              </p>
+              <button class="helperToggle" type="button" data-sleep="hedgehog">● Awake &amp; working · Tap to put to sleep</button>
+            </article>
 
-            <div class="wkrCard" data-wkr="gemini">
-              <div class="wkrTop">
-                <span class="wkrIdx">03 · brain &amp; voice</span>
-                <button type="button" class="plugBtn" data-toggle="gemini">● Plugged in</button>
-              </div>
-              <div class="wkrHero">
-                <span class="charCrop" data-char="frog"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Gemini frog" /></span>
-                <div>
-                  <b>Gemini</b>
-                  <span>the frog · tool router</span>
+            <article class="helperCard" data-helper="bird">
+              <div class="helperTop">
+                <span class="charCrop helperAvatar" data-char="bird">
+                  <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="The Bird" />
+                </span>
+                <div class="helperName">
+                  <small>Helper 03 · Messenger</small>
+                  <h3>The Bird</h3>
                 </div>
               </div>
-              <p class="wkrDesc">Picks from 18 deterministic tools, grounds every figure against tool output, and speaks answers in five voices.</p>
-              <div class="wkrStatus" data-status="gemini">ONLINE · Routing spoken sentences to deterministic tools with automatic NVIDIA fallback.</div>
-            </div>
+              <p
+                class="helperDesc"
+                data-awake="Flies out to check your real wallet balance and confirms that every payment actually arrived."
+                data-asleep="Zzz… Without the Bird, Ken is blind to your wallet balance and past payment receipts!"
+              >
+                Flies out to check your real wallet balance and confirms that every payment actually arrived.
+              </p>
+              <button class="helperToggle" type="button" data-sleep="bird">● Awake &amp; working · Tap to put to sleep</button>
+            </article>
 
-            <div class="wkrCard" data-wkr="x402">
-              <div class="wkrTop">
-                <span class="wkrIdx">04 · paid index</span>
-                <button type="button" class="plugBtn" data-toggle="x402">● Plugged in</button>
-              </div>
-              <div class="wkrHero">
-                <span class="charCrop" data-char="mouse"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="x402 purse mouse" /></span>
-                <div>
-                  <b>x402</b>
-                  <span>the mouse · exact wall</span>
+            <article class="helperCard" data-helper="mouse">
+              <div class="helperTop">
+                <span class="charCrop helperAvatar" data-char="mouse">
+                  <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="The Purse Mouse" />
+                </span>
+                <div class="helperName">
+                  <small>Helper 04 · Purse Guard</small>
+                  <h3>The Mouse</h3>
                 </div>
               </div>
-              <p class="wkrDesc">Quotes a price in HTTP 402 headers for unknown wallets, locked notes, and receipt checks; facilitator settles signed bytes.</p>
-              <div class="wkrStatus" data-status="x402">ONLINE · Charging 0.01–0.03 USDC once per unknown fact and releasing only after on-chain settlement.</div>
-            </div>
-          </div>
-
-          <div class="sbBanner" id="sbBanner">
-            <span><b>Switchboard diagnosis:</b> All four workers are connected. Warm questions stop at Walrus; cold questions pay once through x402 and write back to Walrus.</span>
-            <button type="button" class="thBtn" id="resetWorkers">Restore all 4 workers</button>
+              <p
+                class="helperDesc"
+                data-awake="Writes up the payment slip, blocks known scammers, and waits patiently for your wallet approval."
+                data-asleep="Zzz… Without the Mouse, you cannot send money, block spam addresses, or unlock paid notes!"
+              >
+                Writes up the payment slip, blocks known scammers, and waits patiently for your wallet approval.
+              </p>
+              <button class="helperToggle" type="button" data-sleep="mouse">● Awake &amp; working · Tap to put to sleep</button>
+            </article>
           </div>
         </section>
 
-        <!-- ==================== SECTION 03: SAFETY GUARDRAILS & REFUSALS ==================== -->
-        <section id="guardrails">
+        <!-- ==================== 03. THREE GOLDEN SAFETY RULES ==================== -->
+        <section id="safety">
           <div class="secHead">
             <div>
-              <div class="kicker">03 · Deterministic Guardrails</div>
-              <h2>Test the five shortcuts Ken refuses to take.</h2>
-              <p class="lead">Click any dangerous shortcut on the left to watch how the server and Purse Mouse block it before a single cent or fake memory can slip through.</p>
+              <div class="kicker">03 · Why you can relax</div>
+              <h2>Three promises that never bend</h2>
             </div>
-            <div class="badgePill"><i></i><span>5 hard refusals · zero server keys</span></div>
+            <p>
+              Even if you speak fast or make a typo, these three safety nets protect your wallet every single time.
+            </p>
           </div>
 
-          <div class="refGrid">
-            <div class="refList" id="refList"></div>
-            <div class="refStage">
-              <div class="refTop">
-                <span class="kicker" style="margin:0" id="refKicker">GUARDRAIL 01 · NO SERVER SIGNING KEY</span>
-                <span class="wireStamp bad" id="refStamp">REFUSED COLD</span>
+          <div class="rulesGrid">
+            <article class="ruleCard">
+              <div class="ruleArt">
+                <img src="/assets/wallet-seal.webp" width="800" height="500" loading="lazy" alt="Wallet approval stamp" />
               </div>
-              <div class="refMouseRow">
-                <span class="charCrop" data-char="mouse"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="Purse mouse" /></span>
-                <div>
-                  <h3 class="thTitle" id="refTitle">Spoken words only build unsigned bytes</h3>
-                  <p class="wkrDesc" id="refExplain" style="margin-top:6px"></p>
-                </div>
-              </div>
-              <div class="refBox" id="refCode"></div>
-              <div class="wireFoot">
-                <span id="refFile">Enforced in src/server.ts &amp; src/tools.ts</span>
-                <span>100% deterministic check</span>
-              </div>
-            </div>
-          </div>
-        </section>
+              <span class="ruleNum">Promise 01 · Your thumbprint only</span>
+              <h3>Talking never moves a single cent</h3>
+              <p>
+                Saying "Pay Sana $5" only prepares a slip on your screen. Ken does not have your password or private key—money only moves when you tap <b>Approve</b> in your own wallet.
+              </p>
+            </article>
 
-        <!-- ==================== SECTION 04: 18-TOOL SURFACE MATRIX ==================== -->
-        <section id="tools">
-          <div class="secHead">
+            <article class="ruleCard">
+              <div class="ruleArt">
+                <img src="/assets/memory-versus-chain.webp" width="800" height="500" loading="lazy" alt="Notebook versus chain" />
+              </div>
+              <span class="ruleNum">Promise 02 · Pay once, keep forever</span>
+              <h3>Never pays twice for the same name</h3>
+              <p>
+                Looking up an unknown address costs 1 cent the very first time. The Hedgehog writes it in your notebook so every future question about that friend is <b>$0.00</b>.
+              </p>
+            </article>
+
+            <article class="ruleCard">
+              <div class="ruleArt">
+                <img src="/assets/report-typeset.webp" width="800" height="500" loading="lazy" alt="Printed statement sheet" />
+              </div>
+              <span class="ruleNum">Promise 03 · Real calculator math</span>
+              <h3>AI never guesses your dollar totals</h3>
+              <p>
+                Your monthly statement and budget bar are added up by a strict calculator directly from your receipts—never estimated or made up by AI.
+              </p>
+            </article>
+          </div>
+
+          <div class="ctaBanner">
             <div>
-              <div class="kicker">04 · Complete 18-Tool Surface</div>
-              <h2>Every tool the model is allowed to call.</h2>
-              <p class="lead">The model never touches Tatum, Walrus, or your wallet directly. Click any tool in the grid to inspect its exact parameters and return payload.</p>
+              <h3>Ready to try it with your own wallet?</h3>
+              <p>This page is a safe interactive showcase. Connect your Sui wallet in the top corner to unlock your personal chat, notebook, and payments.</p>
             </div>
-            <div class="tmFilter" id="tmFilter" role="group" aria-label="Filter tools">
-              <button type="button" class="on" data-filter="all">All 18</button>
-              <button type="button" data-filter="free">Free Reads (9)</button>
-              <button type="button" data-filter="write">Guarded Writes (5)</button>
-              <button type="button" data-filter="paid">Money &amp; x402 (4)</button>
+            <div class="ctaButtons">
+              <a class="actionBtn" href="/features" style="text-decoration:none">Explore all features →</a>
+              <a class="ctrlBtn" href="/life" style="text-decoration:none">Read real-life stories</a>
             </div>
-          </div>
-
-          <div class="tmGrid" id="tmGrid"></div>
-
-          <div class="tmInspector">
-            <div>
-              <div class="kicker" id="tiGroup" style="margin-bottom:6px">TOOL INSPECTOR · FREE READ</div>
-              <h3 class="thTitle" id="tiName">people_you_know</h3>
-              <p class="wkrDesc" id="tiDesc" style="margin-top:8px">Lists every person saved in your wallet's Walrus namespace with their alias, address and note.</p>
-            </div>
-            <pre id="tiPayload"></pre>
           </div>
         </section>
       </div>
     </main>
 
+    <footer class="page" style="border-top:1px solid var(--rule);padding:24px var(--pad) 38px">
+      <div class="inner" style="max-width:var(--shell);margin:0 auto;display:flex;gap:20px;flex-wrap:wrap;align-items:baseline">
+        <span class="quiet">Ken · Voice-first personal wallet helper</span>
+        <span class="quiet" style="margin-left:auto">Interactive showcase · Connect your wallet to begin</span>
+      </div>
+    </footer>
+
     <script type="module">
-      import { $, mountWallet, mountNetwork, loadMeta } from "./shared.js";
+      import { loadMeta, fillStats, mountWallet } from "./shared.js";
+      const paint = (body) => fillStats(body);
+      mountWallet(() => loadMeta().then(paint));
+      loadMeta().then(paint);
+    </script>
 
-      mountNetwork(() => loadMeta());
-      mountWallet(() => loadMeta());
-      loadMeta();
+    <script>
+      const $ = (id) => document.getElementById(id);
 
-      /* ==================== 01. WORKFLOW THEATRE DATA ==================== */
-      const SCENARIOS = [
+      const STORIES = [
         {
-          id: "cold-warm",
-          idx: "01",
-          tag: "walrus · x402",
-          title: "Cold vs. Warm Memory",
-          sub: "Trip 1 buys an unknown profile once (0.01 USDC); Trip 2 answers from Walrus for $0.00.",
-          hasTripToggle: true,
-          trips: {
-            cold: {
-              asked: '"Who did I send money to at 0x81cd…8d8f?"',
-              steps: [
-                {
-                  who: "You",
-                  role: "voice or text",
-                  face: "/assets/face-sana.webp",
-                  state: "active",
-                  action: "Ask about an unknown 0x address.",
-                  ms: "0.0 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "spoken question",
-                  said: "Hearing your question and extracting address 0x81cd…8d8f.",
-                  pills: [["voice transcript", "ok"], ["session: wallet", ""]],
-                  wireTitle: "1. Input Transcript",
-                  wire: `POST /turn\n{\n  "text": "Who did I send money to at 0x81cd5dad…8d8f?",\n  "wallet": "connected"\n}`,
-                  stamp: "HEARD",
-                  stampTone: "",
-                },
-                {
-                  who: "Walrus",
-                  role: "the hedgehog",
-                  char: "hedgehog",
-                  state: "active",
-                  action: "Searches your wallet namespace first.",
-                  ms: "1.4 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "recall query",
-                  said: "Checked namespace people-mainnet — 0 matches for 0x81cd…8d8f.",
-                  pills: [["who_is_this", "ok"], ["walrus: miss", "warn"]],
-                  wireTitle: "2. Walrus Namespace Lookup",
-                  wire: `MemWal.recall({\n  namespace: "people-mainnet-<wallet>",\n  query: "0x81cd5dad14a509f6…"\n})\n→ 0 hits (stranger address)`,
-                  stamp: "CACHE MISS",
-                  stampTone: "bad",
-                },
-                {
-                  who: "Tatum",
-                  role: "the bird",
-                  char: "bird",
-                  state: "active",
-                  action: "Walks both sides of your Sui transfers.",
-                  ms: "3.2 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "graphql read",
-                  said: "Found 3 outgoing transfers to 0x81cd…8d8f, but no human name on chain.",
-                  pills: [["tatum graphql", "ok"], ["3 transfers found", ""]],
-                  wireTitle: "3. Tatum Sui GraphQL Read",
-                  wire: `query { transactions(filter: { affectedAddress: "0x81cd…" }) {\n  nodes { digest effects { balanceChanges } }\n}}\n→ 3 flows, no alias on chain`,
-                  stamp: "UNNAMED",
-                  stampTone: "",
-                },
-                {
-                  who: "x402 Index",
-                  role: "the purse mouse",
-                  char: "mouse",
-                  state: "paid",
-                  action: "Quotes 0.01 USDC; your wallet signs bytes.",
-                  ms: "5.1 s",
-                  cost: "0.01 USDC",
-                  costTone: "paid",
-                  courier: "0.01 USDC ticket",
-                  said: "Seller quoted 0.01 USDC via HTTP 402. Your wallet signed the exact transfer; facilitator settled on-chain.",
-                  pills: [["paid_lookup", "ok"], ["HTTP 402 → 200", "warn"], ["0.01 USDC", "warn"]],
-                  wireTitle: "4. x402 Exact Payment & Settlement",
-                  wire: `HTTP/1.1 402 Payment Required\nx-payment-required: { "scheme": "exact", "amount": "0.01", "asset": "USDC" }\n\n→ Wallet signs bytes → Facilitator settles tx BAuczF1Z…`,
-                  stamp: "PAID 0.01 USDC",
-                  stampTone: "bad",
-                },
-                {
-                  who: "Walrus",
-                  role: "the hedgehog",
-                  char: "hedgehog",
-                  state: "done",
-                  action: "Writes the bought profile under your address.",
-                  ms: "6.8 s",
-                  cost: "0.01 USDC",
-                  costTone: "paid",
-                  courier: "saved forever",
-                  said: '"Harbor Print Studio — 19 transactions, 0.01 USDC paid once and written to Walrus so I never pay again."',
-                  pills: [["walrus: rememberAndWait", "ok"], ["saved to namespace", "ok"]],
-                  wireTitle: "5. Written Permanently to Walrus",
-                  wire: `MemWal.rememberAndWait(\n  'Profile 0x81cd… = "Harbor Print Studio", 19 txns · paid 0.01 USDC (tx BAuczF1Z…)'\n)\n→ blob_id: "_OcDylhBVR5qRpeQ5PadK1"`,
-                  stamp: "REMEMBERED",
-                  stampTone: "good",
-                },
-              ],
-            },
-            warm: {
-              asked: '"Who was 0x81cd…8d8f again?" (Asked a second time)',
-              steps: [
-                {
-                  who: "You",
-                  role: "voice or text",
-                  face: "/assets/face-sana.webp",
-                  state: "active",
-                  action: "Ask the exact same question again.",
-                  ms: "0.0 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "repeat question",
-                  said: "Hearing your repeat question about 0x81cd…8d8f.",
-                  pills: [["voice transcript", "ok"], ["warm path", "ok"]],
-                  wireTitle: "1. Repeat Question Arrives",
-                  wire: `POST /turn\n{\n  "text": "Who was 0x81cd5dad…8d8f again?"\n}`,
-                  stamp: "WARM ASK",
-                  stampTone: "good",
-                },
-                {
-                  who: "Walrus",
-                  role: "the hedgehog",
-                  char: "hedgehog",
-                  state: "done",
-                  action: "Instant hit inside your wallet namespace!",
-                  ms: "1.6 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "walrus hit ($0)",
-                  said: "Found Harbor Print Studio in Walrus memory immediately! Skipping Tatum and skipping x402.",
-                  pills: [["walrus: hit", "ok"], ["0.00 USDC", "ok"]],
-                  wireTitle: "2. Walrus Memory Hit (Free)",
-                  wire: `MemWal.recall({ namespace: "people-mainnet-<wallet>" })\n→ HIT: "Harbor Print Studio" (blob _OcDylhBVR5q…)\n→ Cost: 0.00 USDC`,
-                  stamp: "HIT · $0.00",
-                  stampTone: "good",
-                },
-                {
-                  who: "Tatum",
-                  role: "the bird",
-                  char: "bird",
-                  state: "skipped",
-                  action: "Skipped — chain read not needed.",
-                  ms: "1.6 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "chain skipped",
-                  said: "Tatum GraphQL was never called because Walrus already answered.",
-                  pills: [["tatum: skipped", "ok"], ["0 rpc calls", "ok"]],
-                  wireTitle: "3. Tatum Chain Read Skipped",
-                  wire: `// SKIPPED\n// Memory already holds the verified profile.\n// Zero GraphQL quota spent.`,
-                  stamp: "SKIPPED",
-                  stampTone: "good",
-                },
-                {
-                  who: "x402 Index",
-                  role: "the purse mouse",
-                  char: "mouse",
-                  state: "skipped",
-                  action: "Skipped — never pays twice for one fact.",
-                  ms: "1.6 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "toll skipped",
-                  said: "x402 seller was never contacted. Ken refuses to pay twice for a fact it already owns.",
-                  pills: [["x402: skipped", "ok"], ["saved 0.01 USDC", "ok"]],
-                  wireTitle: "4. x402 Paywall Skipped",
-                  wire: `// SKIPPED\n// knownProfile("0x81cd…") returned true.\n// Refusing to build a second 402 ticket.`,
-                  stamp: "ALREADY OWNED",
-                  stampTone: "good",
-                },
-                {
-                  who: "Gemini",
-                  role: "the frog",
-                  char: "frog",
-                  state: "done",
-                  action: "Speaks the answer out loud for $0.00.",
-                  ms: "3.4 s",
-                  cost: "0.00 USDC",
-                  costTone: "free",
-                  courier: "spoken free",
-                  said: '"Already written down on Walrus: Harbor Print Studio. Asking twice costs nothing and touches neither the chain nor the paid index."',
-                  pills: [["read Walrus only", "ok"], ["total: 0.00 USDC", "ok"]],
-                  wireTitle: "5. Grounded Answer Spoken",
-                  wire: `{\n  "from": "memory",\n  "cost_usdc": 0,\n  "said": "Already written down on Walrus: Harbor Print Studio."\n}`,
-                  stamp: "FREE FOREVER",
-                  stampTone: "good",
-                },
-              ],
-            },
-          },
-        },
-        {
-          id: "voice-pay",
-          idx: "02",
-          tag: "sui · usdc",
-          title: "Voice-to-Ticket Payment",
-          sub: "Speak a name and amount; Ken builds unsigned USDC bytes and waits for your wallet extension.",
-          hasTripToggle: false,
+          id: "pay",
+          num: "Story 01",
+          tag: "Everyday payment",
+          title: "Pay a Friend by Name",
+          sub: 'Say "Pay Sana 95 cents" without pasting any address.',
+          face: "/assets/face-sana.webp",
+          youSaid: '"Pay Sana 95 cents for groceries."',
           steps: [
             {
-              who: "You",
-              role: "live call",
-              face: "/assets/face-sana.webp",
-              state: "active",
-              action: 'Say "Pay Sana 0.95 USDC for groceries."',
-              ms: "0.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "voice command",
-              said: 'Heard "Pay Sana 0.95 USDC for groceries" on the live call.',
-              pills: [["live call", "ok"], ["intent: pay_usdc", ""]],
-              wireTitle: "1. Spoken Payment Intent",
-              wire: `POST /turn\n{\n  "text": "Pay Sana 0.95 USDC for groceries"\n}`,
-              stamp: "SPOKEN",
-              stampTone: "",
+              char: "frog",
+              role: "Step 01 · Voice",
+              who: "The Frog Listens",
+              did: "Hears that you want to send $0.95 to your friend Sana.",
+              pill: "Free · $0.00",
+              glider: "💬 Heard 'Pay Sana $0.95'",
+              gliderTone: "",
+              spoken: '"Checking your notebook for Sana\'s wallet address…"',
+              slip: {
+                badge: "Step 1 · Voice Heard",
+                badgeTone: "clay",
+                stamp: "NO ADDRESS NEEDED",
+                title: "Heard: Send $0.95 to Sana",
+                body: "You only said her first name—no ugly 66-character address needed.",
+                btnText: "Next: Find Sana in Notebook →",
+                action: "next",
+              },
             },
             {
-              who: "Walrus",
-              role: "the hedgehog",
               char: "hedgehog",
-              state: "done",
-              action: "Resolves Sana → 0x51ca…11dc (exact match).",
-              ms: "1.1 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "address resolved",
-              said: "Exact-matched Sana in your Walrus roster: 0x51ca0f17…11dc.",
-              pills: [["resolvePerson('Sana')", "ok"], ["spam check: clean", "ok"]],
-              wireTitle: "2. Exact Roster Resolution",
-              wire: `resolvePerson("Sana")\n→ { alias: "Sana", address: "0x51ca0f179e06…2bca11dc" }\nspamMarkFor("0x51ca…") → null`,
-              stamp: "RESOLVED",
-              stampTone: "good",
+              role: "Step 02 · Notebook",
+              who: "Hedgehog Checks Book",
+              did: "Finds Sana's saved wallet address in 1 second for $0.00.",
+              pill: "Found · $0.00",
+              glider: "📒 Found Sana (0x51ca…)",
+              gliderTone: "good",
+              spoken: '"Found Sana in your notebook (groceries & electricity splits)."',
+              slip: {
+                badge: "Step 2 · Found in Notebook",
+                badgeTone: "",
+                stamp: "FREE · $0.00",
+                title: "Sana → 0x51ca…11dc",
+                body: "Because you taught Ken Sana's name once before, the Hedgehog remembers her address forever for free.",
+                btnText: "Next: Prepare $0.95 Payment Slip →",
+                action: "next",
+              },
             },
             {
-              who: "Purse Mouse",
-              role: "ticket builder",
               char: "mouse",
-              state: "active",
-              action: "Builds unsigned Circle USDC PTB bytes.",
-              ms: "1.9 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "unsigned bytes",
-              said: "Built 0.95 USDC transfer bytes and held Ticket #001. Server has no key, so money cannot move yet.",
-              pills: [["prepareUsdc()", "ok"], ["awaiting_signature", "warn"]],
-              wireTitle: "3. Unsigned Ticket Held in Seat",
-              wire: `Ticket #001 (HELD, UNSIGNED)\nTo:    Sana (0x51ca…11dc)\nCoin:  Circle USDC (950000 base units)\nBytes: AAACAAgA… (waiting for wallet extension)`,
-              stamp: "UNSIGNED",
-              stampTone: "",
+              role: "Step 03 · Purse Guard",
+              who: "Mouse Holds Slip",
+              did: "Writes a $0.95 slip on your screen and waits for your thumbprint.",
+              pill: "Waiting for you",
+              glider: "👛 Waiting for your tap",
+              gliderTone: "",
+              spoken: '"I put a $0.95 payment slip on your screen. Tap Approve when ready."',
+              slip: {
+                badge: "Step 3 · Waiting for Approval",
+                badgeTone: "clay",
+                stamp: "UNSIGNED SLIP",
+                title: "Payment Slip · $0.95 to Sana",
+                body: "Money NEVER moves just from talking. Tap the button below to simulate approving in your wallet!",
+                btnText: "✓ Tap to Approve $0.95 in Wallet",
+                action: "next",
+              },
             },
             {
-              who: "Your Wallet",
-              role: "extension seal",
-              face: "/assets/face-dev.webp",
-              state: "paid",
-              action: "You approve inside Slush / Sui Wallet.",
-              ms: "4.2 s",
-              cost: "0.95 USDC",
-              costTone: "paid",
-              courier: "wallet signature",
-              said: "Your wallet signed and broadcast digest 9xK2pL… on Sui.",
-              pills: [["signAndExecute()", "ok"], ["0.95 USDC sent", "warn"]],
-              wireTitle: "4. Signed in Browser Wallet Extension",
-              wire: `wallet.signAndExecuteTransaction({ transaction: bytes })\n→ digest: "9xK2pL8vQr7m…"\n→ POST /pending/settle { digest }`,
-              stamp: "SIGNED BY YOU",
-              stampTone: "good",
-            },
-            {
-              who: "Tatum + Walrus",
-              role: "proof & receipt",
               char: "bird",
-              state: "done",
-              action: "Verifies balance delta on chain, then saves receipt.",
-              ms: "5.6 s",
-              cost: "0.95 USDC",
-              costTone: "paid",
-              courier: "verified receipt",
-              said: '"0.95 USDC to Sana was verified on chain through Tatum and recorded in your Walrus memory."',
-              pills: [["usdcProof: -0.95 / +0.95", "ok"], ["walrus receipt saved", "ok"]],
-              wireTitle: "5. On-Chain Verification & Memory Write",
-              wire: `usdcProof("9xK2pL8vQr7m…")\n→ sender -950000 USDC, recipient +950000 USDC (SUCCESS)\n→ Remembered on Walrus with Suiscan digest link.`,
-              stamp: "SETTLED",
-              stampTone: "good",
+              role: "Step 04 · Messenger",
+              who: "Bird Files Receipt",
+              did: "Verifies $0.95 arrived in Sana's wallet and saves your receipt.",
+              pill: "Paid & Saved",
+              glider: "🕊️ $0.95 Verified & Saved!",
+              gliderTone: "good",
+              spoken: '"Done! $0.95 reached Sana and I saved the receipt in your notebook."',
+              slip: {
+                badge: "Step 4 · Complete",
+                badgeTone: "",
+                stamp: "✓ PAID & SAVED",
+                title: "Receipt Filed · $0.95 Sent to Sana",
+                body: "The Bird confirmed the money arrived in Sana's wallet, and the Hedgehog saved your receipt.",
+                btnText: "↺ Replay this story",
+                action: "restart",
+              },
             },
           ],
         },
         {
-          id: "spam-guard",
-          idx: "03",
-          tag: "pre-flight guard",
-          title: "Spam Mark Pre-Flight Stop",
-          sub: "Flagged addresses stop cold before a single transfer byte is built, repeating your own reason.",
-          hasTripToggle: false,
+          id: "memory",
+          num: "Story 02",
+          tag: "Smart memory",
+          title: "Learn Once, Free Forever",
+          sub: "Pay 1 cent the first time you meet a wallet; $0.00 every time after.",
+          face: "/assets/face-tara.webp",
+          youSaid: '"Who is this wallet 0x81cd…8d8f?"',
           steps: [
             {
-              who: "You",
-              role: "mark spam",
-              face: "/assets/face-imran.webp",
-              state: "active",
-              action: '"Mark 0xdead…1111 as spam: fake airdrop."',
-              ms: "0.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "mark_spam",
-              said: "Marking 0xdead…1111 as spam for your wallet with reason: fake airdrop.",
-              pills: [["mark_spam", "ok"], ["reason stored", "ok"]],
-              wireTitle: "1. User Flags Address as Spam",
-              wire: `markSpam({\n  owner: "wallet:0x…",\n  address: "0xdead…1111",\n  reason: "fake airdrop"\n})`,
-              stamp: "FLAGGED",
-              stampTone: "bad",
+              char: "hedgehog",
+              role: "Step 01 · Notebook",
+              who: "Hedgehog Checks First",
+              did: "Always checks if you already know this person before spending a cent.",
+              pill: "Checks first",
+              glider: "📒 Checking notebook…",
+              gliderTone: "",
+              spoken: '"Let me check if 0x81cd…8d8f is already in your notebook…"',
+              slip: {
+                badge: "Step 1 · Notebook Check",
+                badgeTone: "clay",
+                stamp: "CHECKING FIRST",
+                title: "Is 0x81cd…8d8f in your notebook yet?",
+                body: "The Hedgehog always checks your private memory first so you never pay twice for the same question.",
+                btnText: "See 1st-time stranger lookup (1¢) →",
+                action: "next",
+              },
             },
             {
-              who: "You",
-              role: "later payment",
-              face: "/assets/face-imran.webp",
-              state: "active",
-              action: '"Send 5 USDC to 0xdead…1111."',
-              ms: "0.8 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "pay_usdc(5)",
-              said: "Attempting to send 5 USDC to 0xdead…1111…",
-              pills: [["pay_usdc", "warn"], ["amount: 5 USDC", ""]],
-              wireTitle: "2. Payment Attempt to Flagged Address",
-              wire: `runTool("pay_usdc", {\n  to: "0xdead…1111",\n  amount: 5\n})`,
-              stamp: "CHECKING",
-              stampTone: "",
-            },
-            {
-              who: "Purse Mouse",
-              role: "spam guard",
               char: "mouse",
-              state: "paid",
-              action: "Intercepts call before prepareUsdc() runs!",
-              ms: "0.9 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "STOPPED COLD",
-              said: "STOPPED: 0xdead…1111 is marked spam (fake airdrop). Zero bytes were built and zero money moved.",
-              pills: [["stopped: marked as spam", "warn"], ["0 bytes built", "ok"]],
-              wireTitle: "3. Pre-Flight Spam Interception",
-              wire: `{\n  "marked_spam": true,\n  "amount": 5,\n  "reason": "fake airdrop",\n  "note": "Nothing was built and no money moved."\n}`,
-              stamp: "STOPPED · SPAM",
-              stampTone: "bad",
+              role: "Step 02 · Purse Guard",
+              who: "1st Time Only: 1 Cent",
+              did: "Because the wallet is brand new, the Mouse buys its summary once for $0.01.",
+              pill: "1¢ first time",
+              glider: "👛 1¢ One-Time Lookup",
+              gliderTone: "warn",
+              spoken: '"This wallet is new to you. We can look up its history once for 1 cent."',
+              slip: {
+                badge: "Step 2 · 1st Time Only",
+                badgeTone: "warn",
+                stamp: "COSTS $0.01 ONCE",
+                title: "New Stranger · Unlock Profile for $0.01",
+                body: "Because you have never met 0x81cd…8d8f before, it costs 1 cent one time to fetch their history.",
+                btnText: "✓ Unlock & Save to Notebook ($0.01)",
+                action: "next",
+              },
             },
             {
-              who: "Tatum",
-              role: "the bird",
-              char: "bird",
-              state: "skipped",
-              action: "Skipped — no transaction prepared.",
-              ms: "0.9 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "0 bytes built",
-              said: "prepareUsdc() was never called. Your wallet popup was never triggered.",
-              pills: [["prepareUsdc: skipped", "ok"]],
-              wireTitle: "4. Transaction Builder Bypassed",
-              wire: `// BLOCKED BEFORE BYTES EXIST\n// A warning after signing is a receipt, not a warning.`,
-              stamp: "NOT BUILT",
-              stampTone: "good",
+              char: "hedgehog",
+              role: "Step 03 · Notebook",
+              who: "Hedgehog Writes It Down",
+              did: "Saves the summary inside your notebook so you own it forever.",
+              pill: "Saved forever",
+              glider: "✍️ Written in your notebook",
+              gliderTone: "good",
+              spoken: '"Saved! Next time you ask about this wallet, I will read straight from your notebook."',
+              slip: {
+                badge: "Step 3 · Saved Forever",
+                badgeTone: "",
+                stamp: "OWNED BY YOU",
+                title: "Written in Ink · Never Buy Again",
+                body: "The Hedgehog tucked this profile into your wallet's private notebook.",
+                btnText: "⚡ Now ask the same question a 2nd time! →",
+                action: "next",
+              },
             },
             {
-              who: "Gemini",
-              role: "the frog",
               char: "frog",
-              state: "done",
-              action: "Repeats your reason and asks if you are sure.",
-              ms: "1.8 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "warning spoken",
-              said: '"I stopped that 5 USDC payment because you marked 0xdead…1111 as spam: fake airdrop. Say yes if you still want to send it."',
-              pills: [["grounded: 5 USDC", "ok"], ["awaiting explicit yes", "ok"]],
-              wireTitle: "5. Grounded Warning Spoken",
-              wire: `"I stopped that 5 USDC payment because you marked 0xdead…1111 as spam (fake airdrop). Nothing was built."`,
-              stamp: "PROTECTED",
-              stampTone: "good",
+              role: "Step 04 · Voice",
+              who: "2nd Time: Instant & Free!",
+              did: "Answers immediately from your notebook without paying a single cent.",
+              pill: "$0.00 Forever",
+              glider: "⚡ Instant · $0.00 Free!",
+              gliderTone: "good",
+              spoken: '"From your notebook for $0.00: you already know this wallet!"',
+              slip: {
+                badge: "Step 4 · 2nd Time & Beyond",
+                badgeTone: "",
+                stamp: "FREE · $0.00!",
+                title: "Instant Answer from Your Notebook · $0.00",
+                body: "Zero waiting and zero cost! Once Ken learns something, it is free forever.",
+                btnText: "↺ Replay this story",
+                action: "restart",
+              },
             },
           ],
         },
         {
-          id: "reminder-loop",
-          idx: "04",
-          tag: "server clock",
-          title: "Timed Reminder Delivery",
-          sub: "Deterministic server-side time arithmetic that writes the reminder back into your active thread.",
-          hasTripToggle: false,
+          id: "spam",
+          num: "Story 03",
+          tag: "Scam shield",
+          title: "Block a Scammer Cold",
+          sub: "Flag a bad address once and Ken stops future payments before they start.",
+          face: "/assets/face-imran.webp",
+          youSaid: '"Send $5 to 0xdead…1111"',
           steps: [
             {
-              who: "You",
-              role: "voice or text",
-              face: "/assets/face-dev.webp",
-              state: "active",
-              action: '"Remind me in 30 seconds to check Dev\'s split."',
-              ms: "0.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "remind_me",
-              said: 'Heard "Remind me in 30 seconds to check Dev\'s split."',
-              pills: [["remind_me", "ok"], ["when: in 30 seconds", ""]],
-              wireTitle: "1. Spoken Time Expression",
-              wire: `runTool("remind_me", {\n  what: "check Dev's split",\n  when: "in 30 seconds"\n})`,
-              stamp: "HEARD",
-              stampTone: "",
-            },
-            {
-              who: "Server Clock",
-              role: "parseWhen()",
-              char: "frog",
-              state: "done",
-              action: "Parses exact timestamp in deterministic code.",
-              ms: "0.2 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "+30,000 ms",
-              said: "Parsed 'in 30 seconds' deterministically on the server — model never guesses clock arithmetic.",
-              pills: [["parseWhen: +30s", "ok"], ["reminders.sqlite", "ok"]],
-              wireTitle: "2. Deterministic Time Parser",
-              wire: `parseWhen("in 30 seconds")\n→ due_at: Date.now() + 30_000\n→ Stored in reminders.sqlite for owner wallet:0x…`,
-              stamp: "SCHEDULED",
-              stampTone: "good",
-            },
-            {
-              who: "5s Ticker",
-              role: "background loop",
               char: "hedgehog",
-              state: "active",
-              action: "Server interval checks dueReminders() every 5s.",
-              ms: "15.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "ticking…",
-              said: "Background ticker polling reminders.sqlite while the server stays up…",
-              pills: [["setInterval(5000)", "ok"], ["waiting for due_at", ""]],
-              wireTitle: "3. Always-On Server Ticker",
-              wire: `setInterval(() => {\n  for (const r of dueReminders(Date.now())) {\n    markReminderFired(r.id);\n    chats.append(r.chat, { said: "Reminder: " + r.what });\n  }\n}, 5000);`,
-              stamp: "TICKING",
-              stampTone: "",
+              role: "Step 01 · Notebook",
+              who: "You Flag a Bad Address",
+              did: 'You tell Ken once: "Mark 0xdead…1111 as spam — fake airdrop."',
+              pill: "Shield armed",
+              glider: "🛡️ Marked 'Fake Airdrop'",
+              gliderTone: "warn",
+              spoken: '"Got it. I marked 0xdead…1111 as spam: fake airdrop."',
+              slip: {
+                badge: "Step 1 · Scam Shield Armed",
+                badgeTone: "warn",
+                stamp: "FLAGGED AS SPAM",
+                title: "Saved Warning: 'Fake Airdrop'",
+                body: "You told Ken once that 0xdead…1111 is a scammer. Now see what happens if you accidentally try to pay them later.",
+                btnText: "Simulate trying to send $5 to scammer →",
+                action: "next",
+              },
             },
             {
-              who: "Chat Store",
-              role: "chats.sqlite",
+              char: "frog",
+              role: "Step 02 · Voice",
+              who: "Accidental Payment Ask",
+              did: "Later, someone tricks you into saying 'Send $5 to 0xdead…1111'.",
+              pill: "Checking list",
+              glider: "🔍 Checking safety list…",
+              gliderTone: "",
+              spoken: '"Hold on—checking your spam list before touching your wallet…"',
+              slip: {
+                badge: "Step 2 · Pre-Flight Check",
+                badgeTone: "clay",
+                stamp: "CHECKING LIST",
+                title: "Hold on! Checking your spam list…",
+                body: "Before creating any payment slip, the Mouse checks if you ever warned yourself about this address.",
+                btnText: "See the Purse Mouse step in →",
+                action: "next",
+              },
+            },
+            {
               char: "mouse",
-              state: "done",
-              action: "Appends reminder turn into your active thread.",
-              ms: "30.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "turn appended",
-              said: 'Timer fired! Appended "Reminder: check Dev\'s split" directly into your conversation thread.',
-              pills: [["fired: true", "ok"], ["thread updated", "ok"]],
-              wireTitle: "4. Injected Into Active Thread",
-              wire: `chats.append("wallet:0x…::main", {\n  asked: "",\n  said: "Reminder: check Dev's split",\n  at: 1794002400000\n})`,
-              stamp: "FIRED ON TIME",
-              stampTone: "good",
+              role: "Step 03 · Purse Guard",
+              who: "Mouse Slams the Brakes!",
+              did: "Refuses to create a payment slip and reminds you of your own warning.",
+              pill: "STOPPED COLD",
+              glider: "🛑 STOPPED · Scam Address!",
+              gliderTone: "warn",
+              spoken: '"STOPPED! You marked 0xdead…1111 as spam (fake airdrop). No payment slip was made."',
+              slip: {
+                badge: "Step 3 · Stopped by Mouse",
+                badgeTone: "warn",
+                stamp: "🛑 BLOCKED COLD",
+                title: "Blocked Before Any Wallet Popup!",
+                body: "A warning after you sign is too late. Ken stops cold before your wallet popup even opens!",
+                btnText: "✓ Keep My $5.00 Safe",
+                action: "next",
+              },
             },
             {
-              who: "Your Screen",
-              role: "live redraw",
-              face: "/assets/face-dev.webp",
-              state: "done",
-              action: "Chat polls /chats and renders the reminder bubble.",
-              ms: "30.5 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "delivered",
-              said: '"Reminder: check Dev\'s split" appears in your chat log and survives any page reload.',
-              pills: [["delivered to chat", "ok"], ["0.00 USDC", "ok"]],
-              wireTitle: "5. Visible in Chat & Spoken",
-              wire: `GET /chats → turns[last]:\n"Reminder: check Dev's split"`,
-              stamp: "DELIVERED",
-              stampTone: "good",
+              char: "bird",
+              role: "Step 04 · Safe Wallet",
+              who: "Your $5 Stays Home",
+              did: "Zero money moved and your wallet never even had to open.",
+              pill: "100% Safe",
+              glider: "✓ $5.00 Safe in Wallet",
+              gliderTone: "good",
+              spoken: '"Your $5.00 is completely safe. Nothing was built and no money moved."',
+              slip: {
+                badge: "Step 4 · Protected",
+                badgeTone: "",
+                stamp: "$0.00 MOVED",
+                title: "Your $5.00 Stayed 100% Safe",
+                body: "Your own past warning protected your future self.",
+                btnText: "↺ Replay this story",
+                action: "restart",
+              },
             },
           ],
         },
         {
-          id: "x402-note",
-          idx: "05",
-          tag: "x402 market",
-          title: "Sell & Open a Locked Memory",
-          sub: "Lock any Walrus memory behind a USDC price; buyers pay on-chain through the x402 facilitator.",
-          hasTripToggle: false,
+          id: "remind",
+          num: "Story 04",
+          tag: "Reminders & budget",
+          title: "Reminders & Monthly Cap",
+          sub: "Ask for a timed nudge or set a monthly spending limit in one sentence.",
+          face: "/assets/face-dev.webp",
+          youSaid: '"Remind me in 30 seconds to check Dev\'s split, and cap my month at $25."',
           steps: [
             {
-              who: "Seller (You)",
-              role: "/ask page",
-              face: "/assets/face-tara.webp",
-              state: "active",
-              action: "Pick a Walrus blob and price it at 0.02 USDC.",
-              ms: "0.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "lock blob",
-              said: "Selected a Walrus memory line and locked it behind /ask/k9x2m4p8 at 0.02 USDC.",
-              pills: [["POST /ask/from-memory", "ok"], ["price: 0.02 USDC", ""]],
-              wireTitle: "1. Memory Locked Behind x402 Link",
-              wire: `POST /ask/from-memory\n{\n  "blob": "iHntlg4AuNtZDQMkcwhR…",\n  "usdc": 0.02\n}\n→ link: "/ask/k9x2m4p8"`,
-              stamp: "LOCKED",
-              stampTone: "",
-            },
-            {
-              who: "Buyer Agent",
-              role: "open_paid_link",
               char: "frog",
-              state: "active",
-              action: "Requests note:k9x2m4p8 from Seller port 8788.",
-              ms: "0.6 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "GET /facts",
-              said: "Buyer asks Seller process (:8788) for note:k9x2m4p8 without a receipt.",
-              pills: [["GET :8788/facts", "ok"]],
-              wireTitle: "2. Unpaid Request Hits Seller Wall",
-              wire: `GET http://127.0.0.1:8788/facts/note:k9x2m4p8\n→ Seller checks receipts.sqlite: unpaid`,
-              stamp: "402 WALL",
-              stampTone: "bad",
+              role: "Step 01 · Voice",
+              who: "Speak a Time or Limit",
+              did: "Say 'Remind me in 30 seconds' or 'Set my monthly limit to $25'.",
+              pill: "Plain words",
+              glider: "⏰ Timer + $25 Cap Set",
+              gliderTone: "",
+              spoken: '"Setting a 30-second reminder and a $25.00 monthly budget gauge."',
+              slip: {
+                badge: "Step 1 · Timer & Budget",
+                badgeTone: "clay",
+                stamp: "SCHEDULED",
+                title: "Two Helpers in One Sentence",
+                body: "You don't need separate apps for reminders or budget tracking—just tell Ken out loud.",
+                btnText: "Start the 30-second countdown →",
+                action: "next",
+              },
             },
             {
-              who: "x402 Seller",
-              role: "the purse mouse",
-              char: "mouse",
-              state: "paid",
-              action: "Returns HTTP 402 with exact payout terms.",
-              ms: "0.8 s",
-              cost: "0.02 USDC",
-              costTone: "paid",
-              courier: "402 terms",
-              said: "Seller answers HTTP 402: pay 0.02 USDC to seller wallet on sui:mainnet.",
-              pills: [["HTTP 402", "warn"], ["scheme: exact", ""]],
-              wireTitle: "3. Standard x402 v2 Challenge",
-              wire: `HTTP/1.1 402 Payment Required\n{\n  "scheme": "exact",\n  "network": "sui:mainnet",\n  "amount": "20000",\n  "payTo": "0x81cd5dad…"\n}`,
-              stamp: "0.02 USDC QUOTED",
-              stampTone: "bad",
-            },
-            {
-              who: "Facilitator",
-              role: "verify & settle",
-              char: "bird",
-              state: "paid",
-              action: "Checks buyer's signed bytes, simulates & broadcasts.",
-              ms: "3.1 s",
-              cost: "0.02 USDC",
-              costTone: "paid",
-              courier: "settled on sui",
-              said: "Buyer signed bytes in wallet; Seller's facilitator verified the exact USDC transfer and settled on Sui.",
-              pills: [["facilitator.settle()", "ok"], ["tx verified", "ok"]],
-              wireTitle: "4. Keyless Facilitator Settlement",
-              wire: `verifyAndSettle(signedBytes, signature, terms)\n→ Simulated & broadcast on Sui\n→ Recorded in sales journal (replay-proof)`,
-              stamp: "VERIFIED",
-              stampTone: "good",
-            },
-            {
-              who: "Walrus",
-              role: "the hedgehog",
               char: "hedgehog",
-              state: "done",
-              action: "Releases secret note & writes to buyer's Walrus.",
-              ms: "4.5 s",
-              cost: "0.02 USDC",
-              costTone: "paid",
-              courier: "note unlocked",
-              said: "Words released to buyer and saved to buyer's Walrus namespace. Re-opening the link is free forever.",
-              pills: [["fact released", "ok"], ["replays: $0.00", "ok"]],
-              wireTitle: "5. Unlocked & Journalled Forever",
-              wire: `HTTP/1.1 200 OK\n{\n  "fact": { "kind": "note", "title": "Cloud storage vendor", "body": "…" },\n  "charged": 0.02\n}`,
-              stamp: "UNLOCKED",
-              stampTone: "good",
-            },
-          ],
-        },
-        {
-          id: "statement-card",
-          idx: "06",
-          tag: "vector proof",
-          title: "Zero-Model Vector Statement",
-          sub: "Chain amounts from Tatum + names from Walrus typeset directly into SVG, PDF and CSV.",
-          hasTripToggle: false,
-          steps: [
-            {
-              who: "You",
-              role: "voice or /report",
-              face: "/assets/face-sana.webp",
-              state: "active",
-              action: '"Give me a statement of what I paid this month."',
-              ms: "0.0 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "make_report",
-              said: "Requesting monthly statement and budget meter.",
-              pills: [["make_report", "ok"], ["route: /report", ""]],
-              wireTitle: "1. Statement Request",
-              wire: `runTool("make_report", {})\n// Or open /report directly`,
-              stamp: "REQUESTED",
-              stampTone: "",
+              role: "Step 02 · Desk Clock",
+              who: "Clock Ticks on Desk",
+              did: "Counts down the exact seconds while you keep chatting.",
+              pill: "Ticking…",
+              glider: "⏱ Counting down 00:30…",
+              gliderTone: "",
+              spoken: '"Timer is ticking… I will drop the note right into your chat when time is up."',
+              slip: {
+                badge: "Step 2 · Clock Running",
+                badgeTone: "clay",
+                stamp: "00:30 → 00:00",
+                title: "Desk Clock Watching the Time",
+                body: "Even if you switch tabs, the desk clock keeps watching the time for you.",
+                btnText: "🔔 Ring the reminder bell now →",
+                action: "next",
+              },
             },
             {
-              who: "Tatum",
-              role: "the bird",
-              char: "bird",
-              state: "done",
-              action: "Sums outgoing & incoming USDC across checkpoints.",
-              ms: "1.8 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "chain sums",
-              said: "Read every transfer from Tatum GraphQL and summed exact monthly totals in deterministic TypeScript.",
-              pills: [["counterparties()", "ok"], ["monthSpend()", "ok"]],
-              wireTitle: "2. Deterministic Chain Arithmetic",
-              wire: `totalOut: "24.50 USDC"\ntotalIn:  "8.00 USDC"\nmonths:   [{ label: "Sep", amount: 11.2 }, { label: "Oct", amount: 24.5 }]`,
-              stamp: "MEASURED",
-              stampTone: "good",
-            },
-            {
-              who: "Walrus",
-              role: "the hedgehog",
-              char: "hedgehog",
-              state: "done",
-              action: "Joins human names & cadence notes to addresses.",
-              ms: "2.4 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "names joined",
-              said: "Matched 0x51ca… → Sana, 0xaf95… → Dev, 0x5aad… → Tara from your Walrus namespace.",
-              pills: [["peopleRoster()", "ok"], ["cadence measured", "ok"]],
-              wireTitle: "3. Walrus Identity Join",
-              wire: `0x51ca…11dc → "Sana" (every ~3 days)\n0xaf95…dda5 → "Dev" (bill splits)\n0x5aad…d283 → "Tara" (cloud subscription)`,
-              stamp: "NAMED",
-              stampTone: "good",
-            },
-            {
-              who: "Cap Gauge",
-              role: "cap.sqlite",
               char: "mouse",
-              state: "done",
-              action: "Compares monthly spend against your USDC limit.",
-              ms: "2.5 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "green / amber / red",
-              said: "Checked your monthly cap (25.00 USDC): 24.50 USDC spent (98% — amber warning, never blocks).",
-              pills: [["capMeter()", "ok"], ["98% of cap", "warn"]],
-              wireTitle: "4. Monthly Budget Gauge",
-              wire: `capMeter(24.50, 25.00)\n→ { spent: 24.5, monthly: 25, left: 0.5, state: "amber" }`,
-              stamp: "CHECKED",
-              stampTone: "good",
+              role: "Step 03 · Chat Bell",
+              who: "Ding! Reminder Arrives",
+              did: 'Drops "Reminder: check Dev\'s split" right into your active chat.',
+              pill: "🔔 Delivered!",
+              glider: "🔔 Ding! Check Dev's split",
+              gliderTone: "good",
+              spoken: '"🔔 Reminder: check Dev\'s split!"',
+              slip: {
+                badge: "Step 3 · Delivered On Time",
+                badgeTone: "",
+                stamp: "🔔 DING!",
+                title: "Reminder: Check Dev's Split",
+                body: "Popped straight into your active conversation thread right on schedule.",
+                btnText: "Check my $25 monthly budget bar →",
+                action: "next",
+              },
             },
             {
-              who: "Typesetter",
-              role: "cardSvg()",
-              char: "frog",
-              state: "done",
-              action: "Renders vector SVG, printable PDF & CSV sheet.",
-              ms: "2.6 s",
-              cost: "0.00 USDC",
-              costTone: "free",
-              courier: "no model digits",
-              said: "Typeset 1080×1350 vector statement card. Zero image models touched a single digit.",
-              pills: [["/report.svg", "ok"], ["PDF & CSV ready", "ok"], ["seal: NO MODEL", "ok"]],
-              wireTitle: "5. Vector Statement Card Ready",
-              wire: `GET /report.svg → 1080x1350 vector SVG\nExport options: Save SVG · Print PDF · Download CSV\nProvenance seal: NO MODEL WROTE THESE NUMBERS`,
-              stamp: "TYPESET",
-              stampTone: "good",
+              char: "bird",
+              role: "Step 04 · Calculator",
+              who: "Exact Monthly Statement",
+              did: "Shows $14.80 spent of your $25.00 limit—added up by a real calculator.",
+              pill: "$10.20 left",
+              glider: "📊 $14.80 / $25.00 Spent",
+              gliderTone: "good",
+              spoken: '"You have spent $14.80 of your $25.00 monthly limit ($10.20 remaining)."',
+              slip: {
+                badge: "Step 4 · Under Budget",
+                badgeTone: "",
+                stamp: "$10.20 LEFT",
+                title: "$14.80 Spent of $25.00 Monthly Limit",
+                body: "Added up by a strict calculator from your receipts and ready to save as a clean PDF or image.",
+                btnText: "↺ Replay this story",
+                action: "restart",
+              },
             },
           ],
         },
       ];
 
-      let activeScIdx = 0;
-      let activeTrip = "cold";
-      let activeStepIdx = 0;
-      let timer = null;
-
-      const scTabsEl = $("scTabs");
-      const stationsEl = $("stations");
-
-      function currentSteps() {
-        const sc = SCENARIOS[activeScIdx];
-        return sc.hasTripToggle ? sc.trips[activeTrip].steps : sc.steps;
-      }
-
-      function currentAsked() {
-        const sc = SCENARIOS[activeScIdx];
-        return sc.hasTripToggle ? sc.trips[activeTrip].asked : sc.steps[0].asked || `"${sc.steps[0].action}"`;
-      }
+      let curStoryIdx = 0;
+      let curStepIdx = 0;
+      let playTimer = null;
 
       function renderTabs() {
-        scTabsEl.innerHTML = "";
-        SCENARIOS.forEach((sc, i) => {
+        const box = $("storyTabs");
+        box.innerHTML = "";
+        STORIES.forEach((st, idx) => {
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = `scTab${i === activeScIdx ? " on" : ""}`;
+          btn.className = `storyTab${idx === curStoryIdx ? " on" : ""}`;
           btn.setAttribute("role", "tab");
-          btn.setAttribute("aria-selected", String(i === activeScIdx));
+          btn.setAttribute("aria-selected", String(idx === curStoryIdx));
           btn.innerHTML = `
-            <span class="scTabTop"><span>${sc.idx}</span><span>${sc.tag}</span></span>
-            <b>${sc.title}</b>
+            <span class="storyTabTop"><span>${st.num}</span><span>${st.tag}</span></span>
+            <b>${st.title}</b>
+            <small>${st.sub}</small>
           `;
           btn.addEventListener("click", () => {
-            stopPlay();
-            activeScIdx = i;
-            activeStepIdx = 0;
+            stopAutoPlay();
+            curStoryIdx = idx;
+            curStepIdx = 0;
             renderTabs();
             renderStage();
           });
-          scTabsEl.append(btn);
+          box.append(btn);
         });
-      }
-
-      function actorMarkup(st) {
-        if (st.char) {
-          return `<span class="charCrop stAvatar" data-char="${st.char}"><img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="" /></span>`;
-        }
-        return `<span class="stFace"><img src="${st.face || "/assets/face-sana.webp"}" alt="" /></span>`;
       }
 
       function renderStage() {
-        const sc = SCENARIOS[activeScIdx];
-        const steps = currentSteps();
-        const step = steps[activeStepIdx] || steps[0];
+        const story = STORIES[curStoryIdx];
+        const step = story.steps[curStepIdx];
 
-        $("thStepBadge").textContent = `STEP ${activeStepIdx + 1} OF ${steps.length}`;
-        $("thTitle").textContent = sc.title;
-        $("thSub").textContent = sc.sub;
+        $("relayProgress").textContent = `Step ${curStepIdx + 1} of ${story.steps.length} · ${story.title}`;
 
-        const sw = $("tripSwitch");
-        sw.classList.toggle("show", Boolean(sc.hasTripToggle));
-        for (const b of sw.querySelectorAll("button")) {
-          b.classList.toggle("on", b.dataset.trip === activeTrip);
-        }
+        // Glider position across 4 columns: 12.5%, 37.5%, 62.5%, 87.5%
+        const leftPct = 12.5 + curStepIdx * 25;
+        const glider = $("glider");
+        glider.style.left = `${leftPct}%`;
+        glider.className = `glider ${step.gliderTone || ""}`;
+        $("gliderText").textContent = step.glider;
+        $("railFill").style.width = `${(curStepIdx / 3) * 100}%`;
 
-        const costMeter = $("thCostMeter");
-        costMeter.className = `thMeter ${step.costTone || "free"}`;
-        $("thCost").textContent = step.cost;
-        $("thClock").textContent = step.ms;
-
-        // Courier position along the 5 stations (10%, 30%, 50%, 70%, 90%)
-        const pct = 10 + activeStepIdx * 20;
-        const courier = $("courier");
-        courier.style.left = `${pct}%`;
-        courier.className = `courier ${step.costTone || ""}`;
-        $("courierIdx").textContent = String(activeStepIdx + 1);
-        $("courierLabel").textContent = step.courier;
-        $("wireFill").style.width = `${activeStepIdx * 25}%`;
-
-        stationsEl.innerHTML = "";
-        steps.forEach((s, idx) => {
+        // Render 4 character cards
+        const grid = $("stageGrid");
+        grid.innerHTML = "";
+        story.steps.forEach((s, idx) => {
           const card = document.createElement("button");
           card.type = "button";
-          const isCurrent = idx === activeStepIdx;
-          const isPast = idx < activeStepIdx;
-          let cls = "stCard";
-          if (isCurrent) cls += " active";
-          else if (s.state === "skipped" && isPast) cls += " skipped";
-          else if (isPast && s.state === "paid") cls += " paid";
-          else if (isPast) cls += " done";
-          if (isCurrent && s.state === "skipped") cls += " skipped";
-          if (isCurrent && s.state === "paid") cls += " paid";
-
-          const stateLabel =
-            s.state === "skipped"
-              ? "skipped"
-              : isCurrent
-                ? "active"
-                : isPast
-                  ? "done"
-                  : "waiting";
-
+          let cls = "stageCard";
+          if (idx === curStepIdx) cls += " active";
+          else if (idx < curStepIdx) cls += " done";
           card.className = cls;
           card.innerHTML = `
-            <div class="stHead">
-              <span class="stIdx">0${idx + 1}</span>
-              <span class="stState">${stateLabel}</span>
-            </div>
-            <div class="stActor">
-              ${actorMarkup(s)}
-              <div class="stWho">
+            <div class="stageTop">
+              <span class="charCrop stageAvatar" data-char="${s.char}">
+                <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="" />
+              </span>
+              <div class="stageWho">
+                <small>${s.role}</small>
                 <b>${s.who}</b>
-                <span>${s.role}</span>
               </div>
             </div>
-            <p class="stAction">${s.action}</p>
-            <div class="stFoot">
-              <span>${s.ms}</span>
-              <span>${s.cost}</span>
-            </div>
-            ${isCurrent || isPast ? `<span class="stStamp">${s.stamp}</span>` : ""}
+            <p class="stageWhat">${s.did}</p>
+            <span class="stagePill">${idx < curStepIdx ? "✓ Done" : s.pill}</span>
           `;
           card.addEventListener("click", () => {
-            stopPlay();
-            activeStepIdx = idx;
+            stopAutoPlay();
+            curStepIdx = idx;
             renderStage();
           });
-          stationsEl.append(card);
+          grid.append(card);
         });
 
-        $("simAsked").textContent = sc.hasTripToggle ? currentAsked() : steps[0].action;
-        $("simSpeaker").textContent = `Station 0${activeStepIdx + 1} · ${step.who} (${step.role})`;
-        $("simSaid").textContent = step.said;
+        // Update Left Voice Card
+        $("speakerFace").src = story.face;
+        $("youSaidText").textContent = story.youSaid;
+        $("activeHelperLabel").textContent = `${step.role} · ${step.who} says`;
+        $("kenSpokenReply").textContent = step.spoken;
 
-        const pillsEl = $("simPills");
-        pillsEl.innerHTML = "";
-        (step.pills || []).forEach(([txt, tone]) => {
-          const p = document.createElement("span");
-          p.className = `simPill ${tone || ""}`;
-          p.textContent = txt;
-          pillsEl.append(p);
-        });
+        // Update Right Slip Card
+        const sl = step.slip;
+        const badge = $("slipBadge");
+        badge.textContent = sl.badge;
+        badge.className = `slipBadge ${sl.badgeTone || ""}`;
+        $("slipStamp").textContent = sl.stamp;
+        $("slipTitle").textContent = sl.title;
+        $("slipBody").textContent = sl.body;
 
-        $("wireTitle").textContent = step.wireTitle;
-        $("wireBox").textContent = step.wire;
-        const stEl = $("wireStamp");
-        stEl.textContent = step.stamp;
-        stEl.className = `wireStamp ${step.stampTone || ""}`;
+        const actionBtn = $("slipActionBtn");
+        actionBtn.textContent = sl.btnText;
+        actionBtn.className = `actionBtn ${sl.action === "restart" ? "done" : ""}`;
+        actionBtn.onclick = () => {
+          stopAutoPlay();
+          if (sl.action === "restart") {
+            curStepIdx = 0;
+          } else {
+            curStepIdx = (curStepIdx + 1) % story.steps.length;
+          }
+          renderStage();
+        };
       }
 
-      function startPlay() {
-        stopPlay();
-        const btn = $("btnPlay");
-        btn.textContent = "⏸ Pause";
-        btn.classList.add("running");
-        $("waveSim").classList.add("on");
-        timer = setInterval(() => {
-          const steps = currentSteps();
-          if (activeStepIdx < steps.length - 1) {
-            activeStepIdx++;
+      function startAutoPlay() {
+        stopAutoPlay();
+        $("btnAutoPlay").textContent = "⏸ Pause story";
+        playTimer = setInterval(() => {
+          const story = STORIES[curStoryIdx];
+          if (curStepIdx < story.steps.length - 1) {
+            curStepIdx++;
             renderStage();
           } else {
-            stopPlay();
+            stopAutoPlay();
           }
-        }, 1800);
+        }, 2200);
       }
 
-      function stopPlay() {
-        if (timer) {
-          clearInterval(timer);
-          timer = null;
+      function stopAutoPlay() {
+        if (playTimer) {
+          clearInterval(playTimer);
+          playTimer = null;
         }
-        const btn = $("btnPlay");
-        if (btn) {
-          btn.textContent = "▶ Play";
-          btn.classList.remove("running");
-        }
-        $("waveSim")?.classList.remove("on");
+        const btn = $("btnAutoPlay");
+        if (btn) btn.textContent = "▶ Play story";
       }
 
-      $("btnPlay").addEventListener("click", () => {
-        if (timer) stopPlay();
-        else {
-          const steps = currentSteps();
-          if (activeStepIdx >= steps.length - 1) activeStepIdx = 0;
+      $("btnAutoPlay").addEventListener("click", () => {
+        if (playTimer) {
+          stopAutoPlay();
+        } else {
+          const story = STORIES[curStoryIdx];
+          if (curStepIdx >= story.steps.length - 1) curStepIdx = 0;
           renderStage();
-          startPlay();
+          startAutoPlay();
         }
       });
 
-      $("btnPrev").addEventListener("click", () => {
-        stopPlay();
-        const steps = currentSteps();
-        activeStepIdx = (activeStepIdx - 1 + steps.length) % steps.length;
-        renderStage();
-      });
-
-      $("btnNext").addEventListener("click", () => {
-        stopPlay();
-        const steps = currentSteps();
-        activeStepIdx = (activeStepIdx + 1) % steps.length;
-        renderStage();
-      });
-
-      $("tripSwitch").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-trip]");
-        if (!btn) return;
-        stopPlay();
-        activeTrip = btn.dataset.trip;
-        activeStepIdx = 0;
+      $("btnNextStep").addEventListener("click", () => {
+        stopAutoPlay();
+        const story = STORIES[curStoryIdx];
+        curStepIdx = (curStepIdx + 1) % story.steps.length;
         renderStage();
       });
 
       renderTabs();
       renderStage();
 
-      /* ==================== 02. FOUR WORKERS SWITCHBOARD ==================== */
-      const WORKER_COPY = {
-        tatum: {
-          on: "ONLINE · Reading mainnet & testnet checkpoints and verifying both sides of every USDC transfer.",
-          off: "UNPLUGGED · Balances, counterparty history, and on-chain receipt verification are blind.",
-        },
-        walrus: {
-          on: "ONLINE · Warm lookups return in ~2s for $0.00 without touching the chain or paying twice.",
-          off: "UNPLUGGED · Agent has amnesia. Every question re-reads the chain and unknown names are forgotten on restart.",
-        },
-        gemini: {
-          on: "ONLINE · Routing spoken sentences to deterministic tools with automatic NVIDIA fallback.",
-          off: "UNPLUGGED · Natural speech and tool selection stop; only manual forms on /pay and /request remain.",
-        },
-        x402: {
-          on: "ONLINE · Charging 0.01–0.03 USDC once per unknown fact and releasing only after on-chain settlement.",
-          off: "UNPLUGGED · Unknown wallet profiles, paid receipt checks, and locked memory links cannot be bought.",
-        },
-      };
-
-      const workerState = { tatum: true, walrus: true, gemini: true, x402: true };
-
-      function syncWorkers() {
-        let online = 0;
-        for (const [k, isOn] of Object.entries(workerState)) {
-          if (isOn) online++;
-          const card = document.querySelector(`.wkrCard[data-wkr="${k}"]`);
-          const btn = document.querySelector(`[data-toggle="${k}"]`);
-          const st = document.querySelector(`[data-status="${k}"]`);
-          card?.classList.toggle("off", !isOn);
-          if (btn) btn.textContent = isOn ? "● Plugged in" : "○ Unplugged";
-          if (st) st.textContent = isOn ? WORKER_COPY[k].on : WORKER_COPY[k].off;
-        }
-        $("wkrSummary").textContent = `${online} of 4 workers online`;
-        const offList = Object.entries(workerState)
-          .filter(([, v]) => !v)
-          .map(([k]) => k.toUpperCase());
-        const banner = $("sbBanner").querySelector("span");
-        if (!offList.length) {
-          banner.innerHTML = "<b>Switchboard diagnosis:</b> All four workers are connected. Warm questions stop at Walrus; cold questions pay once through x402 and write back to Walrus.";
-        } else {
-          banner.innerHTML = `<b>Switchboard warning (${offList.join(", ")} unplugged):</b> Remove any one worker and its exact job fails immediately — proving zero decorative dependencies.`;
-        }
-      }
-
-      document.getElementById("wkrGrid").addEventListener("click", (e) => {
-        const btn = e.target.closest("[data-toggle]");
+      /* ---------- 02. PUT A HELPER TO SLEEP INTERACTION ---------- */
+      $("helpersGrid").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-sleep]");
         if (!btn) return;
-        const k = btn.dataset.toggle;
-        workerState[k] = !workerState[k];
-        syncWorkers();
+        const card = btn.closest(".helperCard");
+        const desc = card.querySelector(".helperDesc");
+        const asleep = !card.classList.contains("asleep");
+        card.classList.toggle("asleep", asleep);
+        desc.textContent = asleep ? desc.dataset.asleep : desc.dataset.awake;
+        btn.textContent = asleep
+          ? "○ Asleep! · Tap to wake back up"
+          : "● Awake & working · Tap to put to sleep";
       });
-
-      $("resetWorkers").addEventListener("click", () => {
-        workerState.tatum = true;
-        workerState.walrus = true;
-        workerState.gemini = true;
-        workerState.x402 = true;
-        syncWorkers();
-      });
-
-      /* ==================== 03. SAFETY GUARDRAILS TESTER ==================== */
-      const REFUSALS = [
-        {
-          idx: "01",
-          title: "Auto-Sign Without Wallet",
-          sub: "Try to move USDC from a spoken sentence alone",
-          tag: "keyless server",
-          kicker: "GUARDRAIL 01 · NO SERVER SIGNING KEY",
-          headline: "Spoken words only ever build unsigned bytes",
-          explain: "The server holds zero user private keys. Calling pay_usdc prepares the exact Circle USDC transfer bytes and parks them in your seat until your browser wallet signs.",
-          code: `// src/tools.ts — pay_usdc\nconst p = await prepareUsdc(session().wallet, address, usdc);\nconst held = hold({ sender: p.sender, to: p.to, usdc: p.usdc, bytes: p.bytes });\nreturn { awaiting_signature: true, id: held.id, where: "the ticket under this reply" };`,
-          file: "Enforced in src/tools.ts & src/wallet.ts",
-        },
-        {
-          idx: "02",
-          title: "Fake Digest Claim",
-          sub: "Submit a bogus or failed transaction digest to /pending/settle",
-          tag: "chain proof",
-          kicker: "GUARDRAIL 02 · ON-CHAIN BALANCE DELTA PROOF",
-          headline: "A browser claiming it paid is never trusted",
-          explain: "Before any payment is marked settled or written to Walrus, usdcProof() reads the transaction back from Tatum and verifies that exact USDC left your address and arrived at the recipient.",
-          code: `// src/server.ts — usdcProof()\nconst left = proof.changes.find(c => c.amount === -expected && isUsdc(c.coinType));\nconst arrived = proof.changes.find(c => c.amount === expected && isUsdc(c.coinType));\nif (!left || !arrived) return "that transaction is not the expected USDC transfer";`,
-          file: "Enforced in src/server.ts (usdcProof)",
-        },
-        {
-          idx: "03",
-          title: "Double-Charge Same Fact",
-          sub: "Ask for an address profile or paid note a second time",
-          tag: "replay journal",
-          kicker: "GUARDRAIL 03 · WALRUS + JOURNAL DEDUPLICATION",
-          headline: "Never pays twice for a fact it already bought",
-          explain: "Every paid lookup checks Walrus memory first and journals the signed envelope before settlement. If a network drop happens mid-flight, retryStuck() replays the receipt instead of charging again.",
-          code: `// src/tools.ts — paid_lookup\nconst remembered = await knownProfile(address);\nif (remembered) {\n  return { cost_usdc: 0, from: "memory", said: "I already bought this profile" };\n}`,
-          file: "Enforced in src/tools.ts & src/x402.ts",
-        },
-        {
-          idx: "04",
-          title: "Pay Flagged Spam Address",
-          sub: "Send USDC to an address you previously marked as spam",
-          tag: "pre-flight stop",
-          kicker: "GUARDRAIL 04 · SPAM MARK PRE-FLIGHT INTERCEPTION",
-          headline: "Stops cold before a single byte is built",
-          explain: "If an address is in your spam list, both pay_usdc and POST /send abort before calling prepareUsdc(), repeating your own stored reason and requiring explicit confirmation.",
-          code: `// src/tools.ts — pay_usdc\nconst mark = spamMarkFor(address);\nif (mark && String(a.confirm_spam ?? "").toLowerCase() !== "yes") {\n  return { marked_spam: true, amount: usdc, reason: mark.reason };\n}`,
-          file: "Enforced in src/spam.ts, src/tools.ts & src/server.ts",
-        },
-        {
-          idx: "05",
-          title: "Hallucinate Numbers or Names",
-          sub: "Model invents a dollar figure or guesses a partial address",
-          tag: "groundAnswer()",
-          kicker: "GUARDRAIL 05 · DETERMINISTIC NUMBER GROUNDING",
-          headline: "Every spoken number is checked against tool output",
-          explain: "groundAnswer() inspects every digit the model writes against the raw JSON returned by tools in that turn. Unconfirmed numbers are stripped, and unknown names trigger needs_address instead of guessing.",
-          code: `// src/brain.ts & src/tools.ts\nif (!full && !person) {\n  return { needs_address: true, who: raw, amount: usdc };\n}`,
-          file: "Enforced in src/brain.ts & src/tools.ts",
-        },
-      ];
-
-      let activeRefIdx = 0;
-      const refListEl = $("refList");
-
-      function renderRefusals() {
-        refListEl.innerHTML = "";
-        REFUSALS.forEach((r, i) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `refBtn${i === activeRefIdx ? " on" : ""}`;
-          btn.innerHTML = `
-            <span class="refNum">${r.idx}</span>
-            <span><b>${r.title}</b><small>${r.sub}</small></span>
-            <span class="refTag">${r.tag}</span>
-          `;
-          btn.addEventListener("click", () => {
-            activeRefIdx = i;
-            renderRefusals();
-          });
-          refListEl.append(btn);
-        });
-
-        const cur = REFUSALS[activeRefIdx];
-        $("refKicker").textContent = cur.kicker;
-        $("refTitle").textContent = cur.headline;
-        $("refExplain").textContent = cur.explain;
-        $("refCode").textContent = cur.code;
-        $("refFile").textContent = cur.file;
-      }
-
-      renderRefusals();
-
-      /* ==================== 04. 18-TOOL SURFACE MATRIX ==================== */
-      const TOOLS = [
-        { name: "people_you_know", kind: "free", badge: "walrus · free", desc: "Lists every named person in your wallet's Walrus namespace.", wire: `args: {}\nreturns: { count: 5, people: [{ alias: "Sana", address: "0x51ca…", note: "groceries" }] }` },
-        { name: "find_person", kind: "free", badge: "walrus · free", desc: "Fuzzy-matches a spoken name to a saved address or opens the address field.", wire: `args: { name: "Sana" }\nreturns: { alias: "Sana", address: "0x51ca…11dc", confidence: 1 }` },
-        { name: "who_is_this", kind: "free", badge: "both · free", desc: "Combines Walrus notes and Tatum transfer cadence for one address.", wire: `args: { address: "0x51ca…11dc" }\nreturns: { name: "Sana", flows: 6, net: "14.80", asset: "USDC" }` },
-        { name: "money_history", kind: "free", badge: "tatum · free", desc: "Ranks counterparties by total volume, frequency, and recency.", wire: `args: {}\nreturns: { counterparties: 5, top_by_amount: ["Sana 14.80 USDC"] }` },
-        { name: "monthly_summary", kind: "free", badge: "tatum · free", desc: "Sums outgoing and incoming transfers month by month.", wire: `args: {}\nreturns: { months: [{ month: "2026-11", out: "24.50 USDC" }] }` },
-        { name: "what_is_due", kind: "free", badge: "rhythm · free", desc: "Detects recurring payment rhythms and flags overdue bills.", wire: `args: {}\nreturns: { due: 1, late: 0, committed: [{ per_month: "12.00 USDC" }] }` },
-        { name: "what_do_i_remember", kind: "free", badge: "walrus · free", desc: "Semantic search across all notes and receipts stored on Walrus.", wire: `args: { query: "groceries" }\nreturns: { matched: 2, people: ["Sana"], memories: [...] }` },
-        { name: "memory_stats", kind: "free", badge: "walrus · free", desc: "Counts stored blobs in your people and counterparties namespaces.", wire: `args: {}\nreturns: { total: 14, namespaces: [{ name: "people-mainnet-…", memories: 9 }] }` },
-        { name: "make_report", kind: "free", badge: "proof · free", desc: "Builds the deterministic monthly statement at /report.", wire: `args: {}\nreturns: { where: "/report", headline: "24.50 USDC", total_out: "24.50 USDC" }` },
-        { name: "name_a_person", kind: "write", badge: "walrus · write", desc: "Permanently binds a human name and note to a 0x address on Walrus.", wire: `args: { name: "Ravi", address: "0xc239…e1df", note: "plumber, Fridays" }\nreturns: { alias: "Ravi", blobId: "SePaTTwd…" }` },
-        { name: "remember_this", kind: "write", badge: "walrus · write", desc: "Writes a standalone fact to your wallet's Walrus namespace.", wire: `args: { text: "Split rent with Dev on the 1st" }\nreturns: { stored: "86NzBryz…" }` },
-        { name: "set_monthly_limit", kind: "write", badge: "cap · write", desc: "Sets or reads your monthly USDC budget gauge on /report.", wire: `args: { usdc: 25 }\nreturns: { monthly: 25, spent: 14.8, left: 10.2, state: "ok" }` },
-        { name: "mark_spam", kind: "write", badge: "guard · write", desc: "Flags an address as spam with a reason so future payments stop cold.", wire: `args: { who: "0xdead…1111", reason: "fake airdrop" }\nreturns: { marked: true, reason: "fake airdrop" }` },
-        { name: "remind_me", kind: "write", badge: "timer · write", desc: "Parses a time phrase on the server and schedules an in-chat reminder.", wire: `args: { what: "check Dev's split", when: "in 30 seconds" }\nreturns: { set: true, due_at: "2026-11-07T…" }` },
-        { name: "request_money", kind: "paid", badge: "link · usdc", desc: "Opens the single-use payment request & QR generator for your wallet.", wire: `args: { usdc: 5, what_for: "lunch split", minutes: 30 }\nreturns: { needs_request_fields: true, usdc: 5, minutes: 30 }` },
-        { name: "pay_usdc", kind: "paid", badge: "ticket · usdc", desc: "Checks spam marks and builds unsigned USDC bytes for your wallet to sign.", wire: `args: { to: "Sana", amount: 0.95 }\nreturns: { awaiting_signature: true, to: "Sana", usdc: 0.95 }` },
-        { name: "paid_lookup", kind: "paid", badge: "x402 · 0.01", desc: "Quotes and settles an x402 profile lookup for an unknown wallet once.", wire: `args: { address: "0x81cd…8d8f" }\nreturns: { awaiting_signature: true, to: "Paid chain index", usdc: 0.01 }` },
-        { name: "open_paid_link", kind: "paid", badge: "x402 · link", desc: "Quotes and unlocks another user's priced Walrus memory link (/ask/:id).", wire: `args: { id: "k9x2m4p8" }\nreturns: { awaiting_signature: true, usdc: 0.02, what: "locked memory" }` },
-      ];
-
-      let activeToolFilter = "all";
-      let activeToolName = TOOLS[0].name;
-      const tmGridEl = $("tmGrid");
-
-      function renderTools() {
-        tmGridEl.innerHTML = "";
-        TOOLS.forEach((t, i) => {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = `tmCard${t.name === activeToolName ? " on" : ""}`;
-          btn.hidden = activeToolFilter !== "all" && t.kind !== activeToolFilter;
-          btn.innerHTML = `
-            <div class="tmTop">
-              <span class="tmCode">${String(i + 1).padStart(2, "0")} · ${t.name}</span>
-              <span class="tmBadge ${t.kind}">${t.badge}</span>
-            </div>
-            <p class="tmDesc">${t.desc}</p>
-          `;
-          btn.addEventListener("click", () => {
-            activeToolName = t.name;
-            renderTools();
-          });
-          tmGridEl.append(btn);
-        });
-
-        const cur = TOOLS.find((t) => t.name === activeToolName) || TOOLS[0];
-        $("tiGroup").textContent = `TOOL INSPECTOR · ${cur.badge.toUpperCase()}`;
-        $("tiName").textContent = cur.name;
-        $("tiDesc").textContent = cur.desc;
-        $("tiPayload").textContent = cur.wire;
-      }
-
-      document.getElementById("tmFilter").addEventListener("click", (e) => {
-        const btn = e.target.closest("button[data-filter]");
-        if (!btn) return;
-        activeToolFilter = btn.dataset.filter;
-        for (const b of document.querySelectorAll("#tmFilter button")) {
-          b.classList.toggle("on", b === btn);
-        }
-        const firstVisible = TOOLS.find((t) => activeToolFilter === "all" || t.kind === activeToolFilter);
-        if (firstVisible) activeToolName = firstVisible.name;
-        renderTools();
-      });
-
-      renderTools();
     </script>
   </body>
 </html>
