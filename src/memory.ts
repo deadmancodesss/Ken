@@ -76,3 +76,52 @@ export async function searchMemory(query: string, limit = 10): Promise<Known[]> 
     })),
   );
 }
+
+export type Line = { blobId: string; text: string; namespace: string };
+
+/**
+ * Everything this wallet can read back, with the id it is stored under, so a line can
+ * be put behind a price without anybody typing it out again. Recall is a search rather
+ * than a dump, so at the size one person's memory reaches, the query only has to be the
+ * plainest one that returns a namespace and the limit is the whole store.
+ *
+ * The property this list is trusted for is that every row in it is a row the store
+ * really holds, because a wall that offers words the seller does not have is selling a
+ * memory that cannot be delivered. So the text is passed through verbatim and never
+ * rebuilt from a parsed shape, and a row with no id cannot be offered at all.
+ */
+export async function lines(limit = 100): Promise<Line[]> {
+  const asks = [
+    { namespace: scope("people"), query: "Person" },
+    { namespace: scope("counterparties"), query: "who I pay and what they are to me" },
+  ];
+  const pages = await Promise.all(
+    asks.map((a) => client(a.namespace).recall({ query: a.query, namespace: a.namespace, limit }) as Promise<any>),
+  );
+  const out: Line[] = [];
+  const seen = new Set<string>();
+  for (const [i, res] of pages.entries()) {
+    for (const hit of res.results ?? []) {
+      const text = String(hit.text ?? "").trim();
+      const blobId = String(hit.blob_id ?? "");
+      if (!text || !blobId) continue;
+      // Two keys, because the relayer keeps both halves of a duplicated payment and
+      // they are the same sentence under two ids. A seller picking from a list would
+      // otherwise see the same line twice and price one of them.
+      if (seen.has(blobId) || seen.has(text)) continue;
+      seen.add(blobId);
+      seen.add(text);
+      out.push({ blobId, text, namespace: asks[i].namespace });
+    }
+  }
+  return out;
+}
+
+/**
+ * The one line stored under one id, or nothing. Used at the moment a link is made, so
+ * the words that end up behind the wall are read out of the store by the server rather
+ * than sent to it by the page that asked for the link.
+ */
+export async function line(blobId: string): Promise<Line | undefined> {
+  return (await lines()).find((l) => l.blobId === blobId);
+}

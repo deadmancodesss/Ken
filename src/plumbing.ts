@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { MemWal } from "@mysten-incubation/memwal";
+import { historyFloor } from "./chain.js";
 
 type Status = "pass" | "fail" | "skip";
 const rows: { step: string; status: Status; detail: string }[] = [];
@@ -54,22 +55,39 @@ if (!tatumKey) {
   }
 }
 
-// 2. The capability the product actually depends on: reading other people's onchain history
-// with no balance of our own.
+// 2. The capability the product actually depends on: reading somebody's history on
+// mainnet. This is the read that broke quietly once, when the gateway began refusing any
+// listing whose walk starts below what its index still holds and this build answered with
+// an empty wallet. So the check asks for a real recent address from the chain itself and
+// reads its history the way the agent does, rather than asking for a page of everything.
 if (!tatumKey) {
   record("mainnet history read", "skip", "blocked on API key");
 } else {
   try {
-    const r = await gql("{ transactions(first: 3) { nodes { digest sender { address } } } }");
-    const nodes = r.data?.transactions?.nodes ?? [];
-    const withSender = nodes.find((n: any) => n.sender?.address);
-    record(
-      "mainnet history read",
-      nodes.length ? "pass" : "fail",
-      nodes.length
-        ? `${nodes.length} live transactions, e.g. ${String(nodes[0].digest).slice(0, 16)}… from ${String(withSender?.sender?.address ?? "unknown").slice(0, 14)}…`
-        : `HTTP ${r.http}: ${r.message}`,
-    );
+    const block = await gql("{ checkpoint { sequenceNumber transactions(first:20){ nodes { sender { address } } } } }");
+    const senders: string[] = [
+      ...new Set<string>(
+        (block.data?.checkpoint?.transactions?.nodes ?? [])
+          .map((n: any) => String(n?.sender?.address ?? ""))
+          .filter((a: string) => /^0x[0-9a-fA-F]{64}$/.test(a)),
+      ),
+    ];
+    const seq = block.data?.checkpoint?.sequenceNumber;
+    if (!senders.length) {
+      record("mainnet history read", "fail", `checkpoint ${seq} gave no sender: ${block.message}`);
+    } else {
+      const hist = await gql(
+        `{ transactions(last:5, filter:{ affectedAddress:"${senders[0]}", afterCheckpoint:${historyFloor("mainnet")} }){ nodes { digest effects { timestamp } } } }`,
+      );
+      const read = hist.data?.transactions?.nodes ?? [];
+      record(
+        "mainnet history read",
+        read.length ? "pass" : "fail",
+        read.length
+          ? `${senders.length} senders in checkpoint ${seq}, ${read.length} history rows for ${String(senders[0]).slice(0, 10)}…, newest ${read[read.length - 1]?.effects?.timestamp ?? "undated"}`
+          : `HTTP ${hist.http}: ${hist.message}`,
+      );
+    }
   } catch (err) {
     record("mainnet history read", "fail", (err as Error).message);
   }

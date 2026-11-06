@@ -50,25 +50,47 @@ export async function labelPerson(alias: string, address: string, note?: string)
 }
 
 let cached: { namespace: string; at: number; rows: Person[] } | null = null;
-const TTL_MS = 30_000;
+let loading: { namespace: string; read: Promise<Person[]> } | null = null;
+/* One recall measured 3.7 seconds against the live store, and a call that reads it
+   again every thirty seconds makes every later name lookup feel broken. Names only
+   change when this process writes one, and that clears the cache below, so five
+   minutes is the staleness a person can actually notice. */
+const TTL_MS = 5 * 60_000;
 
 /**
  * Recall answers a 64-character hex query badly, and that used to mean an address
  * the agent had already paid for looked unknown seconds later. So the roster is
  * read once, in one query that is known to work, and every lookup is a literal
  * match over what came back.
+ *
+ * A second caller joins the read already in flight instead of paying for another
+ * one. That is what the call prefetch and the first spoken name do at the same
+ * moment, and two 3.7 second reads where one would do is most of a slow answer.
  */
 async function roster(): Promise<Person[]> {
   const namespace = scope("people");
   if (cached && cached.namespace === namespace && Date.now() - cached.at < TTL_MS) return cached.rows;
-  const res: any = await client(namespace).recall({ query: "Person", namespace, limit: 100 });
-  const seen = new Map<string, Person>();
-  for (const hit of res.results ?? []) {
-    const p = parse(hit.text, hit.blob_id);
-    if (p && !seen.has(p.address.toLowerCase())) seen.set(p.address.toLowerCase(), p);
-  }
-  cached = { namespace, at: Date.now(), rows: [...seen.values()] };
-  return cached.rows;
+  if (loading && loading.namespace === namespace) return loading.read;
+  const read = client(namespace)
+    .recall({ query: "Person", namespace, limit: 100 })
+    .then((res: any) => {
+      const seen = new Map<string, Person>();
+      for (const hit of res.results ?? []) {
+        const p = parse(hit.text, hit.blob_id);
+        if (p && !seen.has(p.address.toLowerCase())) seen.set(p.address.toLowerCase(), p);
+      }
+      cached = { namespace, at: Date.now(), rows: [...seen.values()] };
+      return cached.rows;
+    })
+    .catch((err: any) => {
+      console.warn(`walrus recall unavailable (${(err as Error).message}), using cached or empty roster`);
+      return cached?.rows ?? [];
+    })
+    .finally(() => {
+      if (loading?.read === read) loading = null;
+    });
+  loading = { namespace, read };
+  return read;
 }
 
 /** Case, spaces and punctuation are not what a microphone produces, so they are not compared. */
@@ -160,11 +182,15 @@ export async function memoryStats(): Promise<{ total: number; namespaces: Namesp
   for (const name of scopes) {
     let count = 0;
     let cursor: string | undefined;
-    for (;;) {
-      const page: any = await client(name).listMemories({ cursor, namespace: name, limit: 100 });
-      count += page.memories?.length ?? 0;
-      cursor = page.next_cursor ?? undefined;
-      if (!cursor || !page.has_more) break;
+    try {
+      for (;;) {
+        const page: any = await client(name).listMemories({ cursor, namespace: name, limit: 100 });
+        count += page.memories?.length ?? 0;
+        cursor = page.next_cursor ?? undefined;
+        if (!cursor || !page.has_more) break;
+      }
+    } catch (err: any) {
+      console.warn(`walrus listMemories unavailable (${(err as Error).message}), returning 0`);
     }
     namespaces.push({ name, memories: count });
   }

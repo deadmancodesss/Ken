@@ -8,6 +8,33 @@ import {
   type Net,
 } from "./chain.js";
 import { peopleRoster } from "./people.js";
+import { sellerWallet } from "./x402.js";
+import { isFaucet } from "./known.js";
+
+/**
+ * The index is paid from this wallet, so its payout address shows up in the same
+ * history as a person who keeps taking money. It is a vendor, and a list of people
+ * headed by a lookup service makes the busiest contact out of a machine. The address
+ * is compared rather than the name, because the name lives in somebody's memory and
+ * can be spelled any way the person who wrote it chose.
+ */
+function vendorAddress(): string {
+  try {
+    return sellerWallet().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export type CoinRow = {
+  asset: string;
+  type: string;
+  in: string;
+  out: string;
+  net: string;
+  flows: number;
+  usual: string | null;
+};
 
 export type Party = {
   address: string;
@@ -22,6 +49,11 @@ export type Party = {
   usualAmount: string | null;
   gapDays: number | null;
   memorised: boolean;
+  service: boolean;
+  faucet: boolean;
+  /* One row per coin this relationship moved. A funder who sent SUI and 20 USDC is
+     two facts, and the dominant-coin net used to hide the larger one. */
+  coins: CoinRow[];
 };
 
 function day(iso: string | null): string | null {
@@ -59,6 +91,44 @@ const memo = new Map<string, Party[]>();
  */
 export const READ_DEPTH = 40;
 
+/**
+ * A relationship split by coin. `amount` in a Flow is the counterparty's change, so a
+ * negative amount is money this wallet received and a positive amount is money it sent.
+ * The split is what lets the agent answer "who gave me the USDC" when the same person
+ * also moved a far smaller amount of SUI and the old dominant-coin row hid it.
+ */
+export function coinRows(flows: Flow[], decimals: Map<string, number>): CoinRow[] {
+  const byType = new Map<string, Flow[]>();
+  for (const f of flows) {
+    const list = byType.get(f.coinType) ?? [];
+    list.push(f);
+    byType.set(f.coinType, list);
+  }
+  const rows: CoinRow[] = [];
+  for (const [type, list] of byType) {
+    const d = decimals.get(type) ?? 0;
+    let came = 0n;
+    let went = 0n;
+    const amounts: bigint[] = [];
+    for (const f of list) {
+      if (f.amount < 0n) came += -f.amount;
+      else went += f.amount;
+      amounts.push(f.amount < 0n ? -f.amount : f.amount);
+    }
+    const net = came >= went ? came - went : went - came;
+    rows.push({
+      asset: coinName(type),
+      type,
+      in: formatAmount(came, d),
+      out: formatAmount(went, d),
+      net: formatAmount(net, d),
+      flows: list.length,
+      usual: amounts.length ? formatAmount(BigInt(Math.round(median(amounts.map(Number)))), d) : null,
+    });
+  }
+  return rows.sort((a, b) => b.flows - a.flows || Number(b.out) - Number(a.out));
+}
+
 export async function counterparties(wallet: string, network: Net = "mainnet", limit?: number): Promise<Party[]> {
   const cacheKey = `${wallet.toLowerCase()}|${network}`;
   const cached = memo.get(cacheKey);
@@ -68,6 +138,7 @@ export async function counterparties(wallet: string, network: Net = "mainnet", l
     recentActivity(wallet, READ_DEPTH, network),
     peopleRoster(),
   ]);
+  const vendor = vendorAddress();
   const named = new Map(roster.map((p) => [p.address.toLowerCase(), p]));
   // Anyone already seen outbound, plus everyone the agent can name, is worth
   // reading from the other side. That is the only way inbound money surfaces.
@@ -92,17 +163,19 @@ export async function counterparties(wallet: string, network: Net = "mainnet", l
 
   // Resolve every coin's decimals in one parallel pass. Doing it per party inside
   // the loop serialized a round trip for each one.
-  await Promise.all(
-    [...buckets.values()].map((list) => coinDecimals(mostFrequent(list.map((f) => f.coinType)), network)),
-  );
+  const types = [...new Set(flows.map((f) => f.coinType))];
+  const decimalsByType = new Map<string, number>();
+  await Promise.all(types.map(async (t) => decimalsByType.set(t, await coinDecimals(t, network))));
 
   const parties: Party[] = [];
   for (const [address, list] of buckets) {
     const dominant = mostFrequent(list.map((f) => f.coinType));
     const same = list.filter((f) => f.coinType === dominant);
-    const decimals = await coinDecimals(dominant, network);
+    const decimals = decimalsByType.get(dominant) ?? 0;
     const net = same.reduce((sum, f) => sum + f.amount, 0n);
-    const dates = same.map((f) => f.timestamp).filter((t): t is string => !!t).sort();
+    // Every coin counts for when this relationship was first and last seen, because
+    // a person whose only recent payment was in a second coin still moved recently.
+    const dates = list.map((f) => f.timestamp).filter((t): t is string => !!t).sort();
     const amounts = same.map((f) => (f.amount < 0n ? -f.amount : f.amount));
 
     // The roster read above already returns every person line, so an address
@@ -130,10 +203,19 @@ export async function counterparties(wallet: string, network: Net = "mainnet", l
       // difference between a ledger and the subscription story the demo tells.
       gapDays: gaps.length ? Math.round(median(gaps)) : null,
       memorised: !!person,
+      service: !!vendor && address.toLowerCase() === vendor,
+      faucet: isFaucet(address),
+      coins: coinRows(list, decimalsByType),
     });
   }
 
-  const sorted = parties.sort((a, b) => b.flows - a.flows);
+  /* A vendor buys the top of the list on flow count alone, because a lookup is a cent
+     and paid for often, while a person is dinner and paid for monthly. The busiest entry
+     a reader sees should be a busiest *someone*, and a faucet is a machine that funded
+     the wallet rather than a relationship in it. */
+  const sorted = parties.sort(
+    (a, b) => Number(a.service || a.faucet) - Number(b.service || b.faucet) || b.flows - a.flows,
+  );
   memo.set(cacheKey, sorted);
   return take(sorted, limit);
 }
@@ -194,7 +276,11 @@ const spoken = (amount: string) => {
 export function dueRows(parties: Party[], today = Date.now()): Due[] {
   const now = dayStart(today);
   return parties
-    .filter((p) => p.flows > 1 || p.name)
+    /* A lookup service is bought whenever a name is missing, so it has a rhythm for the
+       same reason a person does and none of the obligation. Reading "you pay the paid
+       address index about a cent every day, and it is overdue" as a bill is the moment
+       the product stops being believable, so vendors never enter the due list. */
+    .filter((p) => !p.service && !p.faucet && (p.flows > 1 || p.name))
     .map((p) => {
       const who: Due["who_pays"] = p.direction === "mixed" ? "both" : p.direction === "sent" ? "you" : "them";
       const last = p.lastSeen ? Date.parse(p.lastSeen) : null;
@@ -247,23 +333,89 @@ export function dueRows(parties: Party[], today = Date.now()): Due[] {
     });
 }
 
-export type Month = { month: string; total: string; asset: string; flows: number };/** Month totals must cover the same slice of history as the people totals on the
+export type Commitment = { asset: string; per_month: string; people: string[] };
+
+/**
+ * A bill is a rhythm you are expected to keep. The paid index takes money per question,
+ * so listing it as something due tomorrow would turn a price into a promise. Every
+ * surface that speaks about commitments filters through here, so the filter is one rule
+ * rather than three that can drift apart.
+ */
+export function bills(rows: Due[], exclude: string[] = []): Due[] {
+  const skip = new Set(exclude.map((a) => a.toLowerCase()));
+  return rows.filter((r) => !skip.has(r.address.toLowerCase()));
+}
+
+/**
+ * "What do I pay every month" is the question a person with a budget actually asks, and
+ * the answer is arithmetic over rhythms that have already been measured. Amounts never
+ * cross an asset boundary, because a total that quietly adds USDC to SUI is the exact
+ * error this product exists to avoid.
+ */
+export function commitments(rows: Due[]): Commitment[] {
+  const by = new Map<string, { total: number; people: string[] }>();
+  for (const r of rows) {
+    if (!r.every_days || !r.usual) continue;
+    const [number, ...word] = r.usual.split(" ");
+    const amount = Number(number);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const asset = word.join(" ") || r.asset || "USDC";
+    const row = by.get(asset) ?? { total: 0, people: [] };
+    row.total += (amount * 30) / r.every_days;
+    row.people.push(r.name);
+    by.set(asset, row);
+  }
+  return [...by.entries()]
+    .map(([asset, r]) => ({ asset, per_month: `${r.total.toFixed(2)} ${asset}`, people: r.people }))
+    .sort((a, b) => Number(b.per_month.split(" ")[0]) - Number(a.per_month.split(" ")[0]));
+}
+
+export type Month = { month: string; asset: string; in: string; out: string; flows: number };
+
+/**
+ * One row per month and per coin. The version this replaces keyed on the month alone and
+ * used the first coin's decimals for every flow, so 6.87 USDC and 0.103976 SUI became
+ * one row reading 110.84 USDC. The arithmetic is separated from the network so a fake
+ * flow can prove the split without a provider call.
+ */
+export function monthRows(flows: Flow[], decimals: Map<string, number>): Month[] {
+  const by = new Map<string, { came: bigint; went: bigint; flows: number; type: string }>();
+  for (const f of flows) {
+    if (!f.timestamp) continue;
+    const key = `${f.timestamp.slice(0, 7)}|${f.coinType}`;
+    const row = by.get(key) ?? { came: 0n, went: 0n, flows: 0, type: f.coinType };
+    if (f.amount < 0n) row.came += -f.amount;
+    else row.went += f.amount;
+    row.flows++;
+    by.set(key, row);
+  }
+  return [...by.entries()]
+    .map(([key, r]) => {
+      const d = decimals.get(r.type) ?? 0;
+      return {
+        month: key.slice(0, 7),
+        asset: coinName(r.type),
+        in: formatAmount(r.came, d),
+        out: formatAmount(r.went, d),
+        flows: r.flows,
+      };
+    })
+    .sort((a, b) =>
+      a.month === b.month
+        ? Number(b.out) - Number(a.out) || Number(b.in) - Number(a.in)
+        : a.month < b.month
+          ? 1
+          : -1,
+    );
+}
+
+/** Month totals must cover the same slice of history as the people totals on the
  *  statement card, so both read at READ_DEPTH rather than a caller-chosen window. */
 export async function monthlyTotals(wallet: string, network: Net = "mainnet"): Promise<Month[]> {
   const flows = await recentActivity(wallet, READ_DEPTH, network);
-  const byMonth = new Map<string, { total: bigint; decimals: number; asset: string; flows: number }>();
-
-  for (const f of flows) {
-    if (!f.timestamp) continue;
-    const month = f.timestamp.slice(0, 7);
-    const decimals = await coinDecimals(f.coinType, network);
-    const row = byMonth.get(month) ?? { total: 0n, decimals, asset: coinName(f.coinType), flows: 0 };
-    row.total += f.amount < 0n ? -f.amount : f.amount;
-    row.flows++;
-    byMonth.set(month, row);
-  }
-
-  return [...byMonth.entries()]
-    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([month, r]) => ({ month, total: formatAmount(r.total, r.decimals), asset: r.asset, flows: r.flows }));
+  const decimals = new Map<string, number>();
+  await Promise.all(
+    [...new Set(flows.map((f) => f.coinType))].map(async (t) => decimals.set(t, await coinDecimals(t, network))),
+  );
+  return monthRows(flows, decimals);
 }
