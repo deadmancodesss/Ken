@@ -1381,7 +1381,7 @@ async function handle(req: any, res: any) {
           : url.pathname.replace(/^\/+/, ""));
     const body = file && !file.includes("..") ? await readFile(join(PUBLIC, file)).catch(() => null) : null;
     if (!body) return json(res, 404, { error: "not found" });
-    const PUBLIC_HTML = new Set(["index.html", "how.html", "features.html", "life.html"]);
+    const PUBLIC_HTML = new Set(["index.html", "how.html", "features.html", "life.html", "open.html"]);
     const isGatedHtml = extname(file) === ".html" && !PUBLIC_HTML.has(file);
     const connected = session().source === "wallet" && Boolean(session().wallet);
     let out: Buffer | string = body;

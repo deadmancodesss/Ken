@@ -638,7 +638,7 @@ const PUBLIC_PATHS = new Set(["/", "/index.html", "/how", "/how.html", "/feature
 
 export function syncWalletGate(connected) {
   const path = location.pathname.replace(/\/+$/, "") || "/";
-  if (PUBLIC_PATHS.has(path)) {
+  if (PUBLIC_PATHS.has(path) || /^\/ask\/[A-Za-z0-9_-]{1,16}$/.test(path)) {
     delete document.documentElement.dataset.walletLocked;
     return;
   }
