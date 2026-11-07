@@ -1381,12 +1381,66 @@ async function handle(req: any, res: any) {
           : url.pathname.replace(/^\/+/, ""));
     const body = file && !file.includes("..") ? await readFile(join(PUBLIC, file)).catch(() => null) : null;
     if (!body) return json(res, 404, { error: "not found" });
+    const PUBLIC_HTML = new Set(["index.html", "how.html", "features.html", "life.html"]);
+    const isGatedHtml = extname(file) === ".html" && !PUBLIC_HTML.has(file);
+    const connected = session().source === "wallet" && Boolean(session().wallet);
+    let out: Buffer | string = body;
+    if (isGatedHtml && !connected) {
+      const gateMarkup = `<section id="walletGate" class="walletGate" aria-label="Wallet connection required">
+      <div class="wgShell">
+        <div class="wgCard">
+          <div class="wgTop">
+            <span class="wgKicker">wallet required · demo mode disabled</span>
+            <span class="wgStamp">locked</span>
+          </div>
+          <div class="wgBody">
+            <div class="wgStage" aria-hidden="true">
+              <div class="wgMouse">
+                <img src="/assets/cast-four-cut.webp" width="1100" height="628" alt="" />
+              </div>
+              <div class="wgCaption">the purse mouse · guards the door</div>
+            </div>
+            <div class="wgCopy">
+              <h1>Connect your Sui wallet to unlock this room.</h1>
+              <p class="wgLead">Shared demo mode has been removed so no visitor can pollute another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for the wallet you connect.</p>
+              <div class="wgGrid">
+                <div class="wgCell">
+                  <span class="wgIdx">01 · walrus</span>
+                  <b>Isolated memory</b>
+                  <span>Your people and notes live under your own wallet namespace on Mainnet.</span>
+                </div>
+                <div class="wgCell">
+                  <span class="wgIdx">02 · sui usdc</span>
+                  <b>Unsigned tickets only</b>
+                  <span>This server prepares bytes and holds no signing key. You sign in your wallet.</span>
+                </div>
+                <div class="wgCell">
+                  <span class="wgIdx">03 · zero conflicts</span>
+                  <b>Private workspace</b>
+                  <span>Chats, voice calls, spam marks, reminders and statements belong to your address alone.</span>
+                </div>
+              </div>
+              <div class="wgActions">
+                <button type="button" class="primary" id="wgConnectBtn">Connect Sui wallet</button>
+                <a class="wgHowBtn" href="/how">Interactive How It Works →</a>
+                <a class="wgFeatBtn" href="/features">Explore 18 capabilities</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>`;
+      out = body
+        .toString("utf8")
+        .replace(/<html\b/, '<html data-wallet-locked="1"')
+        .replace(/<main\b/, `${gateMarkup}\n    <main hidden`);
+    }
     // A demo recording must never show a stale theme, so nothing is cached at all.
     res.writeHead(200, {
       "content-type": TYPES[extname(file)] ?? "application/octet-stream",
       "cache-control": "no-store",
     });
-    res.end(body);
+    res.end(out);
   } catch (err) {
     json(res, 500, { error: (err as Error).message });
   }

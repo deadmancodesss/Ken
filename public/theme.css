@@ -989,7 +989,7 @@ dd, dt { margin: 0; }
 /* ---------- wallet required gate ----------
    Strict geometric lock sheet displayed on workspace pages when no wallet is connected. */
 .walletGate { flex: 1; display: grid; align-items: center; padding: clamp(32px, 5vw, 64px) var(--pad); }
-.walletGate[hidden], main[hidden] { display: none !important; }
+.walletGate[hidden], main[hidden], html[data-wallet-locked="1"] main { display: none !important; }
 .wgShell { width: 100%; max-width: 1080px; margin: 0 auto; }
 .wgCard { border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper); box-shadow: 7px 7px 0 var(--sheet); overflow: hidden; }
 .wgTop { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-bottom: var(--edge) solid var(--rule-strong); background: var(--paper-sunk); background-image: var(--dots); }

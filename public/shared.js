@@ -638,7 +638,11 @@ const PUBLIC_PATHS = new Set(["/", "/index.html", "/how", "/how.html", "/feature
 
 export function syncWalletGate(connected) {
   const path = location.pathname.replace(/\/+$/, "") || "/";
-  if (PUBLIC_PATHS.has(path)) return;
+  if (PUBLIC_PATHS.has(path)) {
+    delete document.documentElement.dataset.walletLocked;
+    return;
+  }
+  document.documentElement.dataset.walletLocked = connected ? "0" : "1";
   const main = document.querySelector("main");
   if (!main) return;
   let gate = document.getElementById("walletGate");
@@ -698,12 +702,23 @@ export function syncWalletGate(connected) {
       </div>
     `;
     main.parentNode.insertBefore(gate, main);
+  }
+  if (!gate.dataset.wired) {
+    gate.dataset.wired = "1";
     gate.querySelector("#wgConnectBtn")?.addEventListener("click", () => {
       const topBtn = $("connect");
       if (topBtn) topBtn.click();
     });
   }
   gate.hidden = false;
+}
+
+if (typeof document !== "undefined" && document.documentElement.dataset.walletLocked === "1") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => syncWalletGate(false), { once: true });
+  } else {
+    syncWalletGate(false);
+  }
 }
 
 let stillAsking = false;

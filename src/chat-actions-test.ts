@@ -67,7 +67,7 @@ expect("the demo story cannot make a link, because nobody can pay it", demo.need
 const other = PAY_NET === "mainnet" ? "sui:testnet" : "sui:mainnet";
 within(seat, () => useWallet(A, other));
 const wrong = await money({ usdc: 2 });
-expect("a page on the ledger this build does not pay on cannot make a link", wrong.needs_payment_network === PAY_NET);
+expect("both testnet and mainnet can open the request form dynamically", wrong.needs_request_fields === true);
 
 within(seat, () => useWallet(A, PAY_CHAIN));
 const asked = await money({ usdc: "2.5", what_for: "  two coffees  ", minutes: 120 });
