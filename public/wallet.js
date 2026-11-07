@@ -648,6 +648,69 @@ function signerOnlyOf(w, account) {
 }
 
 /**
+ * Official Wallet Standard personal-message popup (`sui:signPersonalMessage`), used to
+ * pop open the connected wallet extension (e.g. Slush, Suiet, Nightly) and require an
+ * explicit user approval in the wallet popup before switching networks.
+ */
+function personalMessageSignerOf(w, account) {
+  const onAccount = methodOf(account?.features?.["sui:signPersonalMessage"], "signPersonalMessage");
+  if (onAccount) return (bytes, chain) => onAccount({ message: bytes, account, chain });
+  const onWallet = methodOf(w.features?.["sui:signPersonalMessage"], "signPersonalMessage");
+  if (onWallet) return (bytes, chain) => onWallet({ message: bytes, account, chain });
+  const legacyAccount = methodOf(account?.features?.["sui:signMessage"], "signMessage");
+  if (legacyAccount) return (bytes, chain) => legacyAccount({ message: bytes, account, chain });
+  const legacyWallet = methodOf(w.features?.["sui:signMessage"], "signMessage");
+  if (legacyWallet) return (bytes, chain) => legacyWallet({ message: bytes, account, chain });
+  if (typeof w.signPersonalMessage === "function") {
+    return (bytes, chain) => w.signPersonalMessage({ message: bytes, account, chain });
+  }
+  if (typeof w.signMessage === "function") {
+    return (bytes, chain) => w.signMessage({ message: bytes, account, chain });
+  }
+  return null;
+}
+
+const WATCHED_WALLETS = new WeakSet();
+
+/**
+ * Subscribes to Wallet Standard `standard:events` (`change`) across all discovered Sui
+ * wallets so that if a user switches networks or accounts directly inside their wallet
+ * extension (Slush, Suiet, Nightly, etc.), the page hears the event immediately.
+ */
+export function watchWalletEvents(onChange) {
+  for (const w of dedupe()) {
+    if (WATCHED_WALLETS.has(w)) continue;
+    const events = w.features?.["standard:events"];
+    const on = typeof events?.on === "function" ? (cb) => events.on("change", cb) : null;
+    if (!on) continue;
+    WATCHED_WALLETS.add(w);
+    try {
+      on((props) => {
+        if (Array.isArray(props?.accounts) && props.accounts.length) {
+          FRESH.set(w, props.accounts);
+        }
+        const rawChains = [
+          ...(Array.isArray(props?.chains) ? props.chains : []),
+          ...(Array.isArray(props?.accounts?.[0]?.chains) ? props.accounts[0].chains : []),
+        ].map(String);
+        const hasTestnet = rawChains.includes("sui:testnet");
+        const hasMainnet = rawChains.includes("sui:mainnet");
+        const singleNet = hasTestnet && !hasMainnet ? "testnet" : hasMainnet && !hasTestnet ? "mainnet" : null;
+        onChange?.({
+          wallet: w,
+          name: label(w),
+          chains: rawChains,
+          singleNet,
+          address: props?.accounts?.[0] ? addressOf(props.accounts[0]) : "",
+        });
+      });
+    } catch {
+      /* ignore wallets whose event emitter throws on registration */
+    }
+  }
+}
+
+/**
  * The one piece of the Sui SDK this page needs, fetched the first time somebody signs.
  * It is 33 KB gzipped, which no page should pay for just to show a wallet name.
  */
@@ -826,4 +889,89 @@ export async function signX402({ address, chain, bytesBase64, onStatus }) {
     throw new Error(`${label(found.wallet)} returned no signed transaction, so there is nothing the seller could settle`);
   }
   return { bytes: String(bytes), signature: String(signature) };
+}
+
+/**
+ * Forces a real wallet extension popup confirmation (plus active-chain check via
+ * `standard:events`) before allowing the page to switch between `testnet` and `mainnet`.
+ * If the user rejects the popup or leaves their wallet on the wrong chain, this throws
+ * so the page stays strictly restricted to the previous network.
+ */
+export async function confirmNetworkSwitch({ address, targetNet, onStatus, control = {} }) {
+  const targetChain = `sui:${targetNet}`;
+  let found = await holderFor(address, onStatus);
+  const walletName = label(found.wallet);
+
+  const supportsTarget = (acct) => {
+    const list = Array.isArray(acct?.chains) ? acct.chains.map(String) : [];
+    if (!list.length || list.includes("sui:unknown")) return true;
+    return list.includes(targetChain);
+  };
+
+  /* Step 1: If the wallet extension explicitly reports only the OTHER network in
+     `account.chains` (e.g. Suiet / Nightly locked to mainnet while switching to testnet),
+     hold here and listen to `standard:events` (`change`) until the user flips the
+     extension network dropdown to `targetNet`. */
+  if (!supportsTarget(found.account)) {
+    onStatus?.(`waiting for ${walletName} to switch to Sui ${targetNet}…`);
+    let switched = false;
+    watchWalletEvents((ev) => {
+      if (ev.chains.includes(targetChain)) switched = true;
+    });
+    const started = Date.now();
+    while (!supportsTarget(found.account) && !switched) {
+      if (control.cancelled) throw new Error(`stayed on the previous network because ${walletName} was not switched to ${targetNet}`);
+      if (Date.now() - started > 60000) {
+        throw new Error(`${walletName} is still set to ${found.chain} instead of ${targetChain}. Switch the network inside ${walletName} first, then try again`);
+      }
+      await new Promise((r) => setTimeout(r, 400));
+      await resume();
+      const latest = holders().find((p) => p.at.toLowerCase() === String(address).toLowerCase());
+      if (latest) found = latest;
+    }
+  }
+
+  /* Step 2: Pop open the official wallet extension window (`sui:signPersonalMessage`)
+     on `sui:${targetNet}` so the user must explicitly approve the network switch in
+     their wallet (e.g. Slush) before the server switches networks. */
+  const signMsg = personalMessageSignerOf(found.wallet, found.account);
+  const messageText = `Ken Network Switch\nSwitch active workspace to: Sui ${targetNet.toUpperCase()} (${targetChain})\nWallet: ${found.at}\nTimestamp: ${new Date().toISOString()}`;
+  if (signMsg) {
+    onStatus?.(`opening ${walletName} popup to confirm Sui ${targetNet}…`);
+    const msgBytes = new TextEncoder().encode(messageText);
+    let res;
+    try {
+      res = await signMsg(msgBytes, targetChain);
+    } catch (err) {
+      throw new Error(`${walletName} did not approve switching to Sui ${targetNet}: ${clean(err)}`);
+    }
+    const signature = res?.signature ?? "";
+    const bytes = res?.bytes ?? "";
+    if (!signature) {
+      throw new Error(`${walletName} closed without confirming the switch to Sui ${targetNet}`);
+    }
+    return {
+      network: targetNet,
+      chain: targetChain,
+      walletName,
+      address: found.at,
+      message: messageText,
+      bytes: String(bytes),
+      signature: String(signature),
+    };
+  }
+
+  /* Fallback for legacy wallets without personal-message signing: re-run the wallet's
+     interactive connect handshake so the wallet popup still confirms the account. */
+  onStatus?.(`confirming Sui ${targetNet} with ${walletName}…`);
+  await connect(found.wallet, onStatus, { waitMs: 30000 });
+  return {
+    network: targetNet,
+    chain: targetChain,
+    walletName,
+    address: found.at,
+    message: "",
+    bytes: "",
+    signature: "",
+  };
 }

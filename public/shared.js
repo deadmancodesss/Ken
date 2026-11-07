@@ -1,7 +1,7 @@
 // Shared behaviour for every page: the masthead state, the wallet handshake and
 // the scroll reveals. Keeping it here is what stops the app and the landing page
 // from disagreeing about what the same chip does.
-import { discover, connect, resume, whyNoSuiWallet } from "./wallet.js";
+import { discover, connect, resume, whyNoSuiWallet, confirmNetworkSwitch, watchWalletEvents } from "./wallet.js";
 import { dialogue, walletAsked, walletWaiting, walletOpen, walletFailed } from "./dialogue.js";
 
 // The four word-shaping helpers live in format.js, so a node test can read them
@@ -615,6 +615,7 @@ export function paintMeta(body) {
       /* the address is plenty when storage is unavailable */
     }
     const on = s.source === "wallet" && Boolean(s.wallet);
+    connectedWallet = on ? s.wallet : "";
     set("whose", on ? `${named || "your wallet"} · ${shortAddr(s.wallet)}` : "wallet not connected");
     const btn = $("connect");
     if (btn) {
@@ -722,6 +723,7 @@ async function resumeWallet() {
  * can only ever disagree with the numbers underneath them if the server itself says so.
  */
 let markNetwork = null;
+let connectedWallet = "";
 
 export function mountNetwork(onChange) {
   const slot = document.querySelector(".wallet");
@@ -739,6 +741,7 @@ export function mountNetwork(onChange) {
   });
   const set = (net) => {
     current = net ?? "";
+    settleNet = current === "testnet" ? "testnet" : "mainnet";
     const NOTES = notes();
     for (const b of box.children) {
       const on = b.dataset.net === current;
@@ -748,6 +751,28 @@ export function mountNetwork(onChange) {
     }
   };
   markNetwork = set;
+
+  /* Listen to Wallet Standard `standard:events` (`change`) so if the user switches
+     networks inside their wallet extension directly, we sync immediately. */
+  watchWalletEvents(async (ev) => {
+    if (!connectedWallet) return;
+    if (ev.singleNet && ev.singleNet !== current) {
+      try {
+        const res = await fetch("/network", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ network: ev.singleNet }),
+        });
+        const body = await res.json().catch(() => null);
+        if (res.ok) {
+          set(body?.network ?? ev.singleNet);
+          onChange?.(body);
+        }
+      } catch {
+        /* ignore background event sync errors */
+      }
+    }
+  });
 
   for (const net of ["testnet", "mainnet"]) {
     const b = document.createElement("button");
@@ -759,13 +784,83 @@ export function mountNetwork(onChange) {
     b.addEventListener("click", async () => {
       if (net === current) return;
       for (const other of box.children) other.disabled = true;
+
+      let proof = null;
+      let dlg = null;
+      const control = { cancelled: false };
+
+      if (connectedWallet) {
+        dlg = dialogue({
+          who: "mouse",
+          tone: "wait",
+          kicker: `wallet confirmation required · sui:${net}`,
+          title: `switch your wallet & approve ${net}`,
+          line: `To prevent accidental cross-network actions, switching to ${net.toUpperCase()} requires confirmation from your connected Sui wallet (${shortAddr(connectedWallet)}).`,
+          beats: [
+            { text: `1. Make sure your wallet extension (e.g. Slush / Suiet) is set to Sui ${net.toUpperCase()}`, mark: "dot" },
+            { text: `2. Approve the popup window that just opened in your wallet to confirm switching to sui:${net}`, mark: "dot" },
+            { text: `3. If you cancel or close the wallet popup, you stay strictly restricted to ${current || "the current network"}`, mark: "check" },
+          ],
+          stamp: `waiting on wallet`,
+          actions: [
+            {
+              label: `stay on ${current || "current network"}`,
+              onClick: (d) => {
+                control.cancelled = true;
+                d.close(true);
+              },
+            },
+          ],
+        });
+
+        try {
+          proof = await confirmNetworkSwitch({
+            address: connectedWallet,
+            targetNet: net,
+            onStatus: (st) => dlg?.status?.(st),
+            control,
+          });
+        } catch (err) {
+          for (const other of box.children) other.disabled = false;
+          set(current);
+          const msg = String(err?.message ?? err);
+          if (!control.cancelled) {
+            const refused = {
+              who: "mouse",
+              tone: "bad",
+              kicker: "network switch blocked",
+              title: `still restricted to ${current || "the previous network"}`,
+              line: `${msg}. Because the switch was not confirmed in your wallet, every balance, memory and payment remains locked to ${current || "the previous network"}.`,
+              beats: [
+                { text: `Open your wallet extension and switch its network to Sui ${net.toUpperCase()}`, mark: "cross" },
+                { text: `Click ${net} again and approve the wallet popup to unlock ${net}`, mark: "dot" },
+              ],
+              stamp: `locked on ${current || "current"}`,
+              actions: [{ label: "understood", primary: true }],
+            };
+            if (dlg) dlg.replace(refused);
+            else dialogue(refused);
+          }
+          return;
+        }
+      }
+
       let res = null;
       let body = null;
       try {
         res = await fetch("/network", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ network: net }),
+          body: JSON.stringify(
+            proof
+              ? {
+                  network: net,
+                  message: proof.message,
+                  signature: proof.signature,
+                  require_wallet_proof: Boolean(proof.signature),
+                }
+              : { network: net },
+          ),
         });
         body = await res.json().catch(() => null);
       } catch {
@@ -773,7 +868,7 @@ export function mountNetwork(onChange) {
       }
       for (const other of box.children) other.disabled = false;
       if (!res || !res.ok) {
-        dialogue({
+        const failed = {
           who: "mouse",
           tone: "bad",
           kicker: "the read did not move",
@@ -783,8 +878,25 @@ export function mountNetwork(onChange) {
             "The server did not answer, so every number on this page is still the one you were shown. Press the other name to try again.",
           stamp: "nothing changed",
           actions: [{ label: "ok", primary: true }],
-        });
+        };
+        if (dlg) dlg.replace(failed);
+        else dialogue(failed);
         return;
+      }
+      if (dlg) {
+        dlg.replace({
+          who: "mouse",
+          tone: "good",
+          kicker: `wallet confirmed · sui:${net}`,
+          title: `now on Sui ${net}`,
+          line: `Your wallet confirmed the switch. Balances, Walrus memories, USDC payment tickets and x402 lookups are now running on Sui ${net.toUpperCase()}.`,
+          beats: [
+            { text: `Active ledger: sui:${net}`, mark: "check" },
+            { text: `Connected wallet: ${shortAddr(connectedWallet)}`, mark: "check" },
+          ],
+          stamp: `sui:${net}`,
+          actions: [{ label: "done", primary: true }],
+        });
       }
       set(body?.network ?? net);
       onChange?.(body);

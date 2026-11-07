@@ -440,8 +440,23 @@ async function handle(req: any, res: any) {
      * from a cached testnet balance and a model that still remembers yesterday's numbers.
      */
     if (req.method === "POST" && url.pathname === "/network") {
-      const { network } = JSON.parse((await readBody(req)) || "{}");
+      const { network, message, signature, require_wallet_proof } = JSON.parse((await readBody(req)) || "{}");
       try {
+        const s = session();
+        if (s.source === "wallet" && (require_wallet_proof || signature)) {
+          if (!signature || !message) {
+            return json(res, 403, {
+              error: `approve the network switch popup in your wallet first so this page stays restricted to ${s.network} until you confirm`,
+            });
+          }
+          const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
+          const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(String(message)), String(signature), {
+            address: s.wallet,
+          });
+          if (pub.toSuiAddress().toLowerCase() !== s.wallet.toLowerCase()) {
+            return json(res, 403, { error: "the wallet signature belongs to a different account than the connected wallet" });
+          }
+        }
         const next = useNetwork(String(network));
         dropDerived();
         return json(res, 200, next);
