@@ -34,18 +34,36 @@ const FILLER = new Set([
   "this", "was", "were", "what", "when", "where", "which", "who", "whom", "whose", "with", "you", "your",
 ]);
 
-async function whoIs(address: string): Promise<unknown> {
-  const parties = await counterparties(session().wallet, session().network);
+async function whoIs(raw: string): Promise<unknown> {
+  const trimmed = String(raw ?? "").trim();
+  const isHex = /^0x[0-9a-fA-F]{64}$/.test(trimmed);
+  const resolved = isHex ? await personForAddress(trimmed) : await resolvePerson(trimmed);
+  const address = isHex ? trimmed : resolved?.address ?? "";
+  if (!address) {
+    return {
+      needs_address: true,
+      who: trimmed,
+      looks_like_address: /^0x/i.test(trimmed),
+      note: "No address is kept for this name yet. Ask the user to paste the full 0x Sui address in the field below.",
+    };
+  }
+  const net = session().network;
+  const parties = await counterparties(session().wallet, net);
   const party = parties.find((p) => p.address.toLowerCase() === address.toLowerCase());
-  const person = await personForAddress(address);
+  const person = resolved ?? (await personForAddress(address));
   const facts = await recallAbout(address);
   const faucet = faucetLabel(address);
+  const activity = await addressActivity(address, net, session().wallet).catch(() => null);
+  const spam = spamMarkFor(address);
   return {
     address,
+    network: net,
+    explorer_url: `https://suiscan.xyz/${net}/account/${address}`,
     named_as: person?.alias ?? party?.name ?? faucet,
     named_by: person ? "memory" : faucet ? "the faucet's own published address" : party?.service ? "this build's vendor list" : null,
     note: person?.note ?? "",
     known_from_memory: !!person || facts.length > 0,
+    spam: spam ? { reason: spam.reason, marked_on: new Date(spam.at).toISOString().slice(0, 10) } : null,
     relationship: party
       ? {
           flows: party.flows,
@@ -62,6 +80,13 @@ async function whoIs(address: string): Promise<unknown> {
       : faucet
         ? "this is the faucet address itself, so there is no relationship to read"
         : "no transactions with this wallet in the range we read",
+    transactions_read: activity?.transactions_read ?? 0,
+    first_seen: activity?.first_seen ?? party?.firstSeen ?? null,
+    last_seen: activity?.last_seen ?? party?.lastSeen ?? null,
+    in_by_coin: activity?.in_by_coin ?? [],
+    out_by_coin: activity?.out_by_coin ?? [],
+    counterparties: activity?.counterparties ?? [],
+    transactions: activity?.transactions ?? [],
     memories: facts.map((f) => f.text),
     blobs: facts.map((f) => f.blobId),
   };
@@ -210,14 +235,30 @@ export const TOOLS: Tool[] = [
   {
     name: "address_activity",
     description:
-      "The last public transactions of any wallet address, with what it sent and received, who it dealt with, and measured patterns. Use it when the user asks whether an address is trustworthy, spam, a person or a service. It reports patterns and never a verdict. Pass a full 0x address, and use find_person first when the user gave a name.",
+      "Inspect any wallet address (or saved person name) in detail: its last public transactions with clickable explorer links, what it sent and received per coin, who it dealt with, and measured patterns. Use it when the user asks to look out for a wallet, inspect an address, see its transactions/links, or check whether an address is trustworthy, spam, a person or a service.",
     positional: ["address"],
-    parameters: { address: { type: "STRING", description: "Full 0x Sui address to read" } },
+    parameters: { address: { type: "STRING", description: "Full 0x Sui address or a known person's name" } },
     required: ["address"],
     run: async (a) => {
-      const address = String(a.address);
-      if (!/^0x[0-9a-fA-F]{64}$/.test(address)) throw new Error("address must be a full 0x Sui address");
-      return addressActivity(address, session().network, session().wallet);
+      const raw = String(a.address ?? "").trim();
+      const isHex = /^0x[0-9a-fA-F]{64}$/.test(raw);
+      const person = isHex ? await personForAddress(raw) : await resolvePerson(raw);
+      const address = isHex ? raw : person?.address ?? "";
+      if (!address) {
+        return {
+          needs_address: true,
+          who: raw,
+          looks_like_address: /^0x/i.test(raw),
+          note: "No address is kept for this name. Ask the user to paste the full 0x Sui address in the field below.",
+        };
+      }
+      const act = await addressActivity(address, session().network, session().wallet);
+      const spam = spamMarkFor(address);
+      return {
+        ...act,
+        named_as: person?.alias ?? faucetLabel(address) ?? null,
+        spam: spam ? { reason: spam.reason, marked_on: new Date(spam.at).toISOString().slice(0, 10) } : null,
+      };
     },
   },
   {

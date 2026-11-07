@@ -49,6 +49,8 @@ export type TransferRow = {
   from: string;
   from_name: string | null;
   tx: string;
+  tx_url?: string;
+  from_url?: string;
 };
 
 /**
@@ -191,6 +193,7 @@ export type CoinGap = { asset: string; balance: string; transfers: string; gap: 
 export type MoneyOrigin = {
   wallet: string;
   network: Net;
+  explorer_url?: string;
   balance: { asset: string; amount: number; decimals: number; base: string }[];
   transfers: TransferRow[];
   in_by_coin: { asset: string; amount: string; flows: number }[];
@@ -283,6 +286,8 @@ export async function moneyOrigin(wallet: string, net: Net): Promise<MoneyOrigin
         from: f.counterparty,
         from_name: labels.get(f.counterparty.toLowerCase()) ?? null,
         tx: f.digest,
+        tx_url: `https://suiscan.xyz/${net}/tx/${f.digest}`,
+        from_url: `https://suiscan.xyz/${net}/account/${f.counterparty}`,
       };
     });
 
@@ -342,6 +347,7 @@ export async function moneyOrigin(wallet: string, net: Net): Promise<MoneyOrigin
   return {
     wallet,
     network: net,
+    explorer_url: `https://suiscan.xyz/${net}/account/${wallet}`,
     balance: held,
     transfers,
     in_by_coin: inByCoin,
@@ -355,12 +361,14 @@ export async function moneyOrigin(wallet: string, net: Net): Promise<MoneyOrigin
 export type AddressActivity = {
   address: string;
   network: Net;
+  explorer_url: string;
   transactions_read: number;
   first_seen: string | null;
   last_seen: string | null;
   in_by_coin: { asset: string; amount: string; flows: number }[];
   out_by_coin: { asset: string; amount: string; flows: number }[];
-  counterparties: { address: string; name: string | null; flows: number }[];
+  counterparties: { address: string; name: string | null; flows: number; explorer_url?: string }[];
+  transactions: (StatementMove & { tx_url: string; who_url: string })[];
   with_you: number;
   pattern: string[];
   note: string;
@@ -443,7 +451,18 @@ export async function addressActivity(address: string, net: Net, me: string): Pr
   const counterparties = [...people.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([a, n]) => ({ address: a, name: labels.get(a) ?? null, flows: n }));
+    .map(([a, n]) => ({
+      address: a,
+      name: labels.get(a) ?? null,
+      flows: n,
+      explorer_url: `https://suiscan.xyz/${net}/account/${a}`,
+    }));
+
+  const transactions = statementMoves(flows, decimals, labels, 12).map((row) => ({
+    ...row,
+    tx_url: `https://suiscan.xyz/${net}/tx/${row.tx}`,
+    who_url: `https://suiscan.xyz/${net}/account/${row.address}`,
+  }));
 
   const times = flows.map((f) => f.timestamp).filter((t): t is string => !!t).sort();
   const inByCoin = [...came.entries()].map(([t, sum]) => ({
@@ -472,12 +491,14 @@ export async function addressActivity(address: string, net: Net, me: string): Pr
   const body: AddressActivity = {
     address,
     network: net,
+    explorer_url: `https://suiscan.xyz/${net}/account/${address}`,
     transactions_read: page.count,
     first_seen: times[0]?.slice(0, 10) ?? null,
     last_seen: times.at(-1)?.slice(0, 10) ?? null,
     in_by_coin: inByCoin,
     out_by_coin: outByCoin,
     counterparties,
+    transactions,
     with_you: withYou,
     pattern,
     note: "the last 20 public transactions, not a verdict about the wallet",
