@@ -440,25 +440,48 @@ async function handle(req: any, res: any) {
      * from a cached testnet balance and a model that still remembers yesterday's numbers.
      */
     if (req.method === "POST" && url.pathname === "/network") {
-      const { network, message, signature, require_wallet_proof } = JSON.parse((await readBody(req)) || "{}");
+      const { network, message, signature, require_wallet_proof, verify_only } = JSON.parse((await readBody(req)) || "{}");
       try {
         const s = session();
-        if (s.source === "wallet" && (require_wallet_proof || signature)) {
+        let verifiedSigner = "";
+        if (s.source === "wallet" && (require_wallet_proof || signature || verify_only)) {
           if (!signature || !message) {
             return json(res, 403, {
-              error: `approve the network switch popup in your wallet first so this page stays restricted to ${s.network} until you confirm`,
+              error: `approve the network popup in your wallet first so this page stays restricted to ${s.network} until you confirm`,
             });
           }
           const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
           const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(String(message)), String(signature), {
             address: s.wallet,
           });
-          if (pub.toSuiAddress().toLowerCase() !== s.wallet.toLowerCase()) {
+          verifiedSigner = pub.toSuiAddress();
+          if (verifiedSigner.toLowerCase() !== s.wallet.toLowerCase()) {
             return json(res, 403, { error: "the wallet signature belongs to a different account than the connected wallet" });
           }
         }
-        const next = useNetwork(String(network));
+        const next = useNetwork(String(network || s.network));
         dropDerived();
+        if (verifiedSigner) {
+          const t0 = Date.now();
+          const [coins, stats] = await Promise.all([
+            allHoldings(next.wallet, next.network).catch(() => null),
+            memoryStats().catch(() => ({ total: 0, namespaces: [] })),
+          ]);
+          const rpcMs = Date.now() - t0;
+          return json(res, 200, {
+            ...next,
+            proof: {
+              signature_verified: true,
+              signer: verifiedSigner,
+              sig_short: `${String(signature).slice(0, 14)}…${String(signature).slice(-8)}`,
+              rpc_ok: Array.isArray(coins),
+              rpc_ms: rpcMs,
+              holdings_count: Array.isArray(coins) ? coins.length : 0,
+              walrus_memories: stats.total ?? 0,
+              walrus_namespace: `people-${next.network}-${next.wallet.slice(2, 14)}`,
+            },
+          });
+        }
         return json(res, 200, next);
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });

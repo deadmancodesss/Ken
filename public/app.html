@@ -102,12 +102,38 @@
       .railListEmpty { padding: 10px 6px; color: var(--ink-3); font: var(--step--1)/1.55 var(--mono); }
 
       .railFoot { flex: 0 0 auto; border-top: 1px solid var(--rule); padding: 14px 4px 0; display: grid; gap: 10px; }
-      .balance { display: grid; gap: 3px; }
+      .balance { display: grid; gap: 4px; }
+      .balTop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
       .balance .balLabel { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+      .railNets { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: 999px; overflow: hidden; background: var(--paper); }
+      .railNets button {
+        border: 0;
+        border-radius: 0;
+        padding: 3px 8px;
+        font: 600 10px/1 var(--mono);
+        background: transparent;
+        color: var(--ink-3);
+        box-shadow: none;
+        transform: none;
+      }
+      .railNets button.on { background: var(--ink); color: var(--paper); }
       .balance .balAmt { font: 400 var(--step-2)/1.1 var(--serif); color: var(--ink); }
       .balance .balAmt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 5px; letter-spacing: 0.05em; }
       .balance .balGas { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
       .balance .balGas.low { color: var(--brick); }
+      .proveBtn {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px dashed var(--rule-strong);
+        border-radius: 8px;
+        background: var(--paper);
+        color: var(--ink-2);
+        font: 600 10px/1.2 var(--mono);
+        letter-spacing: 0.04em;
+        text-align: center;
+        box-shadow: none;
+      }
+      .proveBtn:hover { border-color: var(--moss); color: var(--moss); transform: none; box-shadow: none; }
       .railLinks { display: flex; flex-wrap: wrap; gap: 6px 12px; font: var(--step--1)/1 var(--mono); }
       .railLinks a { color: var(--ink-3); border-bottom: 0; }
       .railLinks a:hover { color: var(--clay); }
@@ -735,9 +761,16 @@
         <div class="chatList" id="chatList"><div class="railListEmpty">reading your chats</div></div>
         <div class="railFoot">
           <div class="balance">
-            <span class="balLabel">wallet</span>
+            <div class="balTop">
+              <span class="balLabel">wallet</span>
+              <div class="railNets" role="group" aria-label="Switch network">
+                <button type="button" data-rail-net="testnet">testnet</button>
+                <button type="button" data-rail-net="mainnet">mainnet</button>
+              </div>
+            </div>
             <span class="balAmt"><b id="balUsdc">·</b><small>USDC</small></span>
             <span class="balGas" id="balGas">reading the balance</span>
+            <button type="button" class="proveBtn" id="proveNetBtn" title="Sign a zero-gas wallet challenge to prove live cryptographic + RPC + Walrus connectivity on this network">✓ Prove network live (0 gas)</button>
           </div>
           <div class="railLinks">
             <a href="/pay">Pay</a>
@@ -843,7 +876,7 @@
     </div>
 
     <script type="module">
-      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
+      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain, switchOrProveNetwork } from "./shared.js";
       import { signAndExecute, signX402 } from "./wallet.js";
       import { mountSelect } from "./ui.js";
 
@@ -2129,6 +2162,27 @@
       };
       mountWallet(refresh);
       mountNetwork(refresh);
+
+      document.querySelectorAll("[data-rail-net]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const target = btn.dataset.railNet;
+          if (!target || target === payNetwork()) return;
+          await switchOrProveNetwork(target, { verifyOnly: false });
+        });
+      });
+
+      $("proveNetBtn")?.addEventListener("click", async () => {
+        const res = await switchOrProveNetwork(payNetwork(), { verifyOnly: true });
+        if (res?.proof) {
+          const p = res.proof;
+          opening();
+          const msg = kenMessage(
+            `Zero-gas ${res.network.toUpperCase()} verification complete: Ed25519 signature verified for ${shortAddr(p.signer)} (${p.sig_short}), Tatum ${res.network} GraphQL RPC answered in ${p.rpc_ms}ms (${p.holdings_count} coin type${p.holdings_count === 1 ? "" : "s"}), and Walrus MemWal namespace ${p.walrus_namespace} is active (${p.walrus_memories} saved memor${p.walrus_memories === 1 ? "y" : "ies"}).`,
+          );
+          thread.appendChild(msg);
+          scroll();
+        }
+      });
 
       document.addEventListener("wallet:changed", async () => {
         // The call belongs to the wallet that has just been left, and the server has

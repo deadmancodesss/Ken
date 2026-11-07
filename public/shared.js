@@ -724,8 +724,156 @@ async function resumeWallet() {
  */
 let markNetwork = null;
 let connectedWallet = "";
+let globalNetChange = null;
+
+export async function switchOrProveNetwork(net, { verifyOnly = false } = {}) {
+  const target = net || settleNet || "testnet";
+  let proof = null;
+  let dlg = null;
+  const control = { cancelled: false };
+
+  if (connectedWallet) {
+    dlg = dialogue({
+      who: "mouse",
+      tone: "wait",
+      kicker: verifyOnly ? `zero-gas proof · sui:${target}` : `wallet confirmation required · sui:${target}`,
+      title: verifyOnly ? `sign in your wallet to prove ${target} live` : `switch your wallet & approve ${target}`,
+      line: verifyOnly
+        ? `Even with 0 USDC and 0 SUI for gas, signing this challenge in your wallet proves live cryptographic ownership, live Tatum ${target.toUpperCase()} RPC, and live Walrus ${target.toUpperCase()} memory.`
+        : `To prevent accidental cross-network actions, switching to ${target.toUpperCase()} requires confirmation from your connected Sui wallet (${shortAddr(connectedWallet)}).`,
+      beats: [
+        { text: `1. Approve the signature popup that just opened in your wallet (costs 0 SUI gas)`, mark: "dot" },
+        { text: `2. Inside Slush, tap the top-left network pill if you also want Slush's own home screen to display ${target.toUpperCase()}`, mark: "dot" },
+        { text: `3. If you cancel or close the popup, nothing changes`, mark: "check" },
+      ],
+      stamp: `waiting on wallet`,
+      actions: [
+        {
+          label: "cancel",
+          onClick: (d) => {
+            control.cancelled = true;
+            d.close(true);
+          },
+        },
+      ],
+    });
+
+    try {
+      proof = await confirmNetworkSwitch({
+        address: connectedWallet,
+        targetNet: target,
+        onStatus: (st) => dlg?.status?.(st),
+        control,
+      });
+    } catch (err) {
+      markNetwork?.(settleNet);
+      const msg = String(err?.message ?? err);
+      if (!control.cancelled) {
+        const refused = {
+          who: "mouse",
+          tone: "bad",
+          kicker: verifyOnly ? "proof cancelled" : "network switch blocked",
+          title: `still restricted to ${settleNet || "the current network"}`,
+          line: `${msg}. Because the popup was not approved in your wallet, every balance, memory and payment remains locked to ${settleNet || "the current network"}.`,
+          beats: [
+            { text: `Open your wallet extension and make sure it is unlocked`, mark: "cross" },
+            { text: `Try again and approve the wallet signature popup (0 SUI gas)`, mark: "dot" },
+          ],
+          stamp: `locked on ${settleNet || "current"}`,
+          actions: [{ label: "understood", primary: true }],
+        };
+        if (dlg) dlg.replace(refused);
+        else dialogue(refused);
+      }
+      return null;
+    }
+  }
+
+  let res = null;
+  let body = null;
+  try {
+    res = await fetch("/network", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(
+        proof
+          ? {
+              network: target,
+              message: proof.message,
+              signature: proof.signature,
+              require_wallet_proof: Boolean(proof.signature),
+              verify_only: verifyOnly,
+            }
+          : { network: target },
+      ),
+    });
+    body = await res.json().catch(() => null);
+  } catch {
+    /* handled below */
+  }
+
+  if (!res || !res.ok) {
+    const failed = {
+      who: "mouse",
+      tone: "bad",
+      kicker: "the read did not move",
+      title: `still reading ${settleNet || "the last network"}`,
+      line:
+        body?.error ??
+        "The server did not answer, so every number on this page is still the one you were shown. Press the other name to try again.",
+      stamp: "nothing changed",
+      actions: [{ label: "ok", primary: true }],
+    };
+    if (dlg) dlg.replace(failed);
+    else dialogue(failed);
+    return null;
+  }
+
+  const p = body?.proof;
+  if (dlg) {
+    dlg.replace({
+      who: "mouse",
+      tone: "good",
+      kicker: `verified on sui:${target} · 0 gas spent`,
+      title: verifyOnly ? `Sui ${target} verified end-to-end` : `now on Sui ${target}`,
+      line: `Your wallet signature, live Tatum ${target.toUpperCase()} ledger RPC, and Walrus MemWal namespace were all verified with zero gas required.`,
+      beats: [
+        {
+          text: p?.signature_verified
+            ? `Ed25519 signature verified for ${shortAddr(p.signer)} (${p.sig_short}) — 0 SUI gas`
+            : `Connected wallet confirmed: ${shortAddr(connectedWallet)}`,
+          mark: "check",
+        },
+        {
+          text: p
+            ? `Tatum ${target.toUpperCase()} GraphQL RPC live (${p.rpc_ms}ms · ${p.holdings_count} coin type${p.holdings_count === 1 ? "" : "s"} on ${target})`
+            : `Active ledger: sui:${target}`,
+          mark: "check",
+        },
+        {
+          text: p
+            ? `Walrus MemWal namespace live: ${p.walrus_namespace} (${p.walrus_memories} saved memor${p.walrus_memories === 1 ? "y" : "ies"})`
+            : `Walrus memory scoped to ${target}`,
+          mark: "check",
+        },
+        {
+          text: `Note on Slush: Browser extensions do not let websites flip Slush's own internal green badge — tap the top-left pill inside Slush when you want to view ${target.toUpperCase()} inside the extension`,
+          mark: "dot",
+        },
+      ],
+      stamp: `sui:${target} live`,
+      actions: [{ label: "done", primary: true }],
+    });
+  }
+
+  markNetwork?.(body?.network ?? target);
+  globalNetChange?.(body);
+  document.dispatchEvent(new CustomEvent("network:changed", { detail: body }));
+  return body;
+}
 
 export function mountNetwork(onChange) {
+  globalNetChange = onChange;
   const slot = document.querySelector(".wallet");
   if (!slot || slot.querySelector(".nets")) return null;
   const box = document.createElement("div");
@@ -733,8 +881,6 @@ export function mountNetwork(onChange) {
   box.setAttribute("role", "group");
   box.setAttribute("aria-label", "Which Sui ledger this page reads");
   let current = "";
-  /* The note has to be re-read on every /state paint, because which of these two
-     buttons can hold a payment is decided by the server, not by the order of the pair. */
   const notes = () => ({
     testnet: "reads your testnet balances, memory and history, and prepares testnet USDC tickets when selected.",
     mainnet: "reads your real mainnet balances, memory and history, and prepares mainnet USDC tickets when selected.",
@@ -749,11 +895,14 @@ export function mountNetwork(onChange) {
       b.setAttribute("aria-pressed", String(on));
       if (NOTES[b.dataset.net]) b.title = NOTES[b.dataset.net];
     }
+    for (const b of document.querySelectorAll("[data-rail-net]")) {
+      const on = b.dataset.railNet === current;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", String(on));
+    }
   };
   markNetwork = set;
 
-  /* Listen to Wallet Standard `standard:events` (`change`) so if the user switches
-     networks inside their wallet extension directly, we sync immediately. */
   watchWalletEvents(async (ev) => {
     if (!connectedWallet) return;
     if (ev.singleNet && ev.singleNet !== current) {
@@ -767,6 +916,7 @@ export function mountNetwork(onChange) {
         if (res.ok) {
           set(body?.network ?? ev.singleNet);
           onChange?.(body);
+          document.dispatchEvent(new CustomEvent("network:changed", { detail: body }));
         }
       } catch {
         /* ignore background event sync errors */
@@ -784,122 +934,8 @@ export function mountNetwork(onChange) {
     b.addEventListener("click", async () => {
       if (net === current) return;
       for (const other of box.children) other.disabled = true;
-
-      let proof = null;
-      let dlg = null;
-      const control = { cancelled: false };
-
-      if (connectedWallet) {
-        dlg = dialogue({
-          who: "mouse",
-          tone: "wait",
-          kicker: `wallet confirmation required · sui:${net}`,
-          title: `switch your wallet & approve ${net}`,
-          line: `To prevent accidental cross-network actions, switching to ${net.toUpperCase()} requires confirmation from your connected Sui wallet (${shortAddr(connectedWallet)}).`,
-          beats: [
-            { text: `1. Make sure your wallet extension (e.g. Slush / Suiet) is set to Sui ${net.toUpperCase()}`, mark: "dot" },
-            { text: `2. Approve the popup window that just opened in your wallet to confirm switching to sui:${net}`, mark: "dot" },
-            { text: `3. If you cancel or close the wallet popup, you stay strictly restricted to ${current || "the current network"}`, mark: "check" },
-          ],
-          stamp: `waiting on wallet`,
-          actions: [
-            {
-              label: `stay on ${current || "current network"}`,
-              onClick: (d) => {
-                control.cancelled = true;
-                d.close(true);
-              },
-            },
-          ],
-        });
-
-        try {
-          proof = await confirmNetworkSwitch({
-            address: connectedWallet,
-            targetNet: net,
-            onStatus: (st) => dlg?.status?.(st),
-            control,
-          });
-        } catch (err) {
-          for (const other of box.children) other.disabled = false;
-          set(current);
-          const msg = String(err?.message ?? err);
-          if (!control.cancelled) {
-            const refused = {
-              who: "mouse",
-              tone: "bad",
-              kicker: "network switch blocked",
-              title: `still restricted to ${current || "the previous network"}`,
-              line: `${msg}. Because the switch was not confirmed in your wallet, every balance, memory and payment remains locked to ${current || "the previous network"}.`,
-              beats: [
-                { text: `Open your wallet extension and switch its network to Sui ${net.toUpperCase()}`, mark: "cross" },
-                { text: `Click ${net} again and approve the wallet popup to unlock ${net}`, mark: "dot" },
-              ],
-              stamp: `locked on ${current || "current"}`,
-              actions: [{ label: "understood", primary: true }],
-            };
-            if (dlg) dlg.replace(refused);
-            else dialogue(refused);
-          }
-          return;
-        }
-      }
-
-      let res = null;
-      let body = null;
-      try {
-        res = await fetch("/network", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(
-            proof
-              ? {
-                  network: net,
-                  message: proof.message,
-                  signature: proof.signature,
-                  require_wallet_proof: Boolean(proof.signature),
-                }
-              : { network: net },
-          ),
-        });
-        body = await res.json().catch(() => null);
-      } catch {
-        /* a server that is not answering is reported by the sheet below */
-      }
+      await switchOrProveNetwork(net, { verifyOnly: false });
       for (const other of box.children) other.disabled = false;
-      if (!res || !res.ok) {
-        const failed = {
-          who: "mouse",
-          tone: "bad",
-          kicker: "the read did not move",
-          title: `still reading ${current || "the last network"}`,
-          line:
-            body?.error ??
-            "The server did not answer, so every number on this page is still the one you were shown. Press the other name to try again.",
-          stamp: "nothing changed",
-          actions: [{ label: "ok", primary: true }],
-        };
-        if (dlg) dlg.replace(failed);
-        else dialogue(failed);
-        return;
-      }
-      if (dlg) {
-        dlg.replace({
-          who: "mouse",
-          tone: "good",
-          kicker: `wallet confirmed · sui:${net}`,
-          title: `now on Sui ${net}`,
-          line: `Your wallet confirmed the switch. Balances, Walrus memories, USDC payment tickets and x402 lookups are now running on Sui ${net.toUpperCase()}.`,
-          beats: [
-            { text: `Active ledger: sui:${net}`, mark: "check" },
-            { text: `Connected wallet: ${shortAddr(connectedWallet)}`, mark: "check" },
-          ],
-          stamp: `sui:${net}`,
-          actions: [{ label: "done", primary: true }],
-        });
-      }
-      set(body?.network ?? net);
-      onChange?.(body);
     });
     box.append(b);
   }
