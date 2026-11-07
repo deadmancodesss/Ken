@@ -463,7 +463,7 @@ function schemas() {
  * it to 0 to wait as long as the provider likes, which is what a batch test wants and
  * never what a person holding a microphone wants.
  */
-const TIMEOUT = Number(process.env.MODEL_TIMEOUT_MS ?? 25_000);
+const TIMEOUT = Number(process.env.MODEL_TIMEOUT_MS ?? 12_000);
 
 /**
  * The cap is about what comes back in time. A reasoning model allowed to think for
