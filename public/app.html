@@ -224,6 +224,49 @@
       .msg .kbody p + p { margin-top: 10px; }
       .msg .fallback { font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); }
       .msg.error .kbody { font: var(--step-0)/1.6 var(--mono); color: var(--brick); }
+      .thinkWrap {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 170px;
+        max-width: 250px;
+        padding: 2px 0 4px;
+      }
+      .thinkTop {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .thinkLabel {
+        font: 11px/1.2 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .thinkBar {
+        position: relative;
+        width: 100%;
+        height: 2px;
+        background: var(--rule);
+        border-radius: 1px;
+        overflow: hidden;
+      }
+      .thinkBar::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
+        background: var(--clay);
+        border-radius: 1px;
+        animation: thinkSweep 1.6s infinite ease-in-out;
+      }
+      @keyframes thinkSweep {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(150%); }
+        100% { transform: translateX(260%); }
+      }
       .dots { display: inline-flex; gap: 4px; align-items: center; height: 1.4em; }
       .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--clay); animation: dot 1.05s infinite; }
       .dots i:nth-child(2) { animation-delay: 0.16s; opacity: 0.66; }
@@ -705,6 +748,7 @@
       @media (prefers-reduced-motion: reduce) {
         .rail { transition: none; }
         .dots i { animation: none; }
+        .thinkBar::after { animation: none; transform: none; width: 100%; opacity: 0.5; }
       }
     </style>
   </head>
@@ -1922,9 +1966,16 @@
         thread.appendChild(userMessage(text));
         const answer = kenMessage("");
         const body = answer.querySelector(".kbody");
-        body.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+        body.innerHTML = '<div class="thinkWrap" aria-live="polite"><div class="thinkTop"><span class="dots"><i></i><i></i><i></i></span><span class="thinkLabel">thinking…</span></div><div class="thinkBar"></div></div>';
         thread.appendChild(answer);
         scroll();
+        const thinkLabel = body.querySelector(".thinkLabel");
+        const t1 = setTimeout(() => {
+          if (thinkLabel) thinkLabel.textContent = "reading memory & chain…";
+        }, 3000);
+        const t2 = setTimeout(() => {
+          if (thinkLabel) thinkLabel.textContent = "consulting backup lane…";
+        }, 8000);
         try {
           const res = await fetch("/turn", {
             method: "POST",
@@ -1963,6 +2014,8 @@
           answer.querySelector(".khead").textContent = "stuck";
           body.textContent = err.message;
         } finally {
+          clearTimeout(t1);
+          clearTimeout(t2);
           busy = false;
           sendBtn.disabled = false;
           scroll();
