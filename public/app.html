@@ -1597,7 +1597,11 @@
             form.onsubmit = async (e) => {
               e.preventDefault();
               sign.disabled = true;
-              sign.textContent = "check your wallet…";
+              sign.textContent = "Check your wallet…";
+              acts.querySelectorAll("button, a").forEach((el) => {
+                el.style.pointerEvents = "none";
+                el.style.opacity = "0.5";
+              });
               hint.className = "hint";
               hint.textContent = "asking the wallet for the account that started this payment";
               try {
@@ -1616,6 +1620,7 @@
                       onStatus: (s) => { hint.textContent = s; },
                     });
                 if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+                sign.textContent = "Confirming on chain…";
                 hint.textContent = buysFact
                   ? "the wallet signed it. The seller is checking and settling the exact signed payment"
                   : "the wallet signed it. Reading the chain to check the money arrived";
@@ -1661,6 +1666,10 @@
               } catch (err) {
                 sign.disabled = false;
                 sign.textContent = "Sign in wallet";
+                acts.querySelectorAll("button, a").forEach((el) => {
+                  el.style.pointerEvents = "";
+                  el.style.opacity = "";
+                });
                 hint.className = "hint bad";
                 hint.textContent = err.message;
               }
@@ -1704,7 +1713,7 @@
           if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
             fetch("/pending", { cache: "no-store" })
               .then((r) => r.json())
-              .then(({ pending }) => { if (pending) signCard(); })
+              .then(({ pending }) => { if (pending && !pending.digest) signCard(); })
               .catch(() => {});
           }
           scroll();

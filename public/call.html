@@ -816,7 +816,11 @@
             form.onsubmit = async (e) => {
               e.preventDefault();
               sign.disabled = true;
-              sign.textContent = "check your wallet…";
+              sign.textContent = "Check your wallet…";
+              acts.querySelectorAll("button, a").forEach((el) => {
+                el.style.pointerEvents = "none";
+                el.style.opacity = "0.5";
+              });
               line.className = "hint";
               line.textContent = "asking the wallet for the account that started this payment";
               try {
@@ -835,6 +839,7 @@
                       onStatus: (s) => { line.textContent = s; },
                     });
                 if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+                sign.textContent = "Confirming on chain…";
                 line.textContent = buysFact
                   ? "the wallet signed it. The seller is checking and settling the exact signed payment"
                   : "the wallet signed it. Reading the chain to check the money arrived";
@@ -882,6 +887,10 @@
               } catch (err) {
                 sign.disabled = false;
                 sign.textContent = "Sign in wallet";
+                acts.querySelectorAll("button, a").forEach((el) => {
+                  el.style.pointerEvents = "";
+                  el.style.opacity = "";
+                });
                 line.className = "hint bad";
                 line.textContent = err.message;
               }

@@ -398,6 +398,8 @@
               ? await signX402({ address: p.sender, chain: p.chain, bytesBase64: p.bytes })
               : await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
             if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+            btn.textContent = "Confirming on chain…";
+            $("cancel").disabled = true;
             pinCycle(flow(), 3);
             const settled = await fetch("/pending/settle", {
               method: "POST",

@@ -432,13 +432,17 @@ export async function transactionAt(digest: string, net: Net = "mainnet"): Promi
 export async function waitForTransaction(
   digest: string,
   net: Net = "mainnet",
-  tries = 6,
-  everyMs = 2500,
+  tries = 15,
+  everyMs = 1000,
 ): Promise<Settled | null> {
   let found: Settled | null = null;
   for (let i = 1; i <= tries; i++) {
-    found = await transactionAt(digest, net);
-    if (found) return found;
+    try {
+      found = await transactionAt(digest, net);
+      if (found) return found;
+    } catch {
+      /* Temporary indexing delay or network hiccup; retry next tick */
+    }
     if (i < tries) await new Promise((r) => setTimeout(r, everyMs));
   }
   return found;
