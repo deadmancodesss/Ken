@@ -39,6 +39,7 @@ export function addressNeed(steps) {
       who,
       amount: Number.isFinite(amount) && amount > 0 ? amount : null,
       looksLikeAddress: r.looks_like_address === true,
+      ...(r.inspect === true ? { inspect: true } : {}),
     });
   }
   return needs.find((n) => n.amount !== null) ?? needs[0] ?? null;

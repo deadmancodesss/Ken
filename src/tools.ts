@@ -103,11 +103,23 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "who_is_this",
-    description: "Everything the agent knows about one wallet address: their name, what they are usually paid, how often, and the memories about them.",
+    description: "Everything the agent knows about one wallet address: their name, what they are usually paid, how often, and the memories about them. Pass an empty string if the user has not given the address yet so the page opens its inline address field.",
     positional: ["address"],
-    parameters: { address: { type: "STRING", description: "Full 0x Sui address" } },
-    required: ["address"],
-    run: (a) => whoIs(String(a.address)),
+    parameters: { address: { type: "STRING", description: "Full 0x Sui address, or empty string to open the inline address field" } },
+    required: [],
+    run: async (a) => {
+      const raw = String(a.address ?? "").trim();
+      if (!raw) {
+        return {
+          needs_address: true,
+          inspect: true,
+          who: "inspect",
+          looks_like_address: true,
+          note: "The page is now showing an inline address input field right under this reply. Ask the user in one short sentence to paste the full 0x Sui address into that field.",
+        };
+      }
+      return whoIs(raw);
+    },
   },
   {
     name: "money_history",
@@ -235,18 +247,28 @@ export const TOOLS: Tool[] = [
   {
     name: "address_activity",
     description:
-      "Inspect any wallet address (or saved person name) in detail: its last public transactions with clickable explorer links, what it sent and received per coin, who it dealt with, and measured patterns. Use it when the user asks to look out for a wallet, inspect an address, see its transactions/links, or check whether an address is trustworthy, spam, a person or a service.",
+      "Inspect any wallet address (or saved person name) in detail: its last public transactions with clickable explorer links, what it sent and received per coin, who it dealt with, and measured patterns. Use it when the user asks to look out for a wallet, inspect an address, inquire about an address, see its transactions/links, or check whether an address is trustworthy, spam, a person or a service. Pass an empty string for address if the user has not provided the address yet so the page opens its inline address input field.",
     positional: ["address"],
-    parameters: { address: { type: "STRING", description: "Full 0x Sui address or a known person's name" } },
-    required: ["address"],
+    parameters: { address: { type: "STRING", description: "Full 0x Sui address, a known person's name, or empty string to open the inline address field" } },
+    required: [],
     run: async (a) => {
       const raw = String(a.address ?? "").trim();
+      if (!raw) {
+        return {
+          needs_address: true,
+          inspect: true,
+          who: "inspect",
+          looks_like_address: true,
+          note: "The page is now showing an inline address input field right under this reply. Ask the user in one short sentence to paste the full 0x Sui address into that field.",
+        };
+      }
       const isHex = /^0x[0-9a-fA-F]{64}$/.test(raw);
       const person = isHex ? await personForAddress(raw) : await resolvePerson(raw);
       const address = isHex ? raw : person?.address ?? "";
       if (!address) {
         return {
           needs_address: true,
+          inspect: true,
           who: raw,
           looks_like_address: /^0x/i.test(raw),
           note: "No address is kept for this name. Ask the user to paste the full 0x Sui address in the field below.",

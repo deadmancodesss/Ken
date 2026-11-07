@@ -425,6 +425,7 @@
       /* ---------- composer ---------- */
       .composeWrap { flex: 0 0 auto; padding: 10px 24px calc(14px + env(safe-area-inset-bottom)); background: var(--paper); }
       .composer { width: 100%; max-width: var(--read); margin: 0 auto; display: flex; align-items: flex-end; gap: 10px; padding: 10px 10px 10px 16px; border: var(--edge) solid var(--rule-strong); border-radius: 16px; background: var(--paper); box-shadow: 3px 3px 0 var(--sheet); transition: border-color var(--t-1) var(--ease); }
+      .composer[hidden], .cfoot[hidden] { display: none !important; }
       .composer:focus-within { border-color: var(--ink); }
       .composer textarea {
         flex: 1;
@@ -725,12 +726,13 @@
         box-shadow: 3px 3px 0 var(--sheet);
         transition: border-color var(--t-1) var(--ease);
       }
-      .voiceDock[hidden] { display: none; }
+      .voiceDock[hidden] { display: none !important; }
       .voiceDockHead {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        flex-wrap: wrap;
       }
       .voiceStateTag {
         display: inline-flex;
@@ -758,23 +760,47 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
       }
-      .bargeBadge {
+      .voicePick {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 4px 9px;
+        gap: 7px;
+        min-width: 148px;
+      }
+      .voicePick > span {
+        font: 10px/1 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+      }
+      .voicePick .paper-select { flex: 1; min-width: 96px; }
+      .voicePick select {
+        padding: 4px 10px;
         border: 1px solid var(--rule-strong);
         border-radius: 999px;
         background: var(--paper);
-        font: 10px/1 var(--mono);
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--moss);
-        cursor: pointer;
-        user-select: none;
+        color: var(--ink);
+        font: 11px/1.2 var(--mono);
       }
-      .bargeIcon { font-size: 11px; }
+      .voiceInterruptBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 11px;
+        border: var(--edge) solid var(--clay);
+        border-radius: 999px;
+        background: var(--paper);
+        color: var(--clay);
+        font: 11px/1 var(--mono);
+        letter-spacing: 0.04em;
+        cursor: pointer;
+      }
+      .voiceInterruptBtn[hidden] { display: none !important; }
+      .voiceInterruptBtn:hover {
+        background: var(--clay);
+        color: var(--paper);
+      }
       .voiceCloseBtn {
         display: inline-flex;
         align-items: center;
@@ -825,6 +851,7 @@
         font: 11px/1.4 var(--mono);
         color: var(--ink-3);
       }
+      .voiceHint.bad { color: var(--brick); }
       .voicePill.live {
         background: var(--clay) !important;
         color: var(--paper) !important;
@@ -971,10 +998,11 @@
                 <span class="voiceStateText" id="voiceStateText">connecting…</span>
               </div>
               <div class="voiceDockActs">
-                <div class="bargeBadge" id="bargeBadge" title="Barge-in Priority: Speak anytime to interrupt Ken immediately">
-                  <span class="bargeIcon">⚡</span>
-                  <span class="bargeText">Barge-in on</span>
-                </div>
+                <label class="voicePick">
+                  <span>voice</span>
+                  <select id="voice" aria-label="Ken's voice"></select>
+                </label>
+                <button class="voiceInterruptBtn" id="voiceInterruptBtn" type="button" hidden title="Stop Ken speaking and listen to you immediately">Interrupt</button>
                 <button class="voiceCloseBtn" id="voiceCloseBtn" type="button" title="End call and return to text typing">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18L18 6M6 6l12 12"/></svg>
                   <span>End Call</span>
@@ -1519,13 +1547,29 @@
         const field = form.querySelector("input");
         const go = form.querySelector("button.primary");
         const hint = form.querySelector(".hint");
-        title.textContent = need.looksLikeAddress
-          ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
+        const isInspect = !!need.inspect;
+        title.textContent = isInspect
+          ? need.who && need.who !== "inspect"
+            ? `inspect wallet for ${need.who}`
+            : "inspect a wallet address"
+          : need.looksLikeAddress
+            ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
+            : amount
+              ? `keep ${need.who} and send ${amount}`
+              : `the address for ${need.who}`;
+        go.textContent = isInspect
+          ? "inspect this address"
           : amount
-            ? `keep ${need.who} and send ${amount}`
-            : `the address for ${need.who}`;
-        go.textContent = amount ? `keep it and send ${amount}` : "keep this address";
-        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+            ? `keep it and send ${amount}`
+            : "keep this address";
+        form.querySelector(".quietBtn").onclick = () => {
+          form.closest(".msg")?.remove();
+          call?.say(
+            isInspect
+              ? "The person closed the address inspection box without entering an address. Acknowledge briefly."
+              : `The person closed the address box without giving an address for ${need.who}. Acknowledge in one short sentence.`,
+          );
+        };
         form.onsubmit = async (e) => {
           e.preventDefault();
           const address = field.value.trim();
@@ -1533,6 +1577,17 @@
             hint.textContent = "That is not a full Sui address. A Sui address is 0x followed by 64 hex characters.";
             hint.classList.add("bad");
             field.focus();
+            return;
+          }
+          if (isInspect) {
+            form.closest(".msg")?.remove();
+            if (calling && call) {
+              call.say(
+                `The person entered the full Sui address ${address} in the inspection box. Call address_activity with address "${address}" now and summarize its recent transactions in one or two short sentences.`,
+              );
+            } else {
+              send(`Inspect ${address} and show its transactions and links`);
+            }
             return;
           }
           go.disabled = true;
@@ -1551,6 +1606,7 @@
             });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
+            shownTurns++;
             form.closest(".msg")?.remove();
             const msg = kenMessage(body.note || "the address is kept.");
             const steps = [{ name: "name_a_person", ok: true }];
@@ -1564,6 +1620,14 @@
             loadBalance();
             refreshSessions();
             if (body.payment?.awaiting_signature) signCard();
+            const who = need.looksLikeAddress ? "that address" : need.who;
+            call?.say(
+              body.payment?.awaiting_signature
+                ? `${who}'s address is saved and a ${body.payment.usdc} USDC payment ticket is open on the page waiting for the wallet signature. Do not call name_a_person or pay_usdc again. Tell the person in one short sentence to sign it in their wallet.`
+                : body.payment_error
+                  ? `${who}'s address is saved, but the payment did not go through: ${body.payment_error}. Explain that in one short sentence.`
+                  : `${who}'s address is now saved in the address book. Confirm that in one short sentence.`,
+            );
           } catch (err) {
             hint.textContent = err.message;
             hint.classList.add("bad");
@@ -1677,6 +1741,7 @@
             });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+            shownTurns++;
             form.closest(".msg")?.remove();
             const msg = kenMessage("");
             msg.querySelector(".kbody").remove();
@@ -1685,6 +1750,9 @@
             thread.appendChild(msg);
             scroll();
             refreshSessions();
+            call?.say(
+              `A request link was made in the form for ${body.request.usdc_text} USDC. It has not been sent to anyone, and the person has to copy it and send it. Do not call request_money again. Say one short sentence that the link is ready.`,
+            );
           } catch (err) {
             hint.textContent = err.message;
             hint.classList.add("bad");
@@ -1851,6 +1919,11 @@
                 loadState();
                 loadBalance();
                 refreshSessions();
+                call?.say(
+                  buysFact
+                    ? `The person signed the ${done.usdc} USDC x402 payment in their wallet, the seller settled it on Sui (digest ${done.digest}), and the paid answer was released: ${settled.learned?.note ?? "recorded in memory"}. Tell the person what the paid lookup returned in one or two short sentences.`
+                    : `The person signed the ${done.usdc} USDC payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.`,
+                );
               } catch (err) {
                 sign.disabled = false;
                 sign.textContent = "Sign in wallet";
@@ -1895,9 +1968,23 @@
           shownTurns = turns.length;
           if (!turns.length) showEmpty();
           else turns.forEach(drawTurn);
-          const last = turns[turns.length - 1];
-          const need = last ? addressNeed(last.steps || []) : null;
-          if (need) addressCard(need);
+          let openAddr = null;
+          let openReq = null;
+          for (const t of turns) {
+            const steps = t.steps || [];
+            const an = addressNeed(steps);
+            if (an) openAddr = an;
+            if (steps.some((s) => (s.name === "name_a_person" || s.name === "address_activity" || s.name === "who_is_this") && s.ok && !s.result?.needs_address)) {
+              openAddr = null;
+            }
+            const rn = requestNeed(steps);
+            if (rn) openReq = rn;
+            if (steps.some((s) => s.name === "request_money" && s.ok && s.result?.link)) {
+              openReq = null;
+            }
+          }
+          if (openAddr) addressCard(openAddr);
+          if (openReq) requestCard(openReq);
           if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
             fetch("/pending", { cache: "no-store" })
               .then((r) => r.json())
@@ -2128,6 +2215,7 @@
           });
           const turn = await res.json();
           if (!res.ok) throw new Error(turn.error || "http " + res.status);
+          shownTurns++;
           body.textContent = turn.text;
           if (turn.fallback) {
             const note = document.createElement("div");
@@ -2219,8 +2307,10 @@
         }
       });
 
-      /* ---------- native inline voice call & barge-in priority ---------- */
+      /* ---------- native inline voice call ---------- */
+      const VOICES = ["Kore", "Puck", "Charon", "Fenrir", "Leda"];
       const HANGUP = /\b(?:bye|goodbye|hang\s*up|end (?:the )?call|stop (?:the )?call|abort(?: the call)?|cut (?:the )?call|that'?s all)\b/i;
+      const inputVoice = $("voice");
       let call = null;
       let player = null;
       let wave = null;
@@ -2229,6 +2319,35 @@
       let starting = false;
       let epoch = 0;
       let tailUntil = 0;
+      let voiceStateTimer = null;
+      const writes = new Set();
+
+      function fillVoices(list, chosen) {
+        if (!inputVoice) return;
+        inputVoice.innerHTML = "";
+        for (const v of list) {
+          const opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v;
+          inputVoice.appendChild(opt);
+        }
+        const pick = chosen && list.includes(chosen) ? chosen : list[0];
+        if (pick) inputVoice.value = pick;
+        mountSelect(inputVoice).catch(() => null);
+      }
+
+      function resetVoices() {
+        fillVoices(VOICES, localStorage.getItem("tr.liveVoice") || "Kore");
+      }
+      resetVoices();
+
+      inputVoice?.addEventListener("change", async () => {
+        localStorage.setItem("tr.liveVoice", inputVoice.value);
+        if (calling) {
+          await closeVoice();
+          await openVoice();
+        }
+      });
 
       const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false });
       let turn = freshTurn();
@@ -2236,6 +2355,8 @@
       function setVoiceStatus(text) {
         const el = $("voiceStateText");
         if (el) el.textContent = text;
+        const intBtn = $("voiceInterruptBtn");
+        if (intBtn) intBtn.hidden = !player?.speaking;
       }
       function setVoiceHint(text) {
         const el = $("voiceHint");
@@ -2279,27 +2400,30 @@
         turn.traced = true;
       }
 
-      async function flushTurn() {
+      function flushTurn() {
         const work = turn;
         const asked = work.asked.trim();
         const said = work.said.trim();
         if (!asked && !said) {
           turn = freshTurn();
-          return;
+          return Promise.resolve();
         }
         turn = freshTurn();
-        try {
-          const res = await fetch("/live/turn", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ asked, said, steps: work.steps, session: active }),
-          });
-          const body = await res.json();
-          if (body?.session) active = body.session;
-          await refreshSessions();
-        } catch {
-          /* transcript is already rendered in the DOM */
-        }
+        shownTurns++;
+        const job = fetch("/live/turn", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ asked, said, steps: work.steps, session: active }),
+        })
+          .then((r) => r.json())
+          .then((body) => {
+            if (body?.session) active = body.session;
+            return refreshSessions();
+          })
+          .catch(() => {})
+          .finally(() => writes.delete(job));
+        writes.add(job);
+        return job;
       }
 
       async function openVoice() {
@@ -2329,18 +2453,13 @@
         try {
           mic = await captureMic(
             (frame) => {
-              const floor = floorIsMine({ barge: true, speaking: player?.speaking, now: Date.now(), tailUntil });
+              const floor = floorIsMine({ barge: false, speaking: player?.speaking, now: Date.now(), tailUntil });
               tailUntil = floor.tailUntil;
-              call?.push(upstream(frame, floor.open));
+              const typing = !!document.activeElement?.closest("form.panel");
+              call?.push(upstream(frame, floor.open && !typing));
             },
             (level) => {
               wave?.push(player?.speaking ? 0 : level, "you");
-              // Voice priority interruption: if user speaks aloud while Ken is talking, interrupt instantly!
-              if (player?.speaking && level > 0.075) {
-                player.interrupt();
-                call?.hold();
-                setVoiceStatus("you interrupted · listening to you");
-              }
             },
             (shape) => {
               if (!player?.speaking) wave?.trace(shape, "you");
@@ -2369,13 +2488,20 @@
         calling = true;
         starting = false;
 
+        if (voiceStateTimer) clearInterval(voiceStateTimer);
+        voiceStateTimer = setInterval(() => {
+          const intBtn = $("voiceInterruptBtn");
+          if (intBtn) intBtn.hidden = !player?.speaking;
+        }, 250);
+
         call = openLive({
-          voice: localStorage.getItem("tr.liveVoice") || "Kore",
+          voice: inputVoice?.value || localStorage.getItem("tr.liveVoice") || "Kore",
           session: active,
-          onOpen: (model, voice) => {
+          onOpen: (model, voice, voices) => {
+            if (Array.isArray(voices) && voices.length) fillVoices(voices, voice);
             wave?.live();
             setVoiceStatus("listening · speak normally");
-            setVoiceHint(`Live with ${model || "Gemini"} as ${voice || "Kore"}. Interrupt anytime by speaking aloud.`);
+            setVoiceHint(`Live with ${model || "Gemini"} as ${voice || "Kore"}. Your words stream directly into this chat.`);
           },
           onHeard: (piece) => {
             setVoiceStatus("hearing you…");
@@ -2392,15 +2518,7 @@
           onAudio: (pcm, rate) => {
             player?.feed(pcm, rate);
           },
-          onActivity: (type) => {
-            if (type === "ACTIVITY_START") {
-              if (player?.speaking) {
-                player.interrupt();
-                call?.hold();
-                setVoiceStatus("you interrupted · listening to you");
-              }
-            }
-          },
+          onActivity: () => {},
           onToolStart: (t) => {
             setVoiceStatus(t.name === "pay_usdc" ? "preparing payment ticket…" : "reading the chain…");
           },
@@ -2425,11 +2543,14 @@
               host.appendChild(reportCard());
               scroll();
             }
-            const dossier = walletDossierCard([{ result: t.result }]);
-            if (dossier) host.appendChild(dossier);
-            const need = addressNeed([{ result: t.result }]);
+            const dossier = walletDossierCard([{ name: t.name, ok: !!t.ok, result: t.result }]);
+            if (dossier) {
+              host.appendChild(dossier);
+              scroll();
+            }
+            const need = addressNeed([{ name: t.name, ok: !!t.ok, result: t.result }]);
             if (need) addressCard(need);
-            const asked = requestNeed([{ result: t.result }]);
+            const asked = requestNeed([{ name: t.name, ok: !!t.ok, result: t.result }]);
             if (asked) requestCard(asked);
             if (t.result?.awaiting_signature) {
               signCard();
@@ -2463,6 +2584,10 @@
         calling = false;
         starting = false;
         epoch++;
+        if (voiceStateTimer) {
+          clearInterval(voiceStateTimer);
+          voiceStateTimer = null;
+        }
         const socket = call;
         call = null;
         stopMic?.();
@@ -2479,7 +2604,9 @@
 
         sealTurn();
         await flushTurn();
+        await Promise.allSettled([...writes]);
         await socket?.hangup();
+        resetVoices();
         input.focus();
         loadState();
         loadBalance();
@@ -2494,9 +2621,10 @@
         if (calling) closeVoice();
         else openVoice();
       };
-      $("bargeBadge").onclick = () => {
-        setVoiceStatus("barge-in priority active");
-        setVoiceHint("Barge-in active: speak at any moment to cut Ken off and take the floor.");
+      $("voiceInterruptBtn").onclick = () => {
+        player?.interrupt();
+        call?.hold();
+        setVoiceStatus("listening…");
       };
 
       if (new URLSearchParams(location.search).get("voice") === "1") {
@@ -2587,12 +2715,18 @@
        * arrives a few seconds late.
        */
       setInterval(async () => {
-        if (document.hidden || !active) return;
+        if (document.hidden || !active || calling || starting || busy) return;
+        if (thread.querySelector("form.panel")) return;
         try {
           const res = await fetch(`/chats?session=${encodeURIComponent(active)}`, { cache: "no-store" });
           if (!res.ok) return;
           const body = await res.json();
-          if ((body.turns || []).length > shownTurns) await loadChats(active);
+          const turns = body.turns || [];
+          if (turns.length > shownTurns) {
+            turns.slice(shownTurns).forEach(drawTurn);
+            shownTurns = turns.length;
+            scroll();
+          }
         } catch {
           /* the next tick tries again */
         }
