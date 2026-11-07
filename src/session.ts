@@ -67,7 +67,11 @@ export function useNetwork(network: string): Session {
   const net: Net = network;
   const current = session();
   if (net === current.network) return current;
-  return swap({ ...current, network: net });
+  return swap({
+    ...current,
+    network: net,
+    reported: current.source === "wallet" ? `sui:${net}` : current.reported,
+  });
 }
 
 /**

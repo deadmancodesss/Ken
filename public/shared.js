@@ -734,14 +734,8 @@ export function mountNetwork(onChange) {
   /* The note has to be re-read on every /state paint, because which of these two
      buttons can hold a payment is decided by the server, not by the order of the pair. */
   const notes = () => ({
-    testnet: `reads the testnet history.${
-      settleNet === "testnet" ? " This is the network this build prepares a payment on, and the dust there is worthless." : " Nothing a payment is prepared on in this build."
-    }`,
-    mainnet: `reads your real balances and transfers.${
-      settleNet === "mainnet"
-        ? " This is the network this build prepares a payment on, and only your own wallet signature moves it."
-        : " Nothing here can move mainnet money."
-    }`,
+    testnet: "reads your testnet balances, memory and history, and prepares testnet USDC tickets when selected.",
+    mainnet: "reads your real mainnet balances, memory and history, and prepares mainnet USDC tickets when selected.",
   });
   const set = (net) => {
     current = net ?? "";

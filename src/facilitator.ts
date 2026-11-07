@@ -10,7 +10,7 @@ import {
   type VerifyRequest,
   type VerifyResponse,
 } from "./x402wire.js";
-import { PAY_CHAIN, PAY_NET, USDC_ASSET, isUsdcCoin, payGateway, throughRateLimit } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, USDC_ASSET, USDC_COIN, isUsdcCoin, payGateway, throughRateLimit, type Net } from "./chain.js";
 
 /**
  * A self-hosted x402 facilitator for Sui.
@@ -52,14 +52,23 @@ export function rememberSettlement(fingerprint: string, digest: string): void {
   save(u);
 }
 
-function client(): SuiGraphQLClient {
-  const { url, key } = payGateway();
-  return new SuiGraphQLClient({ url, network: PAY_NET, headers: { "x-api-key": key } });
+function client(net: Net = PAY_NET): SuiGraphQLClient {
+  const { url, key } = payGateway(net);
+  return new SuiGraphQLClient({ url, network: net, headers: { "x-api-key": key } });
+}
+
+function netFromChain(network: unknown): Net | null {
+  if (network === "sui:testnet") return "testnet";
+  if (network === "sui:mainnet") return "mainnet";
+  return null;
 }
 
 export function supported() {
   return {
-    kinds: [{ x402Version: 2, scheme: "exact", network: PAY_CHAIN }],
+    kinds: [
+      { x402Version: 2, scheme: "exact", network: "sui:testnet" },
+      { x402Version: 2, scheme: "exact", network: "sui:mainnet" },
+    ],
     extensions: [],
     signers: {},
   };
@@ -69,11 +78,12 @@ const ADDRESS = /^0x[0-9a-fA-F]{64}$/;
 
 function termsOk(req: PaymentRequirements): string | null {
   if (req?.scheme !== "exact") return `this facilitator settles the exact scheme, not ${req?.scheme}`;
-  if (req?.network !== PAY_CHAIN) return `this facilitator settles ${PAY_CHAIN}, not ${req?.network}`;
+  const net = netFromChain(req?.network);
+  if (!net) return `this facilitator settles sui:testnet and sui:mainnet, not ${req?.network}`;
   if (!ADDRESS.test(String(req?.payTo ?? ""))) return "the terms name no payout address";
   if (!/^\d+$/.test(String(req?.amount ?? ""))) return "the terms name no amount in base units";
   if (BigInt(req.amount) <= 0n) return "the price is zero";
-  if (String(req.asset) !== USDC_ASSET) return "the terms name a coin this facilitator does not settle";
+  if (String(req.asset) !== USDC_COIN[net]) return "the terms name a coin this facilitator does not settle";
   return null;
 }
 
@@ -119,10 +129,11 @@ export async function verify(input: VerifyRequest): Promise<Verified> {
     }
   }
 
+  const net = netFromChain(req?.network) ?? PAY_NET;
   let sim;
   try {
     sim = await throughRateLimit(() =>
-      client().simulateTransaction({
+      client(net).simulateTransaction({
         transaction: opened.transaction,
         include: { effects: true, balanceChanges: true },
       }),
@@ -182,13 +193,15 @@ export function coversTerms(req: PaymentRequirements, sender: string, changes: C
  * is exactly the one the wallet showed its owner.
  */
 export async function settle(input: VerifyRequest): Promise<SettlementResponse> {
+  const net = netFromChain(input?.paymentRequirements?.network) ?? PAY_NET;
+  const chain = `sui:${net}` as "sui:testnet" | "sui:mainnet";
   const checked = await verify(input);
   if (!checked.ok) {
-    return { success: false, transaction: "", network: PAY_CHAIN, errorReason: checked.why };
+    return { success: false, transaction: "", network: chain, errorReason: checked.why };
   }
 
   try {
-    const sent = await client().executeTransaction({
+    const sent = await client(net).executeTransaction({
       transaction: checked.transaction,
       signatures: checked.signatures,
       include: { effects: true },
@@ -196,17 +209,17 @@ export async function settle(input: VerifyRequest): Promise<SettlementResponse> 
     const done = sent.$kind === "Transaction" ? sent.Transaction : null;
     if (!done) {
       const why = String((sent as any)?.FailedTransaction?.status?.error?.message ?? "the node refused it");
-      return { success: false, transaction: "", network: PAY_CHAIN, payer: checked.payer, errorReason: why.slice(0, 240) };
+      return { success: false, transaction: "", network: chain, payer: checked.payer, errorReason: why.slice(0, 240) };
     }
     if (!done.status?.success) {
       const why = (done.status as any)?.error?.message ?? (done.status as any)?.error ?? "the transaction failed";
-      return { success: false, transaction: "", network: PAY_CHAIN, payer: checked.payer, errorReason: String(why).slice(0, 240) };
+      return { success: false, transaction: "", network: chain, payer: checked.payer, errorReason: String(why).slice(0, 240) };
     }
     rememberSettlement(checked.fingerprint, done.digest);
     return {
       success: true,
       transaction: done.digest,
-      network: PAY_CHAIN,
+      network: chain,
       payer: checked.payer,
       amount: input.paymentRequirements.amount,
     };
@@ -214,7 +227,7 @@ export async function settle(input: VerifyRequest): Promise<SettlementResponse> 
     return {
       success: false,
       transaction: "",
-      network: PAY_CHAIN,
+      network: chain,
       payer: checked.payer,
       errorReason: `the chain would not settle it: ${String((err as Error)?.message ?? err).slice(0, 240)}`,
     };

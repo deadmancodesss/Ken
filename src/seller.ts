@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { busyPrice, busyThreshold, sell, sellerPrice, sellerWallet } from "./catalog.js";
 import { settle, supported, verify, verifyResponse } from "./facilitator.js";
-import { PAY_CHAIN, USDC_ASSET } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, USDC_ASSET, type Net } from "./chain.js";
 import { HEADER_SIGNATURE, decodeHeader, sameVersion, type PaymentPayload } from "./x402wire.js";
 
 /**
@@ -89,8 +89,17 @@ const server = createServer(async (req, res) => {
       return json(res, 200, await settle(body as any));
     }
 
+    const netParam = (bodyNet?: unknown) => {
+      const q = url.searchParams.get("network") ?? String(bodyNet ?? "");
+      return q === "testnet" ? "testnet" : q === "mainnet" ? "mainnet" : PAY_NET;
+    };
+
     if (url.pathname === "/paid" && req.method === "GET") {
-      const answer = await sell({ resource: url.searchParams.get("resource") ?? "", payer: url.searchParams.get("payer") ?? "" });
+      const answer = await sell({
+        resource: url.searchParams.get("resource") ?? "",
+        payer: url.searchParams.get("payer") ?? "",
+        network: netParam(),
+      });
       return json(res, answer.http, answer.body, answer.headers);
     }
 
@@ -99,16 +108,24 @@ const server = createServer(async (req, res) => {
       const raw = Array.isArray(header) ? header[0] : header;
       if (!raw) {
         const body = parsed(await readBody(req));
-        const answer = await sell({ resource: String(body.resource ?? url.searchParams.get("resource") ?? ""), payer: String(body.payer ?? "") });
+        const answer = await sell({
+          resource: String(body.resource ?? url.searchParams.get("resource") ?? ""),
+          payer: String(body.payer ?? ""),
+          network: netParam(body.network),
+        });
         return json(res, answer.http, answer.body, answer.headers);
       }
 
       let envelope = "";
+      let net = netParam();
       try {
         const payload = decodeHeader<PaymentPayload>(raw);
         if (!sameVersion(payload?.x402Version)) return json(res, 400, { error: "this resource server speaks x402 version 2" });
         if (payload?.scheme !== "exact") return json(res, 400, { error: `this resource server settles the exact scheme, not ${payload?.scheme}` });
-        if (payload?.network !== PAY_CHAIN) return json(res, 400, { error: `this resource server settles ${PAY_CHAIN}, not ${payload?.network}` });
+        if (payload?.network !== "sui:testnet" && payload?.network !== "sui:mainnet") {
+          return json(res, 400, { error: `this resource server settles sui:testnet and sui:mainnet, not ${payload?.network}` });
+        }
+        net = payload.network === "sui:testnet" ? "testnet" : "mainnet";
         envelope = String(payload?.payload?.transaction ?? "");
         if (!envelope) return json(res, 400, { error: "the payment header carries no signed transaction" });
       } catch {
@@ -116,7 +133,7 @@ const server = createServer(async (req, res) => {
       }
 
       const resource = url.searchParams.get("resource") ?? String(parsed(await readBody(req)).resource ?? "");
-      const answer = await sell({ resource, envelope }, { settle });
+      const answer = await sell({ resource, envelope, network: net }, { settle });
       return json(res, answer.http, answer.body, answer.headers);
     }
 

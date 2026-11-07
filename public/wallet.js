@@ -560,7 +560,12 @@ export async function connect(chosen, onStatus, control = {}) {
     throw err;
   }
 
-  const chainOf = (a) => String((a.chains ?? [])[0] ?? "sui:unknown");
+  const chainOf = (a) => {
+    const list = Array.isArray(a?.chains) ? a.chains.map(String) : [];
+    const active = typeof document !== "undefined" ? document.querySelector(".nets button.on")?.dataset?.net : "";
+    if (active && list.includes(`sui:${active}`)) return `sui:${active}`;
+    return list.find((c) => c === "sui:testnet" || c === "sui:mainnet") ?? list[0] ?? "sui:unknown";
+  };
   /* An address shaped like a Sui one is not enough. MetaMask, Rabby and Coinbase all
      hand over 0x plus 64 hex on EVM, and setting one of those as this page's wallet
      would spend against an account that does not exist on Sui. */

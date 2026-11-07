@@ -498,7 +498,7 @@ async function handle(req: any, res: any) {
           stats: { total: 0, namespaces: [] },
           session: { wallet: "", network: s.network, source: "none", reported: "" },
           payments: paymentsEnabled(),
-          pay_network: PAY_NET,
+          pay_network: s.network,
           spend: {
             usdc: 0,
             lookups: 0,
@@ -530,7 +530,7 @@ async function handle(req: any, res: any) {
         stats,
         session: s,
         payments: paymentsEnabled(),
-        pay_network: PAY_NET,
+        pay_network: s.network,
         spend: {
           usdc: totalSpent(s.wallet),
           lookups: purchases(s.wallet).length,
@@ -581,8 +581,9 @@ async function handle(req: any, res: any) {
           });
         }
         try {
-          const released = await settleSigned(waiting.resource, waiting.sender, bytes, signature);
-          if ("error" in released) return json(res, 402, { error: released.error, pending: waiting });          const learned = await learn(waiting.resource, released.fact, released.usdc, released.tx, released.on);
+          const released = await settleSigned(waiting.resource, waiting.sender, bytes, signature, session().network);
+          if ("error" in released) return json(res, 402, { error: released.error, pending: waiting });
+          const learned = await learn(waiting.resource, released.fact, released.usdc, released.tx, released.on);
           const done = settle(released.tx);
           balanceCache.clear();
           forgetCounterparties();
@@ -689,9 +690,6 @@ async function handle(req: any, res: any) {
       if (s.source !== "wallet") {
         return json(res, 400, { error: "connect your wallet first. A request has to point at an address you can spend from" });
       }
-      if (s.network !== PAY_NET) {
-        return json(res, 400, { error: `request links are paid on ${PAY_CHAIN}, and this page is reading ${s.network}. Move the network switch to ${PAY_NET} first` });
-      }
       const input = JSON.parse((await readBody(req)) || "{}");
       const usdc = Number(input.usdc);
       if (!Number.isFinite(usdc) || usdc <= 0) return json(res, 400, { error: "a request needs an amount above zero" });
@@ -754,16 +752,13 @@ async function handle(req: any, res: any) {
       if (s.source !== "wallet") {
         return json(res, 400, { error: "connect a wallet first. A request is paid by the person opening it, from their own account" });
       }
-      if (s.network !== PAY_NET) {
-        return json(res, 400, { error: `this request is a ${PAY_CHAIN} payment, and this page is reading ${s.network}. Move the network switch to ${PAY_NET} first` });
-      }
       if (found.to.toLowerCase() === s.wallet.toLowerCase()) {
         return json(res, 400, { error: "this request points at the wallet you have connected, so there is nothing here to pay" });
       }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
       try {
-        const p = await prepareUsdc(s.wallet, found.to, found.usdc);
+        const p = await prepareUsdc(s.wallet, found.to, found.usdc, s.network);
         return json(res, 200, {
           pending: hold({ sender: p.sender, to: p.to, name: null, usdc: p.usdc, bytes: p.bytes, chain: p.chain, request: found.id }),
           request: publicRequest(found),
@@ -874,7 +869,7 @@ async function handle(req: any, res: any) {
       if (typeof bytes !== "string" || !bytes || typeof signature !== "string" || !signature) {
         return json(res, 400, { error: "bytes and signature required" });
       }
-      const released = await settleSigned(canon, who, bytes, signature);
+      const released = await settleSigned(canon, who, bytes, signature, session().network);
       if ("error" in released) return json(res, 402, { error: released.error });
       return json(res, 200, { fact: released.fact, charged: released.usdc, tx: released.tx, reason: released.reason });
     }
@@ -981,10 +976,11 @@ async function handle(req: any, res: any) {
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });
       }
+      const net = session().network;
 
       // A signature from an earlier ask that never got its answer is retried before a
       // new transfer is built, so a lost response cannot become a second payment.
-      const retried = await retryStuck(resource, String(payer ?? ""));
+      const retried = await retryStuck(resource, String(payer ?? ""), net);
       if (retried) {
         if ("error" in retried) return json(res, 502, { error: retried.error });
         return json(res, 200, { opened: true, fact: retried.fact, reason: retried.reason, tx: retried.tx, charged: retried.usdc });
@@ -992,7 +988,7 @@ async function handle(req: any, res: any) {
 
       // The seller publishes the terms and this route only turns them into something a
       // wallet can sign. A link this address already opened comes back without a ticket.
-      const quoted = await price(resource, String(payer ?? ""));
+      const quoted = await price(resource, String(payer ?? ""), net);
       if ("error" in quoted) return json(res, 400, { error: quoted.error });
       if ("free" in quoted) return json(res, 200, { opened: true, fact: quoted.fact, reason: quoted.reason, tx: quoted.tx });
 
@@ -1000,7 +996,7 @@ async function handle(req: any, res: any) {
       if (refused) return json(res, 200, { refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused });
 
       try {
-        const prepared = await prepareUsdc(String(payer), quoted.requirements.payTo, quoted.usdc);
+        const prepared = await prepareUsdc(String(payer), quoted.requirements.payTo, quoted.usdc, net);
         return json(res, 200, { requirements: quoted.requirements, price_usdc: quoted.usdc, prepared });
       } catch (err) {
         // A wallet with nothing in it is the buyer's problem to solve, not a reason to
@@ -1017,9 +1013,6 @@ async function handle(req: any, res: any) {
       const s = session();
       if (s.source !== "wallet") {
         return json(res, 400, { error: "connect a wallet first. The demo story has no key in this browser, so there is nothing to sign" });
-      }
-      if (s.network !== PAY_NET) {
-        return json(res, 400, { error: `this prepares ${PAY_CHAIN} transfers, and this page is reading ${s.network}. Move the network switch to ${PAY_NET} first` });
       }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
@@ -1053,7 +1046,7 @@ async function handle(req: any, res: any) {
       }
 
       try {
-        const p = await prepareUsdc(s.wallet, address, amount);
+        const p = await prepareUsdc(s.wallet, address, amount, s.network);
         return json(res, 200, { pending: hold({ sender: p.sender, to: p.to, name, usdc: p.usdc, bytes: p.bytes, chain: p.chain }) });
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });
@@ -1070,9 +1063,6 @@ async function handle(req: any, res: any) {
       if (s.source !== "wallet") {
         return json(res, 400, { error: "connect a wallet first. On the demo story the agent pays for this itself, on the Talk page" });
       }
-      if (s.network !== PAY_NET) {
-        return json(res, 400, { error: `this index only sells ${PAY_CHAIN} reads, and this page is reading ${s.network}. Move the network switch to ${PAY_NET} first` });
-      }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
 
@@ -1085,7 +1075,7 @@ async function handle(req: any, res: any) {
 
       // The index sets the terms and this route only turns them into something a wallet
       // can sign, so a digest already settled is answered here without a ticket at all.
-      const quoted = await price(resource, s.wallet);
+      const quoted = await price(resource, s.wallet, s.network);
       if ("error" in quoted) return json(res, 400, { error: quoted.error });
       if ("free" in quoted) {
         return json(res, 200, { answered: quoted.fact, charged: 0, reason: quoted.reason, tx: quoted.tx });
@@ -1096,7 +1086,7 @@ async function handle(req: any, res: any) {
 
       // A signed envelope from an earlier ask that never got its answer is retried
       // before anything new is prepared, so a lost response cannot cost a second payment.
-      const retried = await retryStuck(resource, s.wallet);
+      const retried = await retryStuck(resource, s.wallet, s.network);
       if (retried) {
         if ("error" in retried) return json(res, 502, { error: retried.error });
         const learned = await learn(resource, retried.fact, retried.usdc, retried.tx, retried.on);
@@ -1107,7 +1097,7 @@ async function handle(req: any, res: any) {
       }
 
       try {
-        const p = await prepareUsdc(s.wallet, quoted.requirements.payTo, quoted.usdc);
+        const p = await prepareUsdc(s.wallet, quoted.requirements.payTo, quoted.usdc, s.network);
         return json(res, 200, {
           pending: hold({
             sender: p.sender,

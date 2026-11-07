@@ -687,12 +687,6 @@ export const TOOLS: Tool[] = [
           note: "A request link has to point at a wallet the person can spend from. Ask them to connect a wallet first, then call this again. Do not say a link exists.",
         };
       }
-      if (s.network !== PAY_NET) {
-        return {
-          needs_payment_network: PAY_NET,
-          note: `Request links are paid on ${PAY_CHAIN} and this page is reading ${s.network}. Ask them to move the network switch to ${PAY_NET}. Do not say a link exists.`,
-        };
-      }
 
       const raw = a.usdc;
       const usdc = raw === undefined || raw === null || raw === "" ? null : Number(raw);
@@ -771,16 +765,9 @@ if (paymentsEnabled()) {
       // The user's own money never leaves on a sentence alone. Build the transfer,
       // hold it, and let the signature in their wallet be the approval.
       if (session().source === "wallet") {
-        // A transfer is only built against the coin this build settles, so a wallet on
-        // the other ledger must be told that instead of being shown wrong bytes.
-        if (session().network !== PAY_NET) {
-          throw new Error(
-            `this agent only prepares ${PAY_CHAIN} USDC transfers and this page is reading ${session().network}. Move the network switch to ${PAY_NET}`,
-          );
-        }
         const crossed = chainMismatch();
         if (crossed) throw new Error(crossed);
-        const p = await prepareUsdc(session().wallet, address, usdc);
+        const p = await prepareUsdc(session().wallet, address, usdc, session().network);
         const held = hold({ sender: p.sender, to: p.to, name, usdc: p.usdc, bytes: p.bytes, chain: p.chain });
         return { awaiting_signature: true, id: held.id, to: name ?? p.to, usdc: p.usdc, where: "the ticket under this reply" };
       }
@@ -832,14 +819,10 @@ if (paymentsEnabled()) {
       const resource = resourceId(address);
 
       if (session().source === "wallet") {
-        if (session().network !== PAY_NET) {
-          throw new Error(
-            `the paid index only takes ${PAY_CHAIN} USDC and this page is reading ${session().network}. Move the network switch to ${PAY_NET}`,
-          );
-        }
+        const net = session().network;
         const crossed = chainMismatch();
         if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer);
+        const quoted = await price(resource, payer, net);
         if ("error" in quoted) throw new Error(quoted.error);
         if ("free" in quoted) {
           const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
@@ -851,7 +834,7 @@ if (paymentsEnabled()) {
           return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
         }
         await nameTheIndex();
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc);
+        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
         const held = hold({
           sender: prepared.sender,
           to: prepared.to,
@@ -913,14 +896,10 @@ if (paymentsEnabled()) {
       }
 
       if (session().source === "wallet") {
-        if (session().network !== PAY_NET) {
-          throw new Error(
-            `the receipt index only answers about ${PAY_CHAIN} and this page is reading ${session().network}. Move the network switch to ${PAY_NET}`,
-          );
-        }
+        const net = session().network;
         const crossed = chainMismatch();
         if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer);
+        const quoted = await price(resource, payer, net);
         if ("error" in quoted) throw new Error(quoted.error);
         if ("free" in quoted) {
           const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
@@ -931,7 +910,7 @@ if (paymentsEnabled()) {
           return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
         }
         await nameTheIndex();
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc);
+        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
         const held = hold({
           sender: prepared.sender,
           to: prepared.to,
@@ -990,12 +969,10 @@ if (paymentsEnabled()) {
       const seller = (await personForAddress(sold.pay_to))?.alias ?? `${sold.pay_to.slice(0, 10)}…`;
 
       if (session().source === "wallet") {
-        if (session().network !== PAY_NET) {
-          throw new Error(`paid links are only openable with ${PAY_CHAIN} USDC and this page is reading ${session().network}. Move the network switch to ${PAY_NET}`);
-        }
+        const net = session().network;
         const crossed = chainMismatch();
         if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer);
+        const quoted = await price(resource, payer, net);
         if ("error" in quoted) throw new Error(quoted.error);
         if ("free" in quoted) {
           const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
@@ -1005,7 +982,7 @@ if (paymentsEnabled()) {
         if (refused) {
           return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
         }
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc);
+        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
         const held = hold({
           sender: prepared.sender,
           to: prepared.to,

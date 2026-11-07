@@ -2,7 +2,7 @@ import "dotenv/config";
 import { SuiGraphQLClient } from "@mysten/sui/graphql";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
-import { PAY_CHAIN, PAY_NET, USDC_ASSET, allHoldings, formatAmount, payGateway, throughRateLimit } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, USDC_ASSET, USDC_COIN, allHoldings, formatAmount, payGateway, throughRateLimit, type Net } from "./chain.js";
 
 export { USDC_ASSET } from "./chain.js";
 
@@ -13,9 +13,9 @@ export type Payment = { digest: string; to: string; usdc: number };
 export type Paid = Payment & { duplicate: boolean };
 export type Prepared = { bytes: string; to: string; usdc: number; chain: string; sender: string };
 
-function payClient() {
-  const { url, key } = payGateway();
-  return new SuiGraphQLClient({ url, network: PAY_NET, headers: { "x-api-key": key } });
+function payClient(net: Net = PAY_NET) {
+  const { url, key } = payGateway(net);
+  return new SuiGraphQLClient({ url, network: net, headers: { "x-api-key": key } });
 }
 
 function checked(to: string, baseUnits: bigint): void {
@@ -28,20 +28,20 @@ function checked(to: string, baseUnits: bigint): void {
  * Builds the transfer and stops before anyone signs it. The bytes go to a browser
  * wallet so the person who owns the money is the one who approves it.
  */
-export async function prepareUsdc(sender: string, to: string, usdc: number): Promise<Prepared> {
+export async function prepareUsdc(sender: string, to: string, usdc: number, net: Net = PAY_NET): Promise<Prepared> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(sender)) throw new Error("sender must be a full 0x Sui address");
   const baseUnits = BigInt(Math.round(usdc * 10 ** USDC_DECIMALS));
   checked(to, baseUnits);
 
   const tx = new Transaction();
   tx.setSender(sender);
-  tx.transferObjects([coinWithBalance({ type: USDC_ASSET, balance: baseUnits })], to);
+  tx.transferObjects([coinWithBalance({ type: USDC_COIN[net], balance: baseUnits })], to);
 
   // build() hands back serialized TransactionData bytes, which is exactly what a
   // browser wallet wants to be shown. Nothing here signs anything.
   let built: Uint8Array;
   try {
-    built = await throughRateLimit(() => tx.build({ client: payClient() }));
+    built = await throughRateLimit(() => tx.build({ client: payClient(net) }));
   } catch (err) {
     // The SDK answers this in coin type hashes and base units. What the person
     // needs to hear is that the wallet they connected cannot cover the amount.
@@ -58,7 +58,7 @@ export async function prepareUsdc(sender: string, to: string, usdc: number): Pro
       // fact that separates a wrong account from a wallet showing a stale balance.
       let holds = "";
       try {
-        const coins = await allHoldings(sender, PAY_NET);
+        const coins = await allHoldings(sender, net);
         holds = coins.length
           ? ` That account holds ${coins.map((h) => `${formatAmount(BigInt(h.base), h.decimals)} ${h.symbol}`).join(", ")}.`
           : " That account holds no coins at all.";
@@ -66,12 +66,12 @@ export async function prepareUsdc(sender: string, to: string, usdc: number): Pro
         /* the message below is already true without the balance */
       }
       throw new Error(
-        `the transfer builder found less than ${usdc} ${PAY_NET} USDC at the connected account ${short}, so there is nothing to sign yet.${holds} A locked wallet cannot cause this. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`,
+        `the transfer builder found less than ${usdc} ${net} USDC at the connected account ${short}, so there is nothing to sign yet.${holds} A locked wallet cannot cause this. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`,
       );
     }
     throw new Error(msg.slice(0, 200));
   }
-  return { bytes: Buffer.from(built).toString("base64"), to, usdc, chain: PAY_CHAIN, sender };
+  return { bytes: Buffer.from(built).toString("base64"), to, usdc, chain: `sui:${net}`, sender };
 }
 
 export function paymentsEnabled(): boolean {

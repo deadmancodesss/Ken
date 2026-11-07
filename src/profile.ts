@@ -1,6 +1,5 @@
 import "dotenv/config";
-import { PAY_CHAIN, PAY_NET, recentActivityPage } from "./chain.js";
-import type { Flow } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, recentActivityPage, type Flow, type Net } from "./chain.js";
 
 /*
  * The paid fact was invented once: a JSON file of made-up businesses standing in for
@@ -35,10 +34,10 @@ const ADDRESS = /^0x[0-9a-fA-F]{64}$/;
  * of four hundred transactions would be a lie of omission, which is the exact kind
  * of thing this endpoint exists to avoid.
  */
-export async function profileOf(address: string, limit = 40): Promise<Profile> {
+export async function profileOf(address: string, limit = 40, net: Net = PAY_NET): Promise<Profile> {
   if (!ADDRESS.test(address)) throw new Error(`${address} is not a full 0x Sui address`);
   const wallet = address.toLowerCase();
-  const page = await recentActivityPage(wallet, limit, null, PAY_NET);
+  const page = await recentActivityPage(wallet, limit, null, net);
   return summarise(wallet, page.flows, page.count, page.hasNext, limit);
 }
 
@@ -112,19 +111,19 @@ export function summarise(
 }
 
 /** The words a memory is written from, in one sentence a speaker can finish. */
-export function profileNote(p: Profile): string {
+export function profileNote(p: Profile, net: Net = PAY_NET): string {
   const coinWord = p.coins.length === 1 ? "one coin type" : `${p.coins.length} coin types`;
   const top = p.top
     ? `The busiest counterparty is ${p.top.address.slice(0, 10)}…${p.top.address.slice(-4)} with ${p.top.txs} of ${p.txs} transactions, ${p.top.share}%`
     : "No counterparty appears at all";
   const span = p.first && p.last ? `Between ${p.first.slice(0, 10)} and ${p.last.slice(0, 10)}` : "With no timestamped transaction in the window";
-  const edge = p.more ? `This is the newest ${p.window} or fewer, so older history is not counted` : `This is the whole history on ${PAY_CHAIN}`;
+  const edge = p.more ? `This is the newest ${p.window} or fewer, so older history is not counted` : `This is the whole history on sui:${net}`;
   return `${span} the address appears in ${p.txs} transactions across ${coinWord}, with ${p.inbound} legs arriving and ${p.outbound} leaving. ${top}. ${edge}. Read ${p.read.slice(0, 10)}`;
 }
 
 export type ProfileFact = { name: string; kind: string; note: string };
 
-export async function readProfile(address: string): Promise<ProfileFact> {
-  const p = await profileOf(address);
-  return { name: p.address, kind: "Chain profile", note: profileNote(p) };
+export async function readProfile(address: string, net: Net = PAY_NET): Promise<ProfileFact> {
+  const p = await profileOf(address, 40, net);
+  return { name: p.address, kind: "Chain profile", note: profileNote(p, net) };
 }

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { USDC_DECIMALS, signUsdc } from "./wallet.js";
-import { PAY_CHAIN, USDC_ASSET } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, USDC_ASSET, USDC_COIN, type Net } from "./chain.js";
 import { recallAbout, remember } from "./memory.js";
 import { labelPerson, personForAddress } from "./people.js";
 import { canonical, parseResource, type Fact } from "./resources.js";
@@ -89,12 +89,13 @@ export type Price =
   | { free: true; fact: Fact; reason: string; tx: string; paid: number; on: string }
   | { error: string; refusal?: true };
 
-function parseRequirements(header: string): PaymentRequirements {
+function parseRequirements(header: string, net: Net = PAY_NET): PaymentRequirements {
+  const chain = `sui:${net}`;
   const required = decodeHeader<PaymentRequired>(header);
   if (!sameVersion(required.x402Version)) throw new Error("the index published a price in an x402 version this client does not speak");
-  const req = required.accepts?.find((a) => a.scheme === "exact" && a.network === NETWORK);
-  if (!req) throw new Error(`the index published no exact-scheme price for ${NETWORK}`);
-  if (String(req.asset) !== USDC_ASSET) throw new Error(`the index priced the answer in a coin that is not ${NETWORK} USDC`);
+  const req = required.accepts?.find((a) => a.scheme === "exact" && a.network === chain);
+  if (!req) throw new Error(`the index published no exact-scheme price for ${chain}`);
+  if (String(req.asset) !== USDC_COIN[net]) throw new Error(`the index priced the answer in a coin that is not ${chain} USDC`);
   if (!ADDRESS.test(String(req.payTo ?? ""))) throw new Error("the index named no payout address in its terms");
   if (!/^\d+$/.test(String(req.amount ?? "")) || BigInt(req.amount) <= 0n) {
     throw new Error("the index named no amount in base units in its terms");
@@ -107,10 +108,10 @@ function parseRequirements(header: string): PaymentRequirements {
  * already sold this resource to this wallet; a 402 must carry the standard header or it
  * is not x402 and the buyer will not guess at a private shape.
  */
-export async function price(resource: string, payer: string): Promise<Price> {
+export async function price(resource: string, payer: string, net: Net = PAY_NET): Promise<Price> {
   let res: Response;
   try {
-    res = await fetch(`${SOURCE_URL}?resource=${encodeURIComponent(resource)}&payer=${encodeURIComponent(payer)}`);
+    res = await fetch(`${SOURCE_URL}?resource=${encodeURIComponent(resource)}&payer=${encodeURIComponent(payer)}&network=${encodeURIComponent(net)}`);
   } catch (err) {
     return { error: `the paid index is not answering at ${SOURCE_URL}: ${String((err as Error)?.message ?? err).slice(0, 160)}` };
   }
@@ -131,7 +132,7 @@ export async function price(resource: string, payer: string): Promise<Price> {
       return { error: "the index answered 402 without a PAYMENT-REQUIRED header, so this is not x402 and I did not pay" };
     }
     try {
-      const requirements = parseRequirements(header);
+      const requirements = parseRequirements(header, net);
       return { requirements, usdc: baseToAmount(requirements.amount) };
     } catch (err) {
       return { error: (err as Error).message };
@@ -148,19 +149,19 @@ export type Release =
  * The second half. The envelope is the buyer's own signed transaction, untouched by
  * this server, and the seller's facilitator decides whether it settles.
  */
-export async function settleEnvelope(resource: string, payer: string, envelope: string): Promise<Release> {
+export async function settleEnvelope(resource: string, payer: string, envelope: string, net: Net = PAY_NET): Promise<Release> {
   const payload: PaymentPayload = {
     x402Version: 2,
     scheme: "exact",
-    network: NETWORK,
+    network: `sui:${net}` as "sui:testnet" | "sui:mainnet",
     payload: { transaction: envelope },
   };
   let res: Response;
   try {
-    res = await fetch(`${SOURCE_URL}?resource=${encodeURIComponent(resource)}`, {
+    res = await fetch(`${SOURCE_URL}?resource=${encodeURIComponent(resource)}&network=${encodeURIComponent(net)}`, {
       method: "POST",
       headers: { "content-type": "application/json", [HEADER_SIGNATURE]: encodeHeader(payload) },
-      body: JSON.stringify({ resource }),
+      body: JSON.stringify({ resource, network: net }),
     });
   } catch (err) {
     return { error: `the signed payment could not reach the index: ${String((err as Error)?.message ?? err).slice(0, 160)}` };
@@ -218,7 +219,7 @@ function recordSale(resource: string, payer: string, released: Exclude<Release, 
  * reason the agent's own signature is: a process that dies after the money settles and
  * before the fact is read must retry the same signature, never sign a second one.
  */
-export async function settleSigned(resource: string, payer: string, bytes: string, signature: string): Promise<Release> {
+export async function settleSigned(resource: string, payer: string, bytes: string, signature: string, net: Net = PAY_NET): Promise<Release> {
   let envelope: string;
   let sender: string;
   try {
@@ -234,7 +235,7 @@ export async function settleSigned(resource: string, payer: string, bytes: strin
   const l = ledger();
   l.stuck[key] = { resource, payer, envelope, at: new Date().toISOString() };
   save(l);
-  const released = await settleEnvelope(resource, payer, envelope);
+  const released = await settleEnvelope(resource, payer, envelope, net);
   if ("error" in released) return released;
   recordSale(resource, payer, released);
   return released;
@@ -244,11 +245,11 @@ export async function settleSigned(resource: string, payer: string, bytes: strin
  * A signed payment from an earlier ask that never got its answer. Tried before anything
  * new is prepared, so a lost response cannot cost this wallet a second transfer.
  */
-export async function retryStuck(resource: string, payer: string): Promise<Release | null> {
+export async function retryStuck(resource: string, payer: string, net: Net = PAY_NET): Promise<Release | null> {
   const key = saleKey(payer, resource);
   const stuck = ledger().stuck[key];
   if (!stuck) return null;
-  const released = await settleEnvelope(resource, payer, stuck.envelope);
+  const released = await settleEnvelope(resource, payer, stuck.envelope, net);
   if ("error" in released) return released;
   recordSale(resource, payer, released);
   return released;

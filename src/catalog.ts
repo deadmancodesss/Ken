@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { PAY_CHAIN, PAY_NET, coinDecimals, coinName, formatAmount, short, transactionAt } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, USDC_COIN, coinDecimals, coinName, formatAmount, short, transactionAt, type Net } from "./chain.js";
 import { note } from "./notes.js";
 import { personForAddress } from "./people.js";
 import { profileOf, profileNote } from "./profile.js";
@@ -90,14 +90,15 @@ type Found = { usdc: number; payTo: string; description: string; reveal: () => P
 type Listing = Found | { missing: string };
 
 /** The chain's own words about one transaction, in the shape a memory is written from. */
-export async function readReceipt(digest: string): Promise<Fact> {
-  const proof = await transactionAt(digest, PAY_NET);
+export async function readReceipt(digest: string, net: Net = PAY_NET): Promise<Fact> {
+  const chain = `sui:${net}`;
+  const proof = await transactionAt(digest, net);
   const checked = new Date().toISOString().slice(0, 10);
   if (!proof) {
     return {
       name: digest,
       kind: "Chain receipt",
-      note: `Nothing with that digest exists on ${NETWORK}, checked ${checked}`,
+      note: `Nothing with that digest exists on ${chain}, checked ${checked}`,
     };
   }
 
@@ -116,7 +117,7 @@ export async function readReceipt(digest: string): Promise<Fact> {
       const out = amount < 0n;
       const who = (await personForAddress(address))?.alias ?? short(address);
       moved.push(
-        `${who} ${out ? "sent" : "received"} ${formatAmount(out ? -amount : amount, await coinDecimals(coinType, PAY_NET))} ${coinName(coinType)}`,
+        `${who} ${out ? "sent" : "received"} ${formatAmount(out ? -amount : amount, await coinDecimals(coinType, net))} ${coinName(coinType)}`,
       );
     }
   }
@@ -125,11 +126,12 @@ export async function readReceipt(digest: string): Promise<Fact> {
   return {
     name: digest,
     kind: "Chain receipt",
-    note: `On ${NETWORK} that transaction ended ${proof.status}${proof.timestamp ? ` on ${proof.timestamp.slice(0, 10)}` : ""}. It moved ${legs}${tail}. Checked ${checked}`,
+    note: `On ${chain} that transaction ended ${proof.status}${proof.timestamp ? ` on ${proof.timestamp.slice(0, 10)}` : ""}. It moved ${legs}${tail}. Checked ${checked}`,
   };
 }
 
-function listing(resource: Resource): Listing {
+function listing(resource: Resource, net: Net = PAY_NET): Listing {
+  const chain = `sui:${net}`;
   if (resource.kind === "note") {
     const n = note(resource.id);
     if (!n) return { missing: `no link ${resource.id} is open here` };
@@ -145,32 +147,33 @@ function listing(resource: Resource): Listing {
     return {
       usdc: BASE_PRICE,
       payTo: sellerWallet(),
-      description: `chain check of transaction ${resource.digest.slice(0, 12)}… on ${NETWORK}`,
-      reveal: () => readReceipt(resource.digest),
+      description: `chain check of transaction ${resource.digest.slice(0, 12)}… on ${chain}`,
+      reveal: () => readReceipt(resource.digest, net),
     };
   }
   return {
     usdc: BASE_PRICE,
     payTo: sellerWallet(),
-    description: `a chain profile of ${short(resource.address)} on ${NETWORK}`,
+    description: `a chain profile of ${short(resource.address)} on ${chain}`,
     // The price tier needs the count, so the profile is read before the paywall goes
     // up. The paid request reads it again, because a fact that changed between the
     // price and the payment is not the fact the buyer agreed to.
     reveal: async () => {
-      const p = await profileOf(resource.address);
-      return { name: p.address, kind: "Chain profile", note: profileNote(p) };
+      const p = await profileOf(resource.address, 40, net);
+      return { name: p.address, kind: "Chain profile", note: profileNote(p, net) };
     },
   };
 }
 
 /** The profile is read once to price it, and that same read is what the payer buys. */
-async function profileListing(address: string): Promise<Found> {
-  const p = await profileOf(address);
+async function profileListing(address: string, net: Net = PAY_NET): Promise<Found> {
+  const chain = `sui:${net}`;
+  const p = await profileOf(address, 40, net);
   return {
     usdc: tierPrice(p.txs),
     payTo: sellerWallet(),
-    description: `a chain profile of ${short(address)} on ${NETWORK}, ${p.txs} transactions in the window`,
-    reveal: async () => ({ name: p.address, kind: "Chain profile", note: profileNote(p) }),
+    description: `a chain profile of ${short(address)} on ${chain}, ${p.txs} transactions in the window`,
+    reveal: async () => ({ name: p.address, kind: "Chain profile", note: profileNote(p, net) }),
   };
 }
 
@@ -181,6 +184,7 @@ export type SellInput = {
   envelope?: string;
   /** A bare digest is read as a receipt, which is how a person asks about a payment. */
   receipt?: string;
+  network?: Net;
 };
 
 export type SellDeps = {
@@ -219,6 +223,8 @@ function selfDeal(payTo: string, payer: string): boolean {
  * happened, without a chain and without moving money.
  */
 export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellAnswer> {
+  const net: Net = input.network === "testnet" || input.network === "mainnet" ? input.network : PAY_NET;
+  const chain = `sui:${net}` as "sui:testnet" | "sui:mainnet";
   let resource = "";
   try {
     const raw = String(input.resource ?? "").trim();
@@ -274,14 +280,14 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
       if (already.resource !== resource) {
         return { http: 400, headers: {}, body: { error: "that signed payment was for a different resource" } };
       }
-      const item = parsed.kind === "profile" ? await profileListing(parsed.address) : listing(parsed);
+      const item = parsed.kind === "profile" ? await profileListing(parsed.address, net) : listing(parsed, net);
       if ("missing" in item) return { http: 404, headers: {}, body: { error: item.missing, resource } };
       const fact = await item.reveal();
       return {
         http: 200,
         headers: {
           [HEADER_RESPONSE]: Buffer.from(
-            JSON.stringify({ success: true, transaction: already.digest, network: NETWORK, payer, amount: String(BigInt(Math.round(item.usdc * 10 ** USDC_DECIMALS))) }),
+            JSON.stringify({ success: true, transaction: already.digest, network: chain, payer, amount: String(BigInt(Math.round(item.usdc * 10 ** USDC_DECIMALS))) }),
             "utf8",
           ).toString("base64"),
         },
@@ -292,7 +298,7 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
 
   const sold = l.sold[saleKey(payer, resource)];
   if (sold) {
-    const item = parsed.kind === "profile" ? await profileListing(parsed.address) : listing(parsed);
+    const item = parsed.kind === "profile" ? await profileListing(parsed.address, net) : listing(parsed, net);
     if ("missing" in item) return { http: 404, headers: {}, body: { error: item.missing, resource } };
     return {
       http: 200,
@@ -309,7 +315,7 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
     };
   }
 
-  const item = parsed.kind === "profile" ? await profileListing(parsed.address) : listing(parsed);
+  const item = parsed.kind === "profile" ? await profileListing(parsed.address, net) : listing(parsed, net);
   if ("missing" in item) return { http: 404, headers: {}, body: { error: item.missing, resource } };
 
   if (selfDeal(item.payTo, payer)) {
@@ -322,6 +328,8 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
     description: item.description,
     payTo: item.payTo,
     baseUnits,
+    network: chain,
+    asset: USDC_COIN[net],
     timeoutSeconds: 600,
     name: "Ken paid index",
   });
