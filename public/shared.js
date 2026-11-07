@@ -800,6 +800,7 @@ export async function switchOrProveNetwork(net, { verifyOnly = false } = {}) {
           ? {
               network: target,
               message: proof.message,
+              bytes: proof.bytes,
               signature: proof.signature,
               require_wallet_proof: Boolean(proof.signature),
               verify_only: verifyOnly,

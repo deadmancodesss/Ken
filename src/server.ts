@@ -440,18 +440,22 @@ async function handle(req: any, res: any) {
      * from a cached testnet balance and a model that still remembers yesterday's numbers.
      */
     if (req.method === "POST" && url.pathname === "/network") {
-      const { network, message, signature, require_wallet_proof, verify_only } = JSON.parse((await readBody(req)) || "{}");
+      const { network, message, bytes, signature, require_wallet_proof, verify_only } = JSON.parse((await readBody(req)) || "{}");
       try {
         const s = session();
         let verifiedSigner = "";
         if (s.source === "wallet" && (require_wallet_proof || signature || verify_only)) {
-          if (!signature || !message) {
+          if (!signature || (!message && !bytes)) {
             return json(res, 403, {
               error: `approve the network popup in your wallet first so this page stays restricted to ${s.network} until you confirm`,
             });
           }
           const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
-          const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(String(message)), String(signature), {
+          const rawMsg =
+            typeof bytes === "string" && bytes
+              ? new Uint8Array(Buffer.from(bytes, "base64"))
+              : new TextEncoder().encode(String(message));
+          const pub = await verifyPersonalMessageSignature(rawMsg, String(signature), {
             address: s.wallet,
           });
           verifiedSigner = pub.toSuiAddress();
