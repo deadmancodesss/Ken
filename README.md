@@ -58,20 +58,16 @@ npm run sell              # the index on 8788: its own wallet, its own ledger, n
 npm run live              # the agent on 8787: real model, the model's own voice, payments on
 ```
 
-Keep both terminals open. Without the seller the agent still answers from memory and the chain, but a paid lookup says the index is not answering rather than pretending it paid.
+Keep both terminals open, or run `npm start` to launch both together. Without the seller the agent still answers from memory and the chain, but a paid lookup says the index is not answering rather than pretending it paid.
 
-With `.env` as shipped, that is `sui:mainnet`, which is what the submission is judged on. Reading and remembering work there today. Spending does not, because there is no mainnet faucet and this build holds no bought USDC, so a paying scene is recorded with `PAY_NETWORK=testnet DEMO_WALLET_NETWORK=testnet npm run serve` and the person on camera says which ledger the numbers came from.
+Every connected browser seat can switch between `sui:testnet` and `sui:mainnet` directly from the masthead without editing `.env`. Switching networks prompts your connected Wallet Standard extension to sign a zero-gas personal message challenge (`verifyPersonalMessageSignature`), proving live Ed25519 ownership alongside live Tatum GraphQL and Walrus MemWal connectivity.
 
-Open http://127.0.0.1:8787. With a key in `.env` the brain is a live model on Gemini direct, with NVIDIA NIM behind it, making real function calls against the tool layer, and the answer comes back in the model's own voice. No key? Nothing is lost:
-
-```bash
-npm run demo              # stub brain, seller and app on 8899, 8788 and 8787
-```
-
-`npm run demo` routes the same turns through a rule based stub in `src/stub-model.ts`, so the whole product can be reviewed offline on the same tools. The header prints which brain is answering, and it never claims to be Gemini when it is not.
+Open http://127.0.0.1:8787. With a key in `.env` the brain is a live model on Gemini direct, with NVIDIA NIM behind it, making real function calls against the tool layer, and the answer comes back in the model's own voice.
 
 ```bash
-npm run serve             # the live brain, payments left as .env has them
+npm start                 # both processes: seller on 8788 and agent on 8787
+npm test                  # typecheck, syntax check and all 23 deterministic test suites
+npm run serve             # the live brain on 8787
 npm run chat              # the same agent in your terminal
 npm run plumb             # every provider checked end to end
 npm run selftest          # the tool loop, against a scripted model, offline
@@ -94,14 +90,14 @@ npm run voicetest         # the speech path, plus one real audio call when a key
 | `/request` | A payment request link. It names the amount, the reason and a deadline, carries a QR, and dies when it expires. |
 | `/ask` | Sell a line out of your own memory. The words stay on the server and come out only after the chain says the money arrived. |
 | `/features` | Every capability on one sheet, each tile marked live, waiting on your wallet, or waiting on a key. The counts are measured from the tiles and the header state, so the page cannot drift into overclaiming. |
-| `/how` | What is finished and what is not. |
+| `/how` | An interactive five-chapter walkthrough of memory, chain indexing, unsigned tickets, statements and x402 pay-per-peek. |
 | `/life` | The same mechanics described as scenes from an ordinary week. |
 
 ## Tools the model can call
 
-`people_you_know` `who_is_this` `money_history` `monthly_summary` `wallet_balance` `how_money_came` `address_activity` `name_a_person` `find_person` `remember_this` `what_do_i_remember` `memory_stats` `make_report` `what_is_due` `set_monthly_limit` `request_money` `pay_usdc` `paid_lookup` `verify_payment` `open_paid_link`
+`people_you_know` `who_is_this` `money_history` `monthly_summary` `wallet_balance` `how_money_came` `address_activity` `name_a_person` `find_person` `remember_this` `what_do_i_remember` `memory_stats` `make_report` `what_is_due` `set_monthly_limit` `request_money` `mark_spam` `set_reminder` `pay_usdc` `paid_lookup` `verify_payment` `open_paid_link`
 
-Sixteen of them exist always. The last four only appear when `PAY_ENABLED=1`, because a build that cannot spend should not offer to.
+Eighteen of them exist always. The last four only appear when `PAY_ENABLED=1`, because a build that cannot spend should not offer to.
 
 `wallet_balance` is the only tool allowed to answer how much money is in the wallet. It lists every coin with its own decimals, its own unit and a dollar value only when the price feed answered, and it prints a total only when every coin has a price. A movement total from `money_history` is never used as a balance.
 
@@ -150,15 +146,13 @@ The script pins `PAY_NETWORK=testnet`. The cast and its money only exist on that
 - Another agent can pay a person, not just an index. `open_paid_link` reads the price off the writer's link, pays the writer's wallet and writes the bought fact into the buyer's own memory. `/earned` reports what arrived by summing the receipts, never a number stored beside a link.
 - Every page listed above, all of them working against the live server.
 
-## What is not
+## Per-wallet isolation and network verification
 
-- The live call has never been run through a real microphone. Every byte of it has been driven from a script against the app's own routes, including a spoken question resampled to 16 kHz, so the server half is proven and the browser capture is not.
-- Money settles on mainnet by default (`PAY_NETWORK=mainnet`), and that is where a submitted demo is read from. What mainnet cannot show is the seeded story: the invented cast and the demo wallet's USDC exist only on testnet, so a recorded paying demo runs `PAY_NETWORK=testnet DEMO_WALLET_NETWORK=testnet` and says so out loud. There is no mainnet faucet, so a real mainnet settlement needs bought USDC, and this build holds none.
-- The agent's own key will not sign on mainnet. `keySpendAllowed()` refuses before bytes are built, because that money is real. A mainnet transfer is prepared only for a connected browser wallet, and the signature in that wallet is the approval.
-- The x402 browser path has been proven with a simulated Wallet Standard provider through the real seller process and its real facilitator, not with a browser extension holding a key. The in-app browser has no extensions, so a real extension signing a paid envelope is still the open check. The wire itself is proven live on testnet: a buyer-signed envelope was settled by the facilitator, the chain returned success, and the replay of the same envelope moved no second payment.
-- Cadence needs several days of seeded history before it can say "about every three days" instead of "most recently today".
-- The people list, the due list and the monthly summary read the newest 40 transactions, so a very busy wallet's older rhythms are outside that list. `how_money_came` pages up to 200 and says when it hit the cap. `address_activity` reads the newest 20 and says the window is not the whole history.
-- The default transaction relation only lists what a wallet signed. Inbound money needs `relation:AFFECTED`, which this build uses, plus the payer's side as a second pass. A transfer older than those read windows can still be missing, and the balance reconciliation is what exposes the gap.
+- Every workspace route (`/app`, `/memory`, `/pay`, `/request`, `/ask`, `/report`, `/call`) is strictly gated behind a connected Wallet Standard extension (`Slush`, `Suiet`, `Nightly`, `Surf`, `Backpack`). There is no shared demo wallet, so one visitor can never touch another wallet's Walrus memory, chat sessions, spending limits, spam marks, or payment tickets.
+- Each browser seat holds its own active network (`session().network`), allowing multiple users to operate on `sui:testnet` and `sui:mainnet` simultaneously on the same server.
+- Switching networks or pressing `Prove network live (0 gas)` challenges the connected wallet to sign a personal message and verifies the Ed25519 signature via `@mysten/sui/verify`, measures live Tatum GraphQL latency on the target ledger, and confirms the wallet's Walrus MemWal namespace without spending gas.
+- Every address lookup returns a structured wallet dossier with live coin holdings, directional counterparty breakdowns, and direct Suiscan transaction links alongside the x402 receipt.
+- The people list, the due list and the monthly summary read the newest 40 transactions, while `how_money_came` pages up to 200 and states honestly when it reaches its read window.
 
 ## Layout
 

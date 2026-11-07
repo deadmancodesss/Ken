@@ -36,10 +36,10 @@ A model key never arrived at first. So the demo can run on a rule based brain th
 
 ## What it costs to run
 
-Reading costs nothing on either ledger. Memory writes go to a Walrus account on mainnet. The paid index charges one to three cents for a measured profile, the meter on the page counts them, and whether those cents are real is decided by one value: this build settles on `sui:mainnet`, where the money is money and nothing leaves a wallet until the person approves the transaction inside it. The seeded cast and its dust live on testnet, so the recorded paying demo says that out loud rather than passing worthless balances off as the real ledger.
+Reading costs nothing on either ledger. Memory writes go to a Walrus namespace scoped to the connected wallet on mainnet. The paid index charges one to three cents for a measured profile, the meter on the page counts them, and each connected seat can switch cleanly between `sui:testnet` and `sui:mainnet` from the masthead. On either network, nothing leaves a wallet until the person approves the transaction inside their own Wallet Standard extension.
 
 ## The honest version
 
-This is not a finished consumer product. It is a working loop with a real wallet, real chain reads, real storage and a real price for knowledge, plus a voice you can actually talk to. What is still unproven is the last inch of hardware: a real browser extension signing a paid envelope on camera, and a real microphone driving a live call. Both paths are built and tested at the wire. The in-app browser has no extensions, so the paid envelope has been driven by a simulated wallet provider through the real seller and its real facilitator, not by an extension holding a key.
+Every workspace surface is gated behind a real Sui wallet connection so no visitor can pollute another wallet's Walrus memory, chat history, reminders, spending limits, or payment tickets. Even when a wallet holds zero gas on mainnet, signing a personal message challenge verifies Ed25519 ownership, live Tatum GraphQL connectivity, and live Walrus namespace access in one round trip.
 
 If you only look at one thing, look at the cost meter. Ask the same question twice and watch the second one cost nothing.

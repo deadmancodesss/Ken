@@ -17,4 +17,4 @@ data/*.db-wal
 data/*.db-shm
 chat_docs/
 ken_project_chat_history.md
-ken_project_chat_history.md
+recordings/
