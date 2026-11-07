@@ -710,11 +710,131 @@
       dialog.sheet .sheetActs { display: flex; justify-content: flex-end; gap: 8px; }
       dialog.sheet input[type="text"] { width: 100%; }
 
-      /* ---------- the call sheet ---------- */
-      #callOverlay { position: fixed; inset: 0; z-index: 150; background: var(--paper); }
-      #callOverlay[hidden] { display: none; }
-      #callFrame { width: 100%; height: 100%; border: 0; display: block; background: var(--paper); }
-      body.calling { overflow: hidden; }
+      /* ---------- voice dock inside composer ---------- */
+      .voiceDock {
+        width: 100%;
+        max-width: var(--read);
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px 14px 10px;
+        border: var(--edge) solid var(--rule-strong);
+        border-radius: 16px;
+        background: var(--paper-sunk);
+        box-shadow: 3px 3px 0 var(--sheet);
+        transition: border-color var(--t-1) var(--ease);
+      }
+      .voiceDock[hidden] { display: none; }
+      .voiceDockHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .voiceStateTag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font: 11px/1.2 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+      }
+      .voiceDot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--clay);
+        box-shadow: 0 0 0 0 rgba(163, 79, 36, 0.4);
+        animation: voicePulse 1.8s infinite;
+      }
+      @keyframes voicePulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(163, 79, 36, 0.5); }
+        70% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(163, 79, 36, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(163, 79, 36, 0); }
+      }
+      .voiceDockActs {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bargeBadge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 9px;
+        border: 1px solid var(--rule-strong);
+        border-radius: 999px;
+        background: var(--paper);
+        font: 10px/1 var(--mono);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--moss);
+        cursor: pointer;
+        user-select: none;
+      }
+      .bargeIcon { font-size: 11px; }
+      .voiceCloseBtn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border: var(--edge) solid var(--brick);
+        border-radius: 999px;
+        background: var(--paper);
+        color: var(--brick);
+        font: 11px/1 var(--mono);
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .voiceCloseBtn:hover {
+        background: var(--brick);
+        color: var(--paper);
+      }
+      .voiceCloseBtn svg {
+        width: 12px;
+        height: 12px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+      }
+      .voiceWaveBox {
+        position: relative;
+        width: 100%;
+        height: 84px;
+        border: 1px solid var(--rule);
+        border-radius: 10px;
+        background: var(--paper);
+        overflow: hidden;
+      }
+      .voiceWaveBox canvas.wave {
+        display: block;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      .voiceDockFoot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .voiceHint {
+        margin: 0;
+        font: 11px/1.4 var(--mono);
+        color: var(--ink-3);
+      }
+      .voicePill.live {
+        background: var(--clay) !important;
+        color: var(--paper) !important;
+        border-color: var(--clay) !important;
+        box-shadow: 2px 2px 0 var(--ink) !important;
+      }
+      .voicePill.live .voiceDot {
+        background: var(--paper);
+        animation: none;
+      }
 
       /* ---------- narrow screens ---------- */
       .railScrim { display: none; }
@@ -835,7 +955,7 @@
           <form class="composer" id="composer">
             <textarea id="text" rows="1" placeholder="Ask about your money" autocomplete="off" spellcheck="false" aria-label="Your message"></textarea>
             <div class="cactions">
-              <button class="iconBtn" id="mic" type="button" title="Speak your question" aria-label="Speak your question">
+              <button class="iconBtn" id="mic" type="button" title="Live Voice Call with Ken" aria-label="Live Voice Call with Ken">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
               </button>
               <button class="send" id="send" type="submit" title="Send" aria-label="Send">
@@ -843,7 +963,33 @@
               </button>
             </div>
           </form>
-          <div class="cfoot">
+
+          <div class="voiceDock" id="voiceDock" hidden>
+            <div class="voiceDockHead">
+              <div class="voiceStateTag" id="voiceStateTag">
+                <span class="voiceDot"></span>
+                <span class="voiceStateText" id="voiceStateText">connecting…</span>
+              </div>
+              <div class="voiceDockActs">
+                <div class="bargeBadge" id="bargeBadge" title="Barge-in Priority: Speak anytime to interrupt Ken immediately">
+                  <span class="bargeIcon">⚡</span>
+                  <span class="bargeText">Barge-in on</span>
+                </div>
+                <button class="voiceCloseBtn" id="voiceCloseBtn" type="button" title="End call and return to text typing">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                  <span>End Call</span>
+                </button>
+              </div>
+            </div>
+            <div class="voiceWaveBox">
+              <canvas class="wave" id="voiceWave" height="84"></canvas>
+            </div>
+            <div class="voiceDockFoot">
+              <p class="voiceHint" id="voiceHint">Speak normally. Your words stream directly into this chat.</p>
+            </div>
+          </div>
+
+          <div class="cfoot" id="cfoot">
             <span>Memory first, then the chain. Money waits for your signature.</span>
             <span><kbd>Enter</kbd> to send · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
           </div>
@@ -896,14 +1042,12 @@
       </form>
     </dialog>
 
-    <div id="callOverlay" hidden>
-      <iframe id="callFrame" title="Voice call with Ken" allow="microphone; autoplay; clipboard-write"></iframe>
-    </div>
-
     <script type="module">
       import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain, switchOrProveNetwork } from "./shared.js";
       import { signAndExecute, signX402 } from "./wallet.js";
       import { mountSelect } from "./ui.js";
+      import { createWave } from "./wave.js";
+      import { captureMic, createPlayer, openLive, upstream, floorIsMine, mergeHeard } from "./live.js";
 
       const thread = $("thread");
       const log = $("log");
@@ -2071,97 +2215,293 @@
         if (e.key === "Escape") {
           closeRail();
           setMenu(false);
-          if (!$("callOverlay").hidden) closeVoice();
+          if (calling) closeVoice();
         }
       });
 
-      /* ---------- dictation into the box ---------- */
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) {
-        $("mic").disabled = true;
-        $("mic").title = "this browser has no speech recognition";
-      } else {
-        const rec = new SR();
-        rec.lang = langSetting();
-        rec.interimResults = true;
-        rec.continuous = false;
-        let base = "";
-        let finalText = "";
-        rec.onstart = () => {
-          base = input.value.trim();
-          finalText = "";
-          $("mic").classList.add("on");
-          $("mic").title = "Stop dictating";
-        };
-        rec.onresult = (e) => {
-          let interim = "";
-          for (let i = e.resultIndex; i < e.results.length; i++) {
-            const piece = e.results[i][0].transcript;
-            if (e.results[i].isFinal) finalText += piece;
-            else interim += piece;
-          }
-          input.value = [base, finalText, interim].filter(Boolean).join(" ").trim();
-          grow();
-        };
-        rec.onend = () => {
-          $("mic").classList.remove("on");
-          $("mic").title = "Speak your question";
-          input.focus();
-        };
-        rec.onerror = (e) => {
-          if (e.error !== "no-speech" && e.error !== "aborted") noteError("microphone: " + e.error);
-        };
-        $("mic").onclick = () => {
-          if ($("mic").classList.contains("on")) {
-            try { rec.stop(); } catch { /* not running */ }
-            return;
-          }
-          try { rec.start(); } catch { /* already running */ }
-        };
+      /* ---------- native inline voice call & barge-in priority ---------- */
+      const HANGUP = /\b(?:bye|goodbye|hang\s*up|end (?:the )?call|stop (?:the )?call|abort(?: the call)?|cut (?:the )?call|that'?s all)\b/i;
+      let call = null;
+      let player = null;
+      let wave = null;
+      let stopMic = null;
+      let calling = false;
+      let starting = false;
+      let epoch = 0;
+      let tailUntil = 0;
+
+      const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false });
+      let turn = freshTurn();
+
+      function setVoiceStatus(text) {
+        const el = $("voiceStateText");
+        if (el) el.textContent = text;
+      }
+      function setVoiceHint(text) {
+        const el = $("voiceHint");
+        if (el) el.textContent = text;
       }
 
-      /* ---------- voice ---------- */
-      let voiceTimer = 0;
-      function openVoice() {
-        if (!active) return;
-        setMenu(false);
-        clearTimeout(voiceTimer);
-        const frame = $("callFrame");
-        frame.src = `/call?embed=1&session=${encodeURIComponent(active)}`;
-        $("callOverlay").hidden = false;
-        document.body.classList.add("calling");
+      function ensureKen() {
+        if (!turn.itEl) {
+          opening();
+          const el = kenMessage("");
+          thread.appendChild(el);
+          turn.itEl = el;
+          turn.body = el.querySelector(".kbody");
+        }
+        return turn.itEl;
       }
-      function finishClose() {
-        clearTimeout(voiceTimer);
-        if ($("callOverlay").hidden) return;
-        const frame = $("callFrame");
-        $("callOverlay").hidden = true;
-        document.body.classList.remove("calling");
-        frame.src = "about:blank";
-        loadSessions(active).then(() => loadChats(active));
+
+      function lineYou(piece) {
+        opening();
+        if (!turn.youEl) {
+          const el = userMessage("");
+          if (turn.itEl) thread.insertBefore(el, turn.itEl);
+          else thread.appendChild(el);
+          turn.youEl = el.querySelector(".bubble");
+        }
+        turn.youEl.textContent = mergeHeard(turn.youEl.textContent, piece);
+        turn.asked = turn.youEl.textContent;
+        scroll();
+      }
+
+      function lineKen(piece) {
+        ensureKen();
+        turn.body.textContent = mergeHeard(turn.body.textContent, piece);
+        turn.said = turn.body.textContent;
+        scroll();
+      }
+
+      function sealTurn() {
+        if (!turn.itEl || !turn.steps.length || turn.traced) return;
+        traceInto(turn.itEl, turn.steps);
+        turn.traced = true;
+      }
+
+      async function flushTurn() {
+        const work = turn;
+        const asked = work.asked.trim();
+        const said = work.said.trim();
+        if (!asked && !said) {
+          turn = freshTurn();
+          return;
+        }
+        turn = freshTurn();
+        try {
+          const res = await fetch("/live/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ asked, said, steps: work.steps, session: active }),
+          });
+          const body = await res.json();
+          if (body?.session) active = body.session;
+          await refreshSessions();
+        } catch {
+          /* transcript is already rendered in the DOM */
+        }
+      }
+
+      async function openVoice() {
+        if (calling || starting) return;
+        setMenu(false);
+        starting = true;
+        epoch++;
+        const mine = epoch;
+
+        $("composer").hidden = true;
+        $("cfoot").hidden = true;
+        $("voiceDock").hidden = false;
+        $("voiceBtn").classList.add("live");
+        $("voiceBtn").innerHTML = '<span class="voiceDot"></span> Live Voice';
+        setVoiceStatus("connecting to Ken…");
+        setVoiceHint("Opening live microphone and two-way voice channel…");
+
+        wave = createWave($("voiceWave"));
+        wave.idle();
+
+        player = createPlayer(
+          (lvl) => wave?.push(lvl, "ken"),
+          (shp) => wave?.trace(shp, "ken"),
+        );
+
+        let mic;
+        try {
+          mic = await captureMic(
+            (frame) => {
+              const floor = floorIsMine({ barge: true, speaking: player?.speaking, now: Date.now(), tailUntil });
+              tailUntil = floor.tailUntil;
+              call?.push(upstream(frame, floor.open));
+            },
+            (level) => {
+              wave?.push(player?.speaking ? 0 : level, "you");
+              // Voice priority interruption: if user speaks aloud while Ken is talking, interrupt instantly!
+              if (player?.speaking && level > 0.075) {
+                player.interrupt();
+                call?.hold();
+                setVoiceStatus("you interrupted · listening to you");
+              }
+            },
+            (shape) => {
+              if (!player?.speaking) wave?.trace(shape, "you");
+            },
+          );
+        } catch (err) {
+          player?.close();
+          player = null;
+          wave?.idle();
+          starting = false;
+          closeVoice();
+          noteError(err?.name === "NotAllowedError" ? "Microphone permission was declined." : "Microphone error: " + err.message);
+          return;
+        }
+
+        if (mine !== epoch) {
+          mic();
+          player?.close();
+          player = null;
+          wave?.idle();
+          starting = false;
+          return;
+        }
+
+        stopMic = mic;
+        calling = true;
+        starting = false;
+
+        call = openLive({
+          voice: localStorage.getItem("tr.liveVoice") || "Kore",
+          session: active,
+          onOpen: (model, voice) => {
+            wave?.live();
+            setVoiceStatus("listening · speak normally");
+            setVoiceHint(`Live with ${model || "Gemini"} as ${voice || "Kore"}. Interrupt anytime by speaking aloud.`);
+          },
+          onHeard: (piece) => {
+            setVoiceStatus("hearing you…");
+            lineYou(piece);
+            if (HANGUP.test(turn.asked)) {
+              setVoiceHint("You said goodbye, ending call…");
+              closeVoice();
+            }
+          },
+          onSaid: (piece) => {
+            setVoiceStatus("Ken speaking…");
+            lineKen(piece);
+          },
+          onAudio: (pcm, rate) => {
+            player?.feed(pcm, rate);
+          },
+          onActivity: (type) => {
+            if (type === "ACTIVITY_START") {
+              if (player?.speaking) {
+                player.interrupt();
+                call?.hold();
+                setVoiceStatus("you interrupted · listening to you");
+              }
+            }
+          },
+          onToolStart: (t) => {
+            setVoiceStatus(t.name === "pay_usdc" ? "preparing payment ticket…" : "reading the chain…");
+          },
+          onTool: (t) => {
+            turn.steps.push({
+              name: t.name,
+              ok: !!t.ok,
+              ...(t.error ? { error: String(t.error).slice(0, 300) } : {}),
+              ...(t.result !== undefined ? { result: t.result } : {}),
+            });
+            const host = ensureKen();
+            if (t.name === "pay_usdc" && t.ok && t.result?.digest) {
+              const receipt = receiptLink({ result: t.result });
+              if (receipt) host.appendChild(receipt);
+              scroll();
+            }
+            if (t.name === "request_money" && t.ok && t.result?.link) {
+              host.appendChild(requestDone(t.result));
+              scroll();
+            }
+            if (t.name === "make_report" && t.ok) {
+              host.appendChild(reportCard());
+              scroll();
+            }
+            const dossier = walletDossierCard([{ result: t.result }]);
+            if (dossier) host.appendChild(dossier);
+            const need = addressNeed([{ result: t.result }]);
+            if (need) addressCard(need);
+            const asked = requestNeed([{ result: t.result }]);
+            if (asked) requestCard(asked);
+            if (t.result?.awaiting_signature) {
+              signCard();
+            }
+            if (!t.ok && t.error) {
+              const errLine = document.createElement("div");
+              errLine.className = "fallback";
+              errLine.textContent = `${String(t.name).replaceAll("_", " ")} failed: ${t.error}`;
+              host.appendChild(errLine);
+              scroll();
+            }
+          },
+          onTurn: () => {
+            setVoiceStatus("listening…");
+            sealTurn();
+            flushTurn();
+          },
+          onError: (msg) => {
+            setVoiceStatus("call notice");
+            setVoiceHint(msg);
+          },
+          onClose: (reason) => {
+            setVoiceHint(reason ? `Call closed: ${reason}` : "Call closed.");
+            closeVoice();
+          },
+        });
+      }
+
+      async function closeVoice() {
+        if (!calling && !starting) return;
+        calling = false;
+        starting = false;
+        epoch++;
+        const socket = call;
+        call = null;
+        stopMic?.();
+        stopMic = null;
+        player?.close();
+        player = null;
+        wave?.idle();
+
+        $("voiceDock").hidden = true;
+        $("composer").hidden = false;
+        $("cfoot").hidden = false;
+        $("voiceBtn").classList.remove("live");
+        $("voiceBtn").innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg> Voice';
+
+        sealTurn();
+        await flushTurn();
+        await socket?.hangup();
+        input.focus();
         loadState();
         loadBalance();
       }
-      /*
-       * The sheet is asked to end its own call first, because the last sentence is
-       * written by the room rather than by this page. The room answers after the write
-       * and the hang up, and the timer is only for a room that cannot answer at all.
-       */
-      function closeVoice() {
-        const frame = $("callFrame");
-        if (!frame.contentWindow) {
-          finishClose();
-          return;
-        }
-        clearTimeout(voiceTimer);
-        voiceTimer = setTimeout(finishClose, 1600);
-        frame.contentWindow.postMessage({ type: "ken:voice-close" }, location.origin);
+
+      $("voiceBtn").onclick = () => {
+        if (calling) closeVoice();
+        else openVoice();
+      };
+      $("voiceCloseBtn").onclick = closeVoice;
+      $("mic").onclick = () => {
+        if (calling) closeVoice();
+        else openVoice();
+      };
+      $("bargeBadge").onclick = () => {
+        setVoiceStatus("barge-in priority active");
+        setVoiceHint("Barge-in active: speak at any moment to cut Ken off and take the floor.");
+      };
+
+      if (new URLSearchParams(location.search).get("voice") === "1") {
+        setTimeout(openVoice, 350);
       }
-      $("voiceBtn").onclick = openVoice;
-      window.addEventListener("message", (e) => {
-        if (e.origin !== location.origin) return;
-        if (e.data?.type === "ken:voice-closed") finishClose();
-      });
 
       /* ---------- wallet, balance and the masthead ---------- */
       async function loadState(force) {
@@ -2222,7 +2562,7 @@
       document.addEventListener("wallet:changed", async () => {
         // The call belongs to the wallet that has just been left, and the server has
         // already moved this seat, so it is dropped rather than written under the new one.
-        finishClose();
+        closeVoice();
         showEmpty();
         sessions = [];
         active = "";
