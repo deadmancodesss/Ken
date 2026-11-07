@@ -896,11 +896,6 @@ export function mountNetwork(onChange) {
       b.setAttribute("aria-pressed", String(on));
       if (NOTES[b.dataset.net]) b.title = NOTES[b.dataset.net];
     }
-    for (const b of document.querySelectorAll("[data-rail-net]")) {
-      const on = b.dataset.railNet === current;
-      b.classList.toggle("on", on);
-      b.setAttribute("aria-pressed", String(on));
-    }
   };
   markNetwork = set;
 

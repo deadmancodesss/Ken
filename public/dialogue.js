@@ -191,7 +191,7 @@ export function dialogue(spec = {}) {
         b.prepend(img);
       }
       /* the controller, not the element bag, since `d.close` is the little cross */
-      b.onclick = () => a.onClick?.(api);
+      b.onclick = () => (a.onClick ? a.onClick(api) : api.close(true));
       d.actions.append(b);
     }
 
