@@ -20,9 +20,16 @@ import { session } from "./session.js";
  * spoken call continue as a typed question without repeating itself.
  */
 export type StoredStep = { name: string; ok: boolean; error?: string; result?: unknown };
-export type ChatTurn = { asked: string; said: string; steps: StoredStep[]; at: number };
+export type ChatTurn = { id?: number; asked: string; said: string; steps: StoredStep[]; at: number };
 export type ChatRecord = ChatTurn & { delta: unknown[] };
 export type ChatSession = { id: string; title: string; created: number; updated: number; turns: number };
+/** A form settled on a particular turn, kept so a reload does not reopen it. */
+export type ClosedForm = { turn: number; kind: string; at: number };
+
+// The plain kinds mean the box was dismissed. A _done kind means it was filled, which
+// still keeps it closed but must not be reported as a dismissal in the transcript.
+export const FORM_KINDS = ["address", "request", "address_done", "request_done"] as const;
+export type FormKind = (typeof FORM_KINDS)[number];
 
 export const DEFAULT_CHAT_DB = fileURLToPath(new URL("../data/chats.db", import.meta.url));
 
@@ -73,6 +80,13 @@ export function openChats(file: string) {
       primary key (owner, id)
     );
     create index if not exists sessions_by_owner on sessions(owner, updated desc);
+    create table if not exists closed_forms (
+      chat text not null,
+      turn integer not null,
+      kind text not null,
+      at integer not null,
+      primary key (chat, turn, kind)
+    );
   `);
 
   /*
@@ -103,13 +117,18 @@ export function openChats(file: string) {
   }
 
   const insert = db.prepare("insert into turns (chat, asked, said, steps, delta, at) values (?, ?, ?, ?, ?, ?)");
-  const recent = db.prepare("select asked, said, steps, at from turns where chat = ? order by id desc limit ?");
+  const recent = db.prepare("select id, asked, said, steps, at from turns where chat = ? order by id desc limit ?");
   const deltas = db.prepare("select delta from turns where chat = ? order by id desc limit ?");
   const count = db.prepare("select count(*) as n from turns where chat = ?");
   const wipe = db.prepare("delete from turns where chat = ?");
   const firstAsked = db.prepare("select asked from turns where chat = ? order by id asc limit 1");
   const anyTurns = db.prepare("select count(*) as n from turns where chat = ?");
   const moveTurns = db.prepare("update turns set chat = ? where chat = ?");
+  const closeTurn = db.prepare(
+    "insert into closed_forms (chat, turn, kind, at) values (?, ?, ?, ?) on conflict(chat, turn, kind) do update set at = excluded.at",
+  );
+  const closedOf = db.prepare("select turn, kind, at from closed_forms where chat = ? order by at desc limit 200");
+  const wipeClosed = db.prepare("delete from closed_forms where chat = ?");
 
   const list = db.prepare(`
     select s.id, s.title, s.created, s.updated,
@@ -134,8 +153,9 @@ export function openChats(file: string) {
   });
 
   const store = {
-    append(chat: string, turn: ChatRecord): void {
-      insert.run(
+    /** Appends one turn and returns its row id, which is what a closed form refers to. */
+    append(chat: string, turn: ChatRecord): number {
+      const out = insert.run(
         chat,
         turn.asked,
         turn.said,
@@ -143,15 +163,17 @@ export function openChats(file: string) {
         JSON.stringify(turn.delta ?? []),
         turn.at || Date.now(),
       );
+      return Number(out.lastInsertRowid);
     },
 
     /** What the screen shows, oldest first. Storage keeps everything, the page may cap. */
     turns(chat: string, limit = 200): ChatTurn[] {
-      const rows = recent.all(chat, limit) as { asked: string; said: string; steps: string; at: number }[];
+      const rows = recent.all(chat, limit) as { id: number; asked: string; said: string; steps: string; at: number }[];
       return rows
         .slice()
         .reverse()
         .map((r) => ({
+          id: Number(r.id),
           asked: String(r.asked),
           said: String(r.said),
           steps: parse<StoredStep[]>(String(r.steps), []),
@@ -179,7 +201,21 @@ export function openChats(file: string) {
 
     clear(chat: string): number {
       const out = wipe.run(chat);
+      wipeClosed.run(chat);
       return Number(out.changes ?? 0);
+    },
+
+    /**
+     * A form a person closed is remembered against the turn that opened it, so coming
+     * back to the page shows the transcript rather than the same unanswered question.
+     */
+    closeForm(chat: string, turn: number, kind: string, at = Date.now()): void {
+      closeTurn.run(chat, turn, kind, at);
+    },
+
+    closedForms(chat: string): ClosedForm[] {
+      const rows = closedOf.all(chat) as { turn: number; kind: string; at: number }[];
+      return rows.map((r) => ({ turn: Number(r.turn), kind: String(r.kind), at: Number(r.at) }));
     },
 
     /** The storage key for one thread inside one owner. */
@@ -247,6 +283,7 @@ export function openChats(file: string) {
 
     remove(owner: string, id: string): number {
       const out = wipe.run(store.key(owner, id));
+      wipeClosed.run(store.key(owner, id));
       drop.run(owner, id);
       return Number(out.changes ?? 0);
     },

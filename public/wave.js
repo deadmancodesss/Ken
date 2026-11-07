@@ -13,9 +13,9 @@
  */
 
 const POINTS = 220;
-const GHOSTS = 5;
-const SNAPSHOT = 0.07;
-const ECHO_SECONDS = 1.05;
+const GHOSTS = 4;
+const SNAPSHOT = 0.12;
+const ECHO_SECONDS = 1.5;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -51,6 +51,7 @@ export function createWave(canvas) {
   const from = new Float32Array(POINTS);
   const to = new Float32Array(POINTS);
   const shown = new Float32Array(POINTS);
+  const smooth = new Float32Array(POINTS);
   let morph = 1;
   let morphSpan = 0.08;
   let morphWho = "";
@@ -126,10 +127,24 @@ export function createWave(canvas) {
     from.set(shown);
     for (let j = 0; j < POINTS; j++) {
       const v = (read(input, (j / (POINTS - 1)) * (n - 1)) - mean) * traceGain;
-      to[j] = clamp(v, -1, 1);
+      smooth[j] = clamp(v, -1, 1);
+    }
+    // One pass over the resampled points takes the spike off each block without
+    // flattening whole syllables, so the line reads as a voice and not as noise.
+    for (let j = 1; j < POINTS - 1; j++) {
+      to[j] = (smooth[j - 1] + smooth[j] * 2 + smooth[j + 1]) / 4;
+    }
+    to[0] = smooth[0];
+    to[POINTS - 1] = smooth[POINTS - 1];
+    // A buffer is one snapshot of the room. Swapping snapshots at the rate they
+    // arrive is what made the scope flicker, so each new shape is blended with
+    // the line already on screen before the morph carries it the rest of the way.
+    const keep = who === "you" ? 0.3 : 0.42;
+    for (let j = 0; j < POINTS; j++) {
+      to[j] = clamp(to[j] * (1 - keep) + from[j] * keep, -1, 1);
     }
     morph = 0;
-    morphSpan = who === "you" ? 0.12 : 0.055;
+    morphSpan = who === "you" ? 0.22 : 0.14;
     morphWho = who;
     lastTrace = clock;
     fading = false;
@@ -198,12 +213,13 @@ export function createWave(canvas) {
       if (age > ECHO_SECONDS) continue;
       const fade = (1 - age / ECHO_SECONDS) * (1 - (i / (GHOSTS + 1)));
       if (fade <= 0.01) continue;
-      ctx.globalAlpha = 0.02 + fade * 0.2;
+      ctx.globalAlpha = 0.015 + fade * 0.12;
       ctx.strokeStyle = g.who === "ken" ? clay : ink;
       ctx.lineWidth = 1;
       // The copy drifts away from the live line as it ages, so the echo is a
-      // movement rather than five fixed offsets waiting to be replaced.
-      plot(g.points, -(4 + age * 120), (i % 2 === 0 ? 1 : -1) * (1.5 + i * 1.2), scale);
+      // movement rather than fixed offsets. The drift is slow on purpose: a fast
+      // smear reads as a glitch, not as a room holding the last word.
+      plot(g.points, -(3 + age * 42), (i % 2 === 0 ? 1 : -1) * (0.6 + i * 0.9), scale);
     }
     ctx.globalAlpha = 1;
   }
@@ -259,14 +275,15 @@ export function createWave(canvas) {
 
   function ripples() {
     for (let i = pings.length - 1; i >= 0; i--) {
-      const t = (clock - pings[i]) / 1.5;
+      // The marker moves at the speed of a hand pulling a sheet, not a flash.
+      const t = (clock - pings[i]) / 2.6;
       if (t >= 1) {
         pings.splice(i, 1);
         continue;
       }
       const x = w - t * (w + 16);
       ctx.strokeStyle = clay;
-      ctx.globalAlpha = (1 - t) * 0.2;
+      ctx.globalAlpha = (1 - t) * 0.11;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, top());

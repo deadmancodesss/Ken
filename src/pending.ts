@@ -33,6 +33,17 @@ export type Pending = {
  */
 let fallback: Pending | null = null;
 
+/**
+ * A ticket left unsigned this long is treated as forgotten by the page. The ticket is
+ * still held so a signature that arrives late can settle, but no page reopens the form
+ * for it, because a question from half an hour ago is not a question any more.
+ */
+export const PENDING_TTL_MS = 30 * 60_000;
+
+export function forgotten(p: Pending, now = Date.now()): boolean {
+  return !p.digest && now - Number(p.createdAt || 0) > PENDING_TTL_MS;
+}
+
 export function hold(p: Omit<Pending, "id" | "createdAt" | "chat"> & { chat?: string }): Pending {
   // The request that builds a payment has already resolved its thread, and the ticket
   // belongs to that thread rather than to the wallet's newest one. A call started from

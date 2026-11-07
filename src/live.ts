@@ -203,6 +203,18 @@ export function liveVoice(raw?: string): string {
   return geminiVoiceNames().includes(bare) ? bare : fallback;
 }
 
+/**
+ * A typed request can be followed by a second sentence if the first was not clear.
+ * A caller standing in a room will not repeat themselves while the model decides, so
+ * the live socket is told once, at handshake, that the tool call itself draws the field
+ * and the first sentence is enough to make it.
+ */
+function liveInstruction(): string {
+  return `${systemPrompt()}
+
+This is a live voice call. The moment a sentence needs a typed field, call the tool that draws it on that same turn: name_a_person with an empty address when the person wants an address kept, address_activity with an empty address when they want a wallet inspected, pay_usdc with the amount they said and an empty address when they want money sent, request_money with the amount and note when they want a request link. The page draws the field from that call. Never ask them to say a wallet address aloud, and do not wait for them to repeat the request before calling.`;
+}
+
 function open(model: string, emit: (e: LiveEvent) => void, voice?: string): Promise<LiveCall> {
   return new Promise((resolve, reject) => {
     /*
@@ -253,7 +265,7 @@ function open(model: string, emit: (e: LiveEvent) => void, voice?: string): Prom
           setup: {
             model: `models/${model}`,
             generationConfig,
-            systemInstruction: { parts: [{ text: systemPrompt() }] },
+            systemInstruction: { parts: [{ text: liveInstruction() }] },
             tools: [{ functionDeclarations: declarations() }],
           },
         }),

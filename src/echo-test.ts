@@ -19,7 +19,7 @@ process.env.LIVE_VOICE = "";
 process.env.TTS_VOICE = "Kore";
 
 const { liveVoice, liveState } = await import("./live.js");
-const { upstream, silence, floorIsMine } = await import("../public/live.js");
+const { upstream, silence, floorIsMine, mergeHeard, tidyHeard } = await import("../public/live.js");
 
 const checks: string[] = [];
 const expect = (label: string, ok: boolean) => {
@@ -98,6 +98,18 @@ expect("the question goes up as sound", !isSilent(sent[0]));
 expect("every frame captured under the answer goes up as silence", sent.slice(1, 6).every(isSilent));
 expect("the tail covers the last chunk still ringing in the room", isSilent(sent[6]));
 expect("and the caller gets the microphone back after it", !isSilent(sent[7]));
+
+/*
+ * The transcript. Input transcription drops punctuation, so an amount said as a decimal
+ * arrives as a pair of numbers. Only the pair that carries a currency word is repaired,
+ * because a bare pair is somebody's sentence and not a price.
+ */
+expect("a split price followed by its unit is drawn as the decimal", tidyHeard("send 11 39 USDC") === "send 11.39 USDC");
+expect("the unit is recognised whatever its case", tidyHeard("11 39 usdc") === "11.39 usdc");
+expect("a different unit is repaired the same way", tidyHeard("hold 2 05 SUI") === "hold 2.05 SUI");
+expect("a bare pair of numbers is left alone", tidyHeard("meet at 11 39") === "meet at 11 39");
+expect("a real decimal is not touched twice", tidyHeard("11.39 USDC") === "11.39 USDC");
+expect("words around the amount survive", mergeHeard("send", " 11 39") === "send 11 39");
 
 console.log(checks.join("\n"));
 console.log(`\n${checks.length} echo and voice checks, none of which needed a live call`);

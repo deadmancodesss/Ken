@@ -61,6 +61,16 @@ export function mergeHeard(line, piece) {
 }
 
 /**
+ * Google's input transcription drops punctuation, so a price said as "eleven thirty
+ * nine USDC" reaches the page as "11 39 USDC". The digits either side of the space are
+ * one amount, and drawing them as a pair reads like two numbers. Only a pair followed
+ * by a currency word is repaired, because a bare pair is a sentence and not a price.
+ */
+export function tidyHeard(line) {
+  return line.replace(/\b(\d{1,6}) (\d{2})(?=\s(?:usdc|dollars?|bucks|sui)\b)/gi, "$1.$2");
+}
+
+/**
  * Microphone bytes at 16 kHz, which is what the model listens for. The browser's own
  * rate is whatever the hardware decided, so every block is resampled on the way out.
  */
@@ -157,13 +167,19 @@ export function createPlayer(onLevel, onTrace) {
   let next = 0;
   const live = [];
   let raf = 0;
+  let lastShape = 0;
 
-  const tick = () => {
+  const tick = (now = performance.now()) => {
     analyser.getByteTimeDomainData(bytes);
     let peak = 0;
     for (let i = 0; i < bytes.length; i++) peak = Math.max(peak, Math.abs(bytes[i] - 128) / 128);
     onLevel(peak);
-    onTrace?.(bytes);
+    // A fresh buffer on every animation frame is faster than any voice changes and
+    // makes the scope flicker. Fourteen shapes a second keeps the line fluid.
+    if (now - lastShape >= 70) {
+      onTrace?.(bytes);
+      lastShape = now;
+    }
     raf = requestAnimationFrame(tick);
   };
 

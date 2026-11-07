@@ -384,6 +384,8 @@
       let busyState = "";
       let wave = null;
       let spokenAs = "";
+      let closedForms = new Set();
+      const FORM_TTL_MS = 30 * 60 * 1000;
       const writes = new Set();
 
       const say = (text, tone) => {
@@ -447,6 +449,153 @@
         row.className = "knote" + (bad ? " bad" : "");
         row.textContent = text;
         return row;
+      }
+
+      function formNoteMessage(text) {
+        const msg = kenMessage("");
+        msg.classList.add("doneNote");
+        msg.querySelector(".kbody").appendChild(noteLine(text));
+        thread.appendChild(msg);
+        follow();
+        return msg;
+      }
+
+      const formTimers = new WeakMap();
+
+      function clearFormTimer(form) {
+        const timer = formTimers.get(form);
+        if (timer) {
+          clearTimeout(timer);
+          formTimers.delete(form);
+        }
+      }
+
+      function disableForm(form, text) {
+        if (!form || form.classList.contains("spent")) return;
+        form.classList.add("spent");
+        clearFormTimer(form);
+        form.querySelectorAll("input, select, button").forEach((el) => {
+          el.disabled = true;
+        });
+        form.onsubmit = (e) => e.preventDefault();
+        const line = form.querySelector(".hint");
+        if (line) {
+          line.classList.remove("good");
+          line.classList.add("bad");
+          line.textContent = text;
+        }
+        const quiet = form.querySelector(".quietBtn");
+        if (quiet) {
+          quiet.disabled = false;
+          quiet.textContent = "close";
+          quiet.onclick = () => form.closest(".msg")?.remove();
+        }
+      }
+
+      function armExpiry(form, at, text) {
+        const left = Number(at) + FORM_TTL_MS - Date.now();
+        if (!Number.isFinite(left) || left <= 0) {
+          disableForm(form, text);
+          return;
+        }
+        formTimers.set(form, setTimeout(() => disableForm(form, text), left));
+      }
+
+      function closeNeed(kind, turn, chat) {
+        if (!kind) return;
+        if (turn?.owner && Array.isArray(turn.owner.closedKinds)) {
+          // A box is usually dismissed after its turn has been written, and a kind
+          // pushed onto an array whose write already ran would never be read, so a
+          // turn that has an id is written straight through.
+          const saved = Number(turn.owner.id);
+          if (Number.isInteger(saved) && saved > 0) {
+            closedForms.add(`${saved}:${kind}`);
+            fetch("/chat/close-form", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ session: chat || session, turn: saved, kind }),
+            }).catch(() => {});
+            return;
+          }
+          if (!turn.owner.closedKinds.includes(kind)) turn.owner.closedKinds.push(kind);
+          return;
+        }
+        const id = Number(turn?.id);
+        if (!Number.isInteger(id) || id <= 0) return;
+        closedForms.add(`${id}:${kind}`);
+        fetch("/chat/close-form", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session: chat || session, turn: id, kind }),
+        }).catch(() => {});
+      }
+
+      /*
+       * A box left unanswered is drawn as a closed note in its own turn once it is old,
+       * dismissed or overtaken. The chat page follows the same rule, so the room and the
+       * typed transcript do not disagree about what is still waiting.
+       */
+      function planNeeds(turns, pendingInfo) {
+        const notes = new Map();
+        const live = { address: null, request: null, sign: null };
+        const add = (index, text) => {
+          const list = notes.get(index) || [];
+          list.push(text);
+          notes.set(index, list);
+        };
+        const label = { address: "address box", request: "request form" };
+        for (const kind of ["address", "request"]) {
+          let index = -1;
+          let need = null;
+          for (let i = turns.length - 1; i >= 0; i--) {
+            const hit = kind === "address" ? addressNeed(turns[i].steps || []) : requestNeed(turns[i].steps || []);
+            if (hit) {
+              index = i;
+              need = hit;
+              break;
+            }
+          }
+          if (!need) continue;
+          const t = turns[index];
+          const id = Number(t.id);
+          const at = Number(t.at) || 0;
+          const dismissed = Number.isInteger(id) && closedForms.has(`${id}:${kind}`);
+          const movedOn = turns.slice(index + 1).some((x) => String(x.asked || "").trim());
+          if (dismissed) add(index, `the ${label[kind]} was closed. Ask Ken again if you still need it.`);
+          else if (!at || Date.now() - at > FORM_TTL_MS) {
+            add(index, `the ${label[kind]} expired after 30 minutes. Ask Ken again if you still need it.`);
+          } else if (movedOn) {
+            add(index, `the ${label[kind]} closed when the conversation moved on. Ask Ken again if you still need it.`);
+          } else {
+            live[kind] = { need, turn: { id, at } };
+          }
+        }
+
+        let signIndex = -1;
+        for (let i = turns.length - 1; i >= 0; i--) {
+          if ((turns[i].steps || []).some((s) => s.result?.awaiting_signature)) {
+            signIndex = i;
+            break;
+          }
+        }
+        if (signIndex >= 0 && pendingInfo) {
+          const t = turns[signIndex];
+          const at = Number(t.at) || 0;
+          const waiting = pendingInfo.pending;
+          const settled = turns
+            .slice(signIndex)
+            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
+          if (waiting && !waiting.digest) {
+            if (pendingInfo.expired || !at || Date.now() - at > FORM_TTL_MS) {
+              add(signIndex, "the payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
+            } else {
+              live.sign = { turn: { id: Number(t.id), at } };
+            }
+          } else if (!settled) {
+            add(signIndex, "the payment ticket is not open any more. Nothing moved.");
+          }
+        }
+        return { notes, live };
       }
 
       const LABELS = {
@@ -577,10 +726,15 @@
       }
 
       /* ---------- the three panels ---------- */
-      function addressCard(need) {
-        document.querySelectorAll("form.addrPanel").forEach((el) => el.closest(".msg")?.remove());
+      function addressCard(need, turn) {
+        document.querySelectorAll("form.addrPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         const form = document.createElement("form");
         form.className = "panel addrPanel";
+        const chat = session;
+        form.dataset.kind = "address";
+        form.dataset.chat = chat;
+        form.dataset.turn = String(Number(turn?.id) || "");
+        armExpiry(form, turn?.at ?? Date.now(), "this address box expired after 30 minutes. Ask Ken again if you still need it.");
         const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
         form.innerHTML = `<h4></h4>
           <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
@@ -597,6 +751,7 @@
             : `the address for ${need.who}`;
         go.textContent = amount ? `keep it and send ${amount}` : "keep this address";
         form.querySelector(".quietBtn").onclick = () => {
+          closeNeed("address", turn, chat);
           form.closest(".msg")?.remove();
           call?.say("The user did not type an address, so nothing was kept and no money was sent. Do not pay that person and do not ask again unless they bring it up.");
         };
@@ -626,6 +781,7 @@
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
             const label = body.named?.alias || "this person";
+            clearFormTimer(form);
             form.closest(".msg")?.remove();
             const said = body.note || "the address is kept.";
             if (!call) {
@@ -656,10 +812,15 @@
         field.focus();
       }
 
-      function requestCard(need) {
-        document.querySelectorAll("form.reqPanel").forEach((el) => el.closest(".msg")?.remove());
+      function requestCard(need, turn) {
+        document.querySelectorAll("form.reqPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         const form = document.createElement("form");
         form.className = "panel reqPanel";
+        const chat = session;
+        form.dataset.kind = "request";
+        form.dataset.chat = chat;
+        form.dataset.turn = String(Number(turn?.id) || "");
+        armExpiry(form, turn?.at ?? Date.now(), "this request form expired after 30 minutes. Ask Ken again if you still need it.");
         form.innerHTML = `<h4></h4>
           <div class="fields">
             <label class="lf"><span>amount</span><div class="amount"><input type="text" inputmode="decimal" autocomplete="off" aria-label="amount in USDC"><b>USDC</b></div></label>
@@ -682,7 +843,10 @@
         amount.value = need.usdc != null ? String(need.usdc) : "";
         term.value = String(need.minutes);
         whatFor.value = need.whatFor;
-        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+        form.querySelector(".quietBtn").onclick = () => {
+          closeNeed("request", turn, chat);
+          form.closest(".msg")?.remove();
+        };
         form.onsubmit = async (e) => {
           e.preventDefault();
           const usdc = Number(String(amount.value).replace(",", "."));
@@ -710,6 +874,7 @@
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
             const made = body.request;
+            clearFormTimer(form);
             form.closest(".msg")?.remove();
             const card = panelMessage(requestDone(made));
             thread.appendChild(card);
@@ -728,19 +893,25 @@
         else whatFor.focus();
       }
 
-      function signCard() {
-        document.querySelectorAll("form.signPanel").forEach((el) => el.closest(".msg")?.remove());
+      function signCard(turn) {
+        document.querySelectorAll("form.signPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         fetch("/pending", { cache: "no-store" })
           .then((r) => r.json())
-          .then(({ pending }) => {
+          .then(({ pending, expired }) => {
             if (!pending) {
               const msg = kenMessage("the payment is no longer waiting, so there is nothing to sign.");
               thread.appendChild(msg);
               scroll();
               return;
             }
+            if (expired) {
+              formNoteMessage("the payment ticket expired unsigned after 30 minutes. Nothing moved. Ask Ken again to make a new one.");
+              return;
+            }
             const form = document.createElement("form");
             form.className = "panel signPanel moss";
+            form.dataset.kind = "sign";
+            form.dataset.turn = String(Number(turn?.id) || "");
             const amount = document.createElement("div");
             amount.className = "samount";
             amount.textContent = spoken(String(pending.usdc));
@@ -802,8 +973,11 @@
             later.type = "button";
             later.className = "quietBtn";
             later.textContent = "not now";
-            later.onclick = () => {
+            later.onclick = async () => {
+              clearFormTimer(form);
               form.closest(".msg")?.remove();
+              await fetch("/pending/cancel", { method: "POST" }).catch(() => {});
+              formNoteMessage("the payment ticket was closed unsigned. Nothing moved.");
               call?.say("The payment was left unsigned, so no money moved. Do not call pay_usdc again unless they ask for that payment again.");
             };
             acts.append(sign, elsewhere, later);
@@ -813,6 +987,15 @@
             line.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
 
             form.append(to, from, acts, line);
+            const createdAt = Number(pending.createdAt) || Number(turn?.at) || Date.now();
+            const left = createdAt + FORM_TTL_MS - Date.now();
+            formTimers.set(
+              form,
+              setTimeout(async () => {
+                disableForm(form, "this payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
+                await fetch("/pending/cancel", { method: "POST" }).catch(() => {});
+              }, Math.max(0, left)),
+            );
             form.onsubmit = async (e) => {
               e.preventDefault();
               sign.disabled = true;
@@ -873,6 +1056,7 @@
                   answer.textContent = settled.learned.note;
                   receipt.append(answer);
                 }
+                clearFormTimer(form);
                 acts.remove();
                 line.className = "hint good";
                 line.textContent = buysFact
@@ -907,7 +1091,7 @@
       }
 
       /* ---------- history draws the same turns as the chat page ---------- */
-      function drawTurn(t) {
+      function drawTurn(t, extras) {
         if (t.asked) thread.appendChild(userMessage(t.asked));
         const msg = kenMessage(t.said || "");
         traceInto(msg, t.steps || []);
@@ -929,6 +1113,7 @@
           line.appendChild(link);
           msg.appendChild(line);
         }
+        for (const text of extras || []) msg.appendChild(noteLine(text));
         thread.appendChild(msg);
       }
 
@@ -954,17 +1139,22 @@
           paintTitle(mine?.title || "Voice call");
           thread.innerHTML = "";
           const turns = chats.turns || [];
-          if (!turns.length) showEmpty();
-          else turns.forEach(drawTurn);
-          const last = turns[turns.length - 1];
-          const need = last ? addressNeed(last.steps || []) : null;
-          if (need) addressCard(need);
+          closedForms = new Set((chats.closed || []).map((c) => `${Number(c.turn)}:${String(c.kind)}`));
+          let pendingInfo = null;
           if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
-            fetch("/pending", { cache: "no-store" })
-              .then((r) => r.json())
-              .then(({ pending }) => { if (pending) signCard(); })
-              .catch(() => {});
+            try {
+              const p = await fetch("/pending", { cache: "no-store" }).then((r) => r.json());
+              pendingInfo = { pending: p.pending ?? null, expired: !!p.expired };
+            } catch {
+              pendingInfo = null;
+            }
           }
+          const plan = planNeeds(turns, pendingInfo);
+          if (!turns.length) showEmpty();
+          else turns.forEach((t, i) => drawTurn(t, plan.notes.get(i)));
+          if (plan.live.address) addressCard(plan.live.address.need, plan.live.address.turn);
+          if (plan.live.request) requestCard(plan.live.request.need, plan.live.request.turn);
+          if (plan.live.sign) signCard(plan.live.sign.turn);
           scroll();
         } catch {
           showEmpty();
@@ -973,7 +1163,7 @@
       }
 
       /* ---------- a live turn is written back to the same thread ---------- */
-      const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false });
+      const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false, at: Date.now(), closedKinds: [] });
       let turn = freshTurn();
 
       function ensureKen() {
@@ -1026,12 +1216,23 @@
         const write = fetch("/live/turn", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ asked, said, steps: work.steps, session }),
+          body: JSON.stringify({ asked, said, steps: work.steps, session, at: work.at }),
         })
           .then((r) => r.json())
-          .then((body) => {
+          .then(async (body) => {
             if (body?.title) paintTitle(body.title);
             if (body?.session) session = body.session;
+            // A box dismissed after this write needs the row's id to close against,
+            // so the id is kept on the turn the form was drawn from.
+            if (body?.turnId) work.id = body.turnId;
+            for (const kind of work.closedKinds || []) {
+              if (!body?.turnId) continue;
+              await fetch("/chat/close-form", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ session: body.session || session, turn: body.turnId, kind }),
+              }).catch(() => {});
+            }
           })
           .catch(() => {
             const msg = kenMessage("this part of the call could not be saved. The words are still on screen, and the next turn starts a new row.");
@@ -1074,16 +1275,16 @@
         }
         const need = addressNeed([{ result: t.result }]);
         if (need) {
-          addressCard(need);
+          addressCard(need, { id: null, at: turn.at, owner: turn });
           return;
         }
         const asked = requestNeed([{ result: t.result }]);
         if (asked) {
-          requestCard(asked);
+          requestCard(asked, { id: null, at: turn.at, owner: turn });
           return;
         }
         if (t.result?.awaiting_signature) {
-          signCard();
+          signCard({ at: turn.at });
           return;
         }
         if (!t.ok && t.error) {
@@ -1158,6 +1359,7 @@
           voice: inputVoice.value,
           session,
           onOpen: (model, voice) => {
+            if (mine !== epoch) return;
             starting = false;
             spokenAs = voice || "";
             wave.live();
@@ -1168,6 +1370,7 @@
             note(`${model || "the live model"}, speaking as ${voice || "its own voice"}. Speak normally.`);
           },
           onHeard: (piece) => {
+            if (mine !== epoch || !call) return;
             busyState = "";
             lineYou(piece);
             if (HANGUP.test(turn.asked)) {
@@ -1176,29 +1379,38 @@
             }
           },
           onSaid: (piece) => {
+            if (mine !== epoch || !call) return;
             busyState = "";
             lineKen(piece);
           },
           onAudio: (pcm, rate) => {
+            if (mine !== epoch) return;
             player?.feed(pcm, rate);
           },
           onToolStart: (t) => {
+            if (mine !== epoch || !call) return;
             if (!["pay_usdc", "paid_lookup", "open_paid_link", "verify_payment"].includes(t.name)) return;
             busyState = t.name === "pay_usdc" || t.name === "paid_lookup" ? "waiting for the chain" : "checking the chain";
             say(busyState, "wait");
           },
-          onTool,
+          onTool: (t) => {
+            if (mine !== epoch || !call) return;
+            onTool(t);
+          },
           onTurn: () => {
+            if (mine !== epoch || !call) return;
             busyState = "";
             sealTurn();
             flushTurn();
             say("listening", "live");
           },
           onError: (message) => {
+            if (mine !== epoch) return;
             say("the call had a problem", "bad");
             note(message, true);
           },
           onClose: (reason) => {
+            if (mine !== epoch) return;
             note(reason ? `The call closed: ${reason}. The transcript is still here.` : "The call closed. The transcript is still here.");
             endCall(true);
           },

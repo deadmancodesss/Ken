@@ -669,33 +669,6 @@
         padding-top: 10px;
         border-top: 1px dashed var(--rule-strong);
       }
-      .inspectQuick {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-        margin-top: 4px;
-      }
-      .inspectQuick input {
-        flex: 1;
-        min-width: 0;
-        padding: 10px 13px;
-        border: 1px solid var(--rule-strong);
-        border-radius: 10px;
-        background: var(--paper);
-        font: var(--step--1)/1.2 var(--mono);
-        color: var(--ink);
-      }
-      .inspectQuick button {
-        padding: 10px 15px;
-        border-radius: 10px;
-        border: var(--edge) solid var(--ink);
-        background: var(--ink);
-        color: var(--paper);
-        font: 600 11px/1 var(--mono);
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        white-space: nowrap;
-      }
       @media (max-width: 720px) {
         .dosStats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .dosTxRow { grid-template-columns: 48px 1fr auto; }
@@ -765,8 +738,7 @@
       .voicePick {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        min-width: 148px;
+        gap: 8px;
       }
       .voicePick > span {
         font: 10px/1 var(--mono);
@@ -774,32 +746,71 @@
         text-transform: uppercase;
         color: var(--ink-3);
       }
-      .voicePick .paper-select { flex: 1; min-width: 96px; }
+      /* The picker is a control on the dock, not a field in a form. It takes the
+         same height and edge weight as End Call so the row reads as one bar
+         instead of a big white block dropped into a grey one. */
+      .voicePick .paper-select { flex: 0 0 auto; width: 112px; min-width: 0; }
+      /* Tom Select ships `.ts-wrapper.single.input-active .ts-control` at four-class
+         strength, which repaints this control pure white whatever the theme says, so
+         the dock rule has to outrank it by class count as well as by order. */
+      .voicePick .paper-select.ts-wrapper.single .ts-control {
+        min-height: 0;
+        height: 25px;
+        padding: 0 24px 0 11px !important;
+        border: 1.5px solid var(--rule-strong);
+        border-radius: 999px;
+        background: var(--paper);
+        font: 11px/1 var(--mono);
+        letter-spacing: 0.03em;
+        color: var(--ink);
+      }
+      .voicePick .paper-select:hover .ts-control { border-color: var(--ink-3); }
+      .voicePick .paper-select.focus .ts-control,
+      .voicePick .paper-select.dropdown-active .ts-control { border-color: var(--ink); }
+      .voicePick .paper-select::after { right: 10px; top: calc(50% - 2px); width: 5px; height: 5px; }
       .voicePick select {
         padding: 4px 10px;
         border: 1px solid var(--rule-strong);
         border-radius: 999px;
-        background: var(--paper);
+        background: transparent;
         color: var(--ink);
         font: 11px/1.2 var(--mono);
       }
-      .voiceInterruptBtn {
+      /* The floor is one switch, not a button that only exists while Ken talks. Off means
+         his answer finishes before the microphone opens, which is the only safe default
+         on a speaker. On hands the floor over whenever the person starts talking. */
+      .voiceModeBtn {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 5px 11px;
-        border: var(--edge) solid var(--clay);
+        gap: 6px;
+        height: 25px;
+        padding: 0 11px;
+        border: var(--edge) solid var(--rule-strong);
         border-radius: 999px;
         background: var(--paper);
-        color: var(--clay);
+        color: var(--ink-2);
         font: 11px/1 var(--mono);
-        letter-spacing: 0.04em;
+        letter-spacing: 0.03em;
         cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease;
       }
-      .voiceInterruptBtn[hidden] { display: none !important; }
-      .voiceInterruptBtn:hover {
+      .voiceModeDot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--ink-3);
+        transition: background 0.15s ease;
+      }
+      .voiceModeBtn:hover {
+        border-color: var(--ink-3);
+        color: var(--ink);
+      }
+      .voiceModeBtn.on {
+        border-color: var(--clay);
+        color: var(--clay);
+      }
+      .voiceModeBtn.on .voiceModeDot {
         background: var(--clay);
-        color: var(--paper);
       }
       .voiceCloseBtn {
         display: inline-flex;
@@ -982,7 +993,7 @@
           <form class="composer" id="composer">
             <textarea id="text" rows="1" placeholder="Ask about your money" autocomplete="off" spellcheck="false" aria-label="Your message"></textarea>
             <div class="cactions">
-              <button class="iconBtn" id="mic" type="button" title="Live Voice Call with Ken" aria-label="Live Voice Call with Ken">
+              <button class="iconBtn" id="mic" type="button" title="Voice typing: dictate your message" aria-label="Voice typing: dictate your message">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
               </button>
               <button class="send" id="send" type="submit" title="Send" aria-label="Send">
@@ -1002,7 +1013,10 @@
                   <span>voice</span>
                   <select id="voice" aria-label="Ken's voice"></select>
                 </label>
-                <button class="voiceInterruptBtn" id="voiceInterruptBtn" type="button" hidden title="Stop Ken speaking and listen to you immediately">Interrupt</button>
+                <button class="voiceModeBtn" id="voiceModeBtn" type="button" role="switch" aria-checked="false" title="Ken finishes his answer before the microphone opens. Switch on to talk in between.">
+                  <span class="voiceModeDot"></span>
+                  <span id="voiceModeLabel">wait until finish</span>
+                </button>
                 <button class="voiceCloseBtn" id="voiceCloseBtn" type="button" title="End call and return to text typing">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18L18 6M6 6l12 12"/></svg>
                   <span>End Call</span>
@@ -1030,10 +1044,6 @@
         <div class="emptyMark"><img src="/assets/ken-mark.svg" alt="" /></div>
         <h1>Ask anything. Do anything. Plan anything.</h1>
         <p class="lede">Your voice-first wallet superpower: inspect any wallet's transactions &amp; links, plan monthly budgets, set timed reminders, block scammers, or pay by name.</p>
-        <div class="inspectQuick">
-          <input type="text" data-inspect-input placeholder="Look out for a wallet: paste any 0x address or friend name…" autocomplete="off" spellcheck="false" aria-label="Wallet address or name to inspect" />
-          <button type="button" data-inspect-go>Inspect Wallet ↗</button>
-        </div>
         <div class="asks">
           <button type="button" data-q="where did my money come from and show my recent transactions?">Inspect my wallet &amp; transactions<span>Full funding trail, amounts &amp; Suiscan links</span></button>
           <button type="button" data-q="what is my monthly summary and what is due soon?">Plan my month &amp; upcoming bills<span>Monthly spend, recurring rhythm &amp; budget cap</span></button>
@@ -1075,7 +1085,7 @@
       import { signAndExecute, signX402 } from "./wallet.js";
       import { mountSelect } from "./ui.js";
       import { createWave } from "./wave.js";
-      import { captureMic, createPlayer, openLive, upstream, floorIsMine, mergeHeard } from "./live.js";
+      import { captureMic, createPlayer, openLive, upstream, floorIsMine, mergeHeard, tidyHeard } from "./live.js";
 
       const thread = $("thread");
       const log = $("log");
@@ -1083,11 +1093,16 @@
       const sendBtn = $("send");
 
       let active = "";
-      let shownTurns = 0;
+      let drawnIds = new Set();
       let sessions = [];
       let lastState = null;
       let lastBalance = null;
       let busy = false;
+      let closedForms = new Set();
+
+      /* An unanswered box is a question, and a question left that long is not one any
+         more. The form says so and stops taking input instead of waiting forever. */
+      const FORM_TTL_MS = 30 * 60 * 1000;
 
       const scroll = () => { log.scrollTop = log.scrollHeight; };
       /* The invitation is a block inside the transcript rather than a separate screen,
@@ -1146,6 +1161,109 @@
         wrap.querySelector(".kbody").remove();
         wrap.appendChild(panel);
         return wrap;
+      }
+
+      function formNoteMessage(text) {
+        const msg = kenMessage("");
+        const note = document.createElement("div");
+        note.className = "fallback";
+        note.textContent = text;
+        msg.querySelector(".kbody").appendChild(note);
+        opening();
+        thread.appendChild(msg);
+        scroll();
+        return msg;
+      }
+
+      const formTimers = new WeakMap();
+
+      function clearFormTimer(form) {
+        const timer = formTimers.get(form);
+        if (timer) {
+          clearTimeout(timer);
+          formTimers.delete(form);
+        }
+      }
+
+      /* A closed box is kept in place and greyed out rather than deleted, so the thread
+         still shows what was asked and the person can read why it went quiet. */
+      function disableForm(form, text) {
+        if (!form || form.classList.contains("spent")) return;
+        form.classList.add("spent");
+        clearFormTimer(form);
+        form.querySelectorAll("input, select, button").forEach((el) => {
+          el.disabled = true;
+        });
+        form.onsubmit = (e) => e.preventDefault();
+        const hint = form.querySelector(".hint");
+        if (hint) {
+          hint.classList.remove("good");
+          hint.classList.add("bad");
+          hint.textContent = text;
+        }
+        const quiet = form.querySelector(".quietBtn");
+        if (quiet) {
+          quiet.disabled = false;
+          quiet.textContent = "close";
+          quiet.onclick = () => form.closest(".msg")?.remove();
+        }
+      }
+
+      function armExpiry(form, at, text) {
+        const left = Number(at) + FORM_TTL_MS - Date.now();
+        if (!Number.isFinite(left) || left <= 0) {
+          disableForm(form, text);
+          return;
+        }
+        formTimers.set(form, setTimeout(() => disableForm(form, text), left));
+      }
+
+      /*
+       * A dismissal belongs to the conversation, not the tab. During a call the turn
+       * has not reached the server yet, so the kinds are carried on the turn object
+       * and written once its row exists.
+       */
+      function closeNeed(kind, turn, chat, done) {
+        if (!kind) return;
+        // A filled form and a dismissed one both have to stay closed on reload, but the
+        // transcript must only say "closed" for the dismissed one, so the two outcomes
+        // are recorded under different names.
+        const record = done ? `${kind}_done` : kind;
+        if (turn?.owner && Array.isArray(turn.owner.closedKinds)) {
+          // The turn is usually saved by the time the box is dismissed, and a kind
+          // pushed onto an array whose write already ran would never be read, so a
+          // turn that has an id is written straight through.
+          const saved = Number(turn.owner.id);
+          if (Number.isInteger(saved) && saved > 0) {
+            closedForms.add(`${saved}:${record}`);
+            fetch("/chat/close-form", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ session: chat || active, turn: saved, kind: record }),
+            }).catch(() => {});
+            return;
+          }
+          if (!turn.owner.closedKinds.includes(record)) turn.owner.closedKinds.push(record);
+          return;
+        }
+        const id = Number(turn?.id);
+        if (!Number.isInteger(id) || id <= 0) return;
+        closedForms.add(`${id}:${record}`);
+        fetch("/chat/close-form", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ session: chat || active, turn: id, kind: record }),
+        }).catch(() => {});
+      }
+
+      /* A typed question means the person has moved on from whatever box was open. */
+      function retireForms() {
+        thread.querySelectorAll("form.panel:not(.spent)").forEach((form) => {
+          const kind = form.dataset.kind;
+          if (kind !== "address" && kind !== "request") return;
+          closeNeed(kind, form._needTurn || { id: Number(form.dataset.turn) || null }, form.dataset.chat || active);
+          disableForm(form, "this box closed when the conversation moved on. Ask Ken again if you still need it.");
+        });
       }
 
       const LABELS = {
@@ -1534,10 +1652,18 @@
       }
 
       /* ---------- address, request and signature ---------- */
-      function addressCard(need) {
-        document.querySelectorAll("form.addrPanel").forEach((el) => el.closest(".msg")?.remove());
+      function addressCard(need, turn) {
+        document.querySelectorAll("form.addrPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         const form = document.createElement("form");
         form.className = "panel addrPanel";
+        const chat = active;
+        form.dataset.kind = "address";
+        form.dataset.chat = chat;
+        form.dataset.turn = String(Number(turn?.id) || "");
+        // A voice turn has no id until it is written, so the turn object is kept on the
+        // form and a later typed question can close the box against the saved row.
+        form._needTurn = turn;
+        armExpiry(form, turn?.at ?? Date.now(), "this address box expired after 30 minutes. Ask Ken again if you still need it.");
         const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
         form.innerHTML = `<h4></h4>
           <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
@@ -1563,6 +1689,7 @@
             ? `keep it and send ${amount}`
             : "keep this address";
         form.querySelector(".quietBtn").onclick = () => {
+          closeNeed("address", turn, chat);
           form.closest(".msg")?.remove();
           call?.say(
             isInspect
@@ -1580,6 +1707,11 @@
             return;
           }
           if (isInspect) {
+            clearFormTimer(form);
+            // A voice submit asks the model for the dossier instead of sending a typed
+            // turn, so nothing else would mark this need as answered and it would be
+            // drawn again on the next load.
+            closeNeed("address", turn, chat, true);
             form.closest(".msg")?.remove();
             if (calling && call) {
               call.say(
@@ -1606,7 +1738,11 @@
             });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
-            shownTurns++;
+            if (body.turnId) drawnIds.add(Number(body.turnId));
+            clearFormTimer(form);
+            // The address is kept, so the box must not come back asking for it again,
+            // whether this was answered by typing or through the voice dock.
+            closeNeed("address", turn, chat, true);
             form.closest(".msg")?.remove();
             const msg = kenMessage(body.note || "the address is kept.");
             const steps = [{ name: "name_a_person", ok: true }];
@@ -1688,10 +1824,16 @@
         return card;
       }
 
-      function requestCard(need) {
-        document.querySelectorAll("form.reqPanel").forEach((el) => el.closest(".msg")?.remove());
+      function requestCard(need, turn) {
+        document.querySelectorAll("form.reqPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         const form = document.createElement("form");
         form.className = "panel reqPanel";
+        const chat = active;
+        form.dataset.kind = "request";
+        form.dataset.chat = chat;
+        form.dataset.turn = String(Number(turn?.id) || "");
+        form._needTurn = turn;
+        armExpiry(form, turn?.at ?? Date.now(), "this request form expired after 30 minutes. Ask Ken again if you still need it.");
         form.innerHTML = `<h4></h4>
           <div class="fields">
             <label class="lf"><span>amount</span><div class="amount"><input type="text" inputmode="decimal" autocomplete="off" aria-label="amount in USDC"><b>USDC</b></div></label>
@@ -1714,7 +1856,11 @@
         amount.value = need.usdc != null ? String(need.usdc) : "";
         term.value = String(need.minutes);
         note.value = need.whatFor;
-        form.querySelector(".quietBtn").onclick = () => form.closest(".msg")?.remove();
+        form.querySelector(".quietBtn").onclick = () => {
+          closeNeed("request", turn, chat);
+          form.closest(".msg")?.remove();
+          call?.say("The person closed the request form without making a link. Acknowledge in one short sentence.");
+        };
         form.onsubmit = async (e) => {
           e.preventDefault();
           const usdc = Number(String(amount.value).replace(",", "."));
@@ -1741,7 +1887,10 @@
             });
             const body = await res.json();
             if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
-            shownTurns++;
+            if (body.turnId) drawnIds.add(Number(body.turnId));
+            clearFormTimer(form);
+            // The link exists, so the form is spent and must not survive a reload.
+            closeNeed("request", turn, chat, true);
             form.closest(".msg")?.remove();
             const msg = kenMessage("");
             msg.querySelector(".kbody").remove();
@@ -1767,17 +1916,23 @@
         else note.focus();
       }
 
-      function signCard() {
-        document.querySelectorAll("form.signPanel").forEach((el) => el.closest(".msg")?.remove());
+      function signCard(turn) {
+        document.querySelectorAll("form.signPanel:not(.spent)").forEach((el) => el.closest(".msg")?.remove());
         fetch("/pending", { cache: "no-store" })
           .then((r) => r.json())
-          .then(({ pending }) => {
+          .then(({ pending, expired }) => {
             if (!pending) {
               noteError("the payment is no longer waiting, so there is nothing to sign.");
               return;
             }
+            if (expired) {
+              formNoteMessage("the payment ticket expired unsigned after 30 minutes. Nothing moved. Ask Ken again to make a new one.");
+              return;
+            }
             const form = document.createElement("form");
             form.className = "panel signPanel moss";
+            form.dataset.kind = "sign";
+            form.dataset.turn = String(Number(turn?.id) || "");
             const amount = document.createElement("div");
             amount.className = "samount";
             amount.textContent = spoken(String(pending.usdc));
@@ -1842,7 +1997,13 @@
             later.type = "button";
             later.className = "quietBtn";
             later.textContent = "not now";
-            later.onclick = () => form.closest(".msg")?.remove();
+            later.onclick = async () => {
+              clearFormTimer(form);
+              form.closest(".msg")?.remove();
+              await fetch("/pending/cancel", { method: "POST" }).catch(() => {});
+              formNoteMessage("the payment ticket was closed unsigned. Nothing moved.");
+              call?.say("The person closed the payment ticket without signing it. Nothing moved. Acknowledge in one short sentence.");
+            };
             acts.append(sign, elsewhere, later);
 
             const hint = document.createElement("p");
@@ -1850,8 +2011,25 @@
             hint.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
 
             form.append(to, from, acts, hint);
+            const createdAt = Number(pending.createdAt) || Number(turn?.at) || Date.now();
+            const left = createdAt + FORM_TTL_MS - Date.now();
+            formTimers.set(
+              form,
+              setTimeout(async () => {
+                disableForm(form, "this payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
+                await fetch("/pending/cancel", { method: "POST" }).catch(() => {});
+              }, Math.max(0, left)),
+            );
             form.onsubmit = async (e) => {
               e.preventDefault();
+              const openedAt = Date.now();
+              let signedAt = 0;
+              let settledAt = 0;
+              const clock = setInterval(() => {
+                const now = Date.now();
+                const s = Math.max(0, Math.round((now - (signedAt || openedAt)) / 1000));
+                sign.textContent = signedAt ? `Confirming on chain… ${s}s` : `Check your wallet… ${s}s`;
+              }, 1000);
               sign.disabled = true;
               sign.textContent = "Check your wallet…";
               acts.querySelectorAll("button, a").forEach((el) => {
@@ -1860,6 +2038,13 @@
               });
               hint.className = "hint";
               hint.textContent = "asking the wallet for the account that started this payment";
+              const who = pending.name || shortAddr(pending.to);
+              // The model is told the signature step began, because without this it keeps
+              // saying the payment is still waiting for a signature while the person is
+              // already looking at the chain wait.
+              call?.say(
+                `The person has opened their wallet to sign the ${pending.usdc} USDC payment to ${who}. Do not ask them to sign again. Say in one short sentence that you are watching for it on chain and will confirm when it lands.`,
+              );
               try {
                 const buysFact = !!pending.resource;
                 const signed = buysFact
@@ -1876,10 +2061,11 @@
                       onStatus: (s) => { hint.textContent = s; },
                     });
                 if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+                signedAt = Date.now();
                 sign.textContent = "Confirming on chain…";
                 hint.textContent = buysFact
                   ? "the wallet signed it. The seller is checking and settling the exact signed payment"
-                  : "the wallet signed it. Reading the chain to check the money arrived";
+                  : "the wallet signed it. Reading the chain for the exact USDC movement. The index usually sees it in a few seconds, and this page waits rather than guessing";
                 const settledRequest = await fetch("/pending/settle", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
@@ -1888,6 +2074,9 @@
                 const settled = await settledRequest.json();
                 if (!settledRequest.ok) throw new Error(settled.error || `the server answered ${settledRequest.status}`);
                 const done = settled.pending ?? { ...pending, digest: buysFact ? settled.tx : signed.digest };
+                settledAt = Date.now();
+                clearInterval(clock);
+                const took = Math.max(1, Math.round((settledAt - openedAt) / 1000));
                 const net = String(done.chain ?? pending.chain ?? payChain()).split(":").pop();
                 const receipt = document.createElement("div");
                 receipt.className = "receipt";
@@ -1910,11 +2099,13 @@
                   answer.textContent = settled.learned.note;
                   receipt.append(answer);
                 }
+                clearFormTimer(form);
                 acts.remove();
                 hint.className = "hint good";
                 hint.textContent = buysFact
-                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered.`
-                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent}.`;
+                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered · ${took}s from click to chain read.`
+                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent} · ${took}s from click to chain read.`;
+                if (settled.turnId) drawnIds.add(Number(settled.turnId));
                 form.append(receipt);
                 loadState();
                 loadBalance();
@@ -1925,6 +2116,7 @@
                     : `The person signed the ${done.usdc} USDC payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.`,
                 );
               } catch (err) {
+                clearInterval(clock);
                 sign.disabled = false;
                 sign.textContent = "Sign in wallet";
                 acts.querySelectorAll("button, a").forEach((el) => {
@@ -1932,7 +2124,16 @@
                   el.style.opacity = "";
                 });
                 hint.className = "hint bad";
-                hint.textContent = err.message;
+                // A settle that timed out happens after a real signature, so saying
+                // "nothing moved" there would be a guess the chain has not agreed to.
+                hint.textContent = signedAt
+                  ? `${err.message}. The wallet did sign it, so check that digest before paying again.`
+                  : err.message;
+                call?.say(
+                  signedAt
+                    ? `The payment was signed in the wallet but the page could not confirm it: ${err.message}. Read the recipient's history and say honestly whether it landed. Do not ask for a second signature.`
+                    : `The wallet did not sign the ${pending.usdc} USDC payment: ${err.message}. Nothing moved. Say that in one short sentence.`,
+                );
               }
             };
             thread.appendChild(panelMessage(form));
@@ -1942,7 +2143,8 @@
       }
 
       /* ---------- the transcript ---------- */
-      function drawTurn(t) {
+      function drawTurn(t, extras) {
+        if (t.id) drawnIds.add(Number(t.id));
         thread.querySelector(".empty")?.remove();
         if (t.asked) thread.appendChild(userMessage(t.asked));
         const msg = kenMessage(t.said || "");
@@ -1954,7 +2156,86 @@
         if (report) msg.appendChild(reportCard());
         const made = (t.steps || []).find((s) => s.name === "request_money" && s.ok && s.result?.link);
         if (made) msg.appendChild(requestDone(made.result));
+        for (const line of extras || []) {
+          const note = document.createElement("div");
+          note.className = "fallback";
+          note.textContent = line;
+          msg.appendChild(note);
+        }
         thread.appendChild(msg);
+      }
+
+      /*
+       * The transcript is a record, so a question that went unanswered stays visible as
+       * a closed note in its own turn instead of reappearing as a fresh form every time
+       * the page is opened. A need is live only while it is the newest thing asked, not
+       * dismissed, and younger than the lifetime of a form.
+       */
+      function planNeeds(turns, pendingInfo) {
+        const notes = new Map();
+        const live = { address: null, request: null, sign: null };
+        const add = (index, text) => {
+          const list = notes.get(index) || [];
+          list.push(text);
+          notes.set(index, list);
+        };
+        const label = { address: "address box", request: "request form" };
+        for (const kind of ["address", "request"]) {
+          let index = -1;
+          let need = null;
+          for (let i = turns.length - 1; i >= 0; i--) {
+            const hit = kind === "address" ? addressNeed(turns[i].steps || []) : requestNeed(turns[i].steps || []);
+            if (hit) {
+              index = i;
+              need = hit;
+              break;
+            }
+          }
+          if (!need) continue;
+          const t = turns[index];
+          const id = Number(t.id);
+          const at = Number(t.at) || 0;
+          const dismissed = Number.isInteger(id) && closedForms.has(`${id}:${kind}`);
+          // A form that was filled is settled too, but its outcome is already in the
+          // transcript, so it gets no note and no redraw.
+          const answered = Number.isInteger(id) && closedForms.has(`${id}:${kind}_done`);
+          const movedOn = turns.slice(index + 1).some((x) => String(x.asked || "").trim());
+          if (answered) continue;
+          if (dismissed) add(index, `the ${label[kind]} was closed. Ask Ken again if you still need it.`);
+          else if (!at || Date.now() - at > FORM_TTL_MS) {
+            add(index, `the ${label[kind]} expired after 30 minutes. Ask Ken again if you still need it.`);
+          } else if (movedOn) {
+            add(index, `the ${label[kind]} closed when the conversation moved on. Ask Ken again if you still need it.`);
+          } else {
+            live[kind] = { need, turn: { id, at } };
+          }
+        }
+
+        let signIndex = -1;
+        for (let i = turns.length - 1; i >= 0; i--) {
+          if ((turns[i].steps || []).some((s) => s.result?.awaiting_signature)) {
+            signIndex = i;
+            break;
+          }
+        }
+        if (signIndex >= 0 && pendingInfo) {
+          const t = turns[signIndex];
+          const at = Number(t.at) || 0;
+          const waiting = pendingInfo.pending;
+          const settled = turns
+            .slice(signIndex)
+            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
+          if (waiting && !waiting.digest) {
+            if (pendingInfo.expired || !at || Date.now() - at > FORM_TTL_MS) {
+              add(signIndex, "the payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
+            } else {
+              live.sign = { turn: { id: Number(t.id), at } };
+            }
+          } else if (!settled) {
+            add(signIndex, "the payment ticket is not open any more. Nothing moved.");
+          }
+        }
+        return { notes, live };
       }
 
       async function loadChats(id) {
@@ -1963,34 +2244,25 @@
           if (!res.ok) return;
           const body = await res.json();
           active = body.session || id || active;
-          thread.innerHTML = "";
           const turns = body.turns || [];
-          shownTurns = turns.length;
-          if (!turns.length) showEmpty();
-          else turns.forEach(drawTurn);
-          let openAddr = null;
-          let openReq = null;
-          for (const t of turns) {
-            const steps = t.steps || [];
-            const an = addressNeed(steps);
-            if (an) openAddr = an;
-            if (steps.some((s) => (s.name === "name_a_person" || s.name === "address_activity" || s.name === "who_is_this") && s.ok && !s.result?.needs_address)) {
-              openAddr = null;
-            }
-            const rn = requestNeed(steps);
-            if (rn) openReq = rn;
-            if (steps.some((s) => s.name === "request_money" && s.ok && s.result?.link)) {
-              openReq = null;
-            }
-          }
-          if (openAddr) addressCard(openAddr);
-          if (openReq) requestCard(openReq);
+          closedForms = new Set((body.closed || []).map((c) => `${Number(c.turn)}:${String(c.kind)}`));
+          let pendingInfo = null;
           if (turns.some((t) => (t.steps || []).some((s) => s.result?.awaiting_signature))) {
-            fetch("/pending", { cache: "no-store" })
-              .then((r) => r.json())
-              .then(({ pending }) => { if (pending && !pending.digest) signCard(); })
-              .catch(() => {});
+            try {
+              const p = await fetch("/pending", { cache: "no-store" }).then((r) => r.json());
+              pendingInfo = { pending: p.pending ?? null, expired: !!p.expired };
+            } catch {
+              pendingInfo = null;
+            }
           }
+          const plan = planNeeds(turns, pendingInfo);
+          thread.innerHTML = "";
+          drawnIds = new Set(turns.map((t) => Number(t.id)).filter(Boolean));
+          if (!turns.length) showEmpty();
+          else turns.forEach((t, i) => drawTurn(t, plan.notes.get(i)));
+          if (plan.live.address) addressCard(plan.live.address.need, plan.live.address.turn);
+          if (plan.live.request) requestCard(plan.live.request.need, plan.live.request.turn);
+          if (plan.live.sign) signCard(plan.live.sign.turn);
           scroll();
         } catch {
           /* A transcript that cannot be replayed is not worth an error over the
@@ -2090,6 +2362,10 @@
           history.replaceState(null, "", `/app?session=${encodeURIComponent(active)}`);
           renderSessions();
           showEmpty();
+          // The ledger followed the old thread, so a new chat would otherwise treat its
+          // first rows as already drawn and the poll would never show them.
+          drawnIds = new Set();
+          closedForms = new Set();
           closeRail();
           input.focus();
         } catch {
@@ -2188,9 +2464,11 @@
       /* ---------- the conversation ---------- */
       async function send(text) {
         text = String(text || "").trim();
+        if (dictation) stopDictation(true);
         if (!text || busy) return;
         busy = true;
         sendBtn.disabled = true;
+        retireForms();
         input.value = "";
         grow();
         opening();
@@ -2215,7 +2493,7 @@
           });
           const turn = await res.json();
           if (!res.ok) throw new Error(turn.error || "http " + res.status);
-          shownTurns++;
+          if (turn.turnId) drawnIds.add(Number(turn.turnId));
           body.textContent = turn.text;
           if (turn.fallback) {
             const note = document.createElement("div");
@@ -2230,10 +2508,11 @@
             answer.appendChild(reportCard());
           }
           const need = addressNeed(turn.steps || []);
-          if (need) addressCard(need);
+          const savedTurn = { id: Number(turn.turnId) || null, at: Number(turn.at) || 0 };
+          if (need) addressCard(need, savedTurn);
           const asked = requestNeed(turn.steps || []);
-          if (asked) requestCard(asked);
-          if ((turn.steps || []).some((s) => s.result?.awaiting_signature)) signCard();
+          if (asked) requestCard(asked, savedTurn);
+          if ((turn.steps || []).some((s) => s.result?.awaiting_signature)) signCard(savedTurn);
           const names = (turn.steps || []).map((s) => s.name);
           if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup", "pay_usdc", "open_paid_link", "verify_payment"].includes(n))) {
             loadState();
@@ -2256,27 +2535,12 @@
       }
 
       thread.addEventListener("click", (e) => {
-        const inspectBtn = e.target.closest("[data-inspect-go]");
-        if (inspectBtn) {
-          const field = thread.querySelector("[data-inspect-input]");
-          const who = field ? field.value.trim() : "";
-          if (who) send(`Look out for wallet ${who} and show its transactions and links`);
-          else field?.focus();
-          return;
-        }
         const q = e.target.closest("[data-q]");
         if (q) {
           send(q.dataset.q);
           return;
         }
         if (e.target.closest("[data-voice]")) openVoice();
-      });
-      thread.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && e.target.matches("[data-inspect-input]")) {
-          e.preventDefault();
-          const who = e.target.value.trim();
-          if (who) send(`Look out for wallet ${who} and show its transactions and links`);
-        }
       });
 
       $("composer").onsubmit = (e) => {
@@ -2295,6 +2559,133 @@
         input.style.height = Math.min(160, input.scrollHeight) + "px";
       }
       input.addEventListener("input", grow);
+
+      /*
+       * Voice typing, not a call. The microphone button fills this box with words and
+       * leaves them there to edit and send. Dictation is browser-native so it costs
+       * nothing and never opens the agent's audio path. A browser without it is told
+       * so plainly instead of being pushed into a call.
+       */
+      let dictation = null;
+      let cfootTimer = 0;
+      let placeholderTimer = 0;
+
+      function composeNote(text, ms) {
+        const note = $("cfoot")?.querySelector("span");
+        if (!note) return;
+        clearTimeout(cfootTimer);
+        if (!note.dataset.rest) note.dataset.rest = note.textContent;
+        note.textContent = text;
+        // The footer is hidden on a phone, so the same line rides in the placeholder
+        // there. Without it a declined microphone would read as a button that did nothing.
+        if (!note.getBoundingClientRect().height) {
+          clearTimeout(placeholderTimer);
+          input.placeholder = text;
+          if (ms) {
+            placeholderTimer = setTimeout(() => {
+              if (!dictation) input.placeholder = "Ask about your money";
+            }, ms);
+          }
+        }
+        if (ms) cfootTimer = setTimeout(() => { note.textContent = note.dataset.rest; }, ms);
+      }
+
+      function paintDictation(on) {
+        const btn = $("mic");
+        btn.classList.toggle("on", on);
+        const label = on ? "Stop voice typing" : "Voice typing: dictate your message";
+        btn.title = label;
+        btn.setAttribute("aria-label", label);
+        input.placeholder = on ? "Listening… your words land here" : "Ask about your money";
+      }
+
+      function stopDictation(quiet) {
+        const d = dictation;
+        if (!d) return;
+        dictation = null;
+        d.rec.onresult = d.rec.onerror = d.rec.onend = null;
+        try {
+          d.rec.stop();
+        } catch {
+          /* it had already stopped */
+        }
+        paintDictation(false);
+        if (!quiet) {
+          composeNote(
+            d.got ? "Voice typing stopped. Edit the words, then press Enter." : "Voice typing stopped, no words arrived.",
+            d.got ? 5000 : 7000,
+          );
+        }
+      }
+
+      function startDictation() {
+        if (calling || starting) return;
+        if (dictation) return stopDictation();
+        const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Rec) {
+          composeNote("This browser has no voice typing. Try Chrome, Edge or Safari, or start a Voice call.", 8000);
+          return;
+        }
+        const rec = new Rec();
+        rec.lang = navigator.language || "en-US";
+        rec.continuous = true;
+        rec.interimResults = true;
+        const d = { rec, base: input.value.trimEnd(), got: false };
+        dictation = d;
+        let failed = "";
+        rec.onstart = () => {
+          if (dictation !== d) return;
+          paintDictation(true);
+          composeNote("Voice typing is on. Speak, then click the microphone to stop.", 0);
+        };
+        rec.onresult = (e) => {
+          if (dictation !== d) return;
+          let final = "";
+          let interim = "";
+          for (let i = 0; i < e.results.length; i++) {
+            const r = e.results[i];
+            if (r.isFinal) final += r[0].transcript;
+            else interim += r[0].transcript;
+          }
+          const said = (final + interim).replace(/\s+/g, " ").trim();
+          if (said) d.got = true;
+          input.value = d.base && said ? `${d.base} ${said}` : d.base || said;
+          grow();
+          input.setSelectionRange(input.value.length, input.value.length);
+        };
+        rec.onerror = (e) => {
+          if (dictation !== d) return;
+          failed =
+            e.error === "not-allowed" || e.error === "service-not-allowed"
+              ? "Microphone permission was declined, so nothing was typed."
+              : e.error === "network"
+                ? "Voice typing could not reach the browser's speech service. Check the connection, or type the message."
+                : e.error === "audio-capture"
+                  ? "No microphone was found, so nothing was typed."
+                  : e.error === "no-speech"
+                    ? "No speech arrived, so voice typing stopped. Click the microphone to try again."
+                    : `Voice typing stopped (${e.error}).`;
+        };
+        rec.onend = () => {
+          if (dictation !== d) return;
+          dictation = null;
+          paintDictation(false);
+          composeNote(
+            failed ||
+              (d.got ? "Voice typing stopped. Edit the words, then press Enter." : "Voice typing stopped, no words arrived."),
+            failed ? 9000 : 5000,
+          );
+        };
+        try {
+          composeNote("Waiting for the microphone…", 0);
+          rec.start();
+        } catch (err) {
+          dictation = null;
+          paintDictation(false);
+          composeNote("Voice typing could not start: " + err.message, 7000);
+        }
+      }
+
       document.addEventListener("keydown", (e) => {
         if (e.key === "/" && document.activeElement !== input) {
           e.preventDefault();
@@ -2303,6 +2694,7 @@
         if (e.key === "Escape") {
           closeRail();
           setMenu(false);
+          if (dictation) stopDictation(true);
           if (calling) closeVoice();
         }
       });
@@ -2319,7 +2711,9 @@
       let starting = false;
       let epoch = 0;
       let tailUntil = 0;
-      let voiceStateTimer = null;
+      let loudRun = 0;
+      let talkOver = localStorage.getItem("tr.talkOver") === "1";
+      let reminderFlash = null;
       const writes = new Set();
 
       function fillVoices(list, chosen) {
@@ -2349,19 +2743,39 @@
         }
       });
 
-      const freshTurn = () => ({ asked: "", said: "", steps: [], youEl: null, itEl: null, body: null, traced: false });
+      const freshTurn = () => ({
+        asked: "",
+        said: "",
+        steps: [],
+        youEl: null,
+        itEl: null,
+        body: null,
+        traced: false,
+        at: Date.now(),
+        closedKinds: [],
+      });
       let turn = freshTurn();
 
       function setVoiceStatus(text) {
         const el = $("voiceStateText");
         if (el) el.textContent = text;
-        const intBtn = $("voiceInterruptBtn");
-        if (intBtn) intBtn.hidden = !player?.speaking;
       }
       function setVoiceHint(text) {
         const el = $("voiceHint");
         if (el) el.textContent = text;
       }
+      function paintTalkOver() {
+        const btn = $("voiceModeBtn");
+        const label = $("voiceModeLabel");
+        if (!btn || !label) return;
+        btn.classList.toggle("on", talkOver);
+        btn.setAttribute("aria-checked", String(talkOver));
+        label.textContent = talkOver ? "talk in between" : "wait until finish";
+        btn.title = talkOver
+          ? "Ken stops the moment you start talking. Headphones keep his own voice from coming back as yours."
+          : "Ken finishes his answer before the microphone opens. Switch on to talk in between.";
+      }
+      paintTalkOver();
 
       function ensureKen() {
         if (!turn.itEl) {
@@ -2382,14 +2796,14 @@
           else thread.appendChild(el);
           turn.youEl = el.querySelector(".bubble");
         }
-        turn.youEl.textContent = mergeHeard(turn.youEl.textContent, piece);
+        turn.youEl.textContent = tidyHeard(mergeHeard(turn.youEl.textContent, piece));
         turn.asked = turn.youEl.textContent;
         scroll();
       }
 
       function lineKen(piece) {
         ensureKen();
-        turn.body.textContent = mergeHeard(turn.body.textContent, piece);
+        turn.body.textContent = tidyHeard(mergeHeard(turn.body.textContent, piece));
         turn.said = turn.body.textContent;
         scroll();
       }
@@ -2409,15 +2823,29 @@
           return Promise.resolve();
         }
         turn = freshTurn();
-        shownTurns++;
         const job = fetch("/live/turn", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ asked, said, steps: work.steps, session: active }),
+          body: JSON.stringify({ asked, said, steps: work.steps, session: active, at: work.at }),
         })
           .then((r) => r.json())
-          .then((body) => {
+          .then(async (body) => {
             if (body?.session) active = body.session;
+            // A box dismissed after this write needs the row's id to close against,
+            // so the id is kept on the turn the form was drawn from. The same id is
+            // what tells the reminder poll this row is already on screen.
+            if (body?.turnId) {
+              work.id = body.turnId;
+              drawnIds.add(Number(body.turnId));
+            }
+            for (const kind of work.closedKinds || []) {
+              if (!body?.turnId) continue;
+              await fetch("/chat/close-form", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ session: body.session || active, turn: body.turnId, kind }),
+              }).catch(() => {});
+            }
             return refreshSessions();
           })
           .catch(() => {})
@@ -2428,6 +2856,7 @@
 
       async function openVoice() {
         if (calling || starting) return;
+        stopDictation(true);
         setMenu(false);
         starting = true;
         epoch++;
@@ -2453,13 +2882,26 @@
         try {
           mic = await captureMic(
             (frame) => {
-              const floor = floorIsMine({ barge: false, speaking: player?.speaking, now: Date.now(), tailUntil });
+              const floor = floorIsMine({ barge: talkOver, speaking: player?.speaking, now: Date.now(), tailUntil });
               tailUntil = floor.tailUntil;
               const typing = !!document.activeElement?.closest("form.panel");
               call?.push(upstream(frame, floor.open && !typing));
             },
             (level) => {
               wave?.push(player?.speaking ? 0 : level, "you");
+              // Talking over means the audio already queued for the speaker has to stop
+              // when the person actually starts, not when the server later notices. Three
+              // blocks is about a quarter second, long enough not to fire on a click.
+              if (!talkOver || !player?.speaking) {
+                loudRun = 0;
+                return;
+              }
+              loudRun = level > 0.45 ? loudRun + 1 : 0;
+              if (loudRun >= 3) {
+                loudRun = 0;
+                player.interrupt();
+                setVoiceStatus("listening…");
+              }
             },
             (shape) => {
               if (!player?.speaking) wave?.trace(shape, "you");
@@ -2469,7 +2911,8 @@
           player?.close();
           player = null;
           wave?.idle();
-          starting = false;
+          // closeVoice would return early if the starting flag were cleared first, and
+          // the dock would sit on "connecting" with the text box still hidden.
           closeVoice();
           noteError(err?.name === "NotAllowedError" ? "Microphone permission was declined." : "Microphone error: " + err.message);
           return;
@@ -2488,22 +2931,24 @@
         calling = true;
         starting = false;
 
-        if (voiceStateTimer) clearInterval(voiceStateTimer);
-        voiceStateTimer = setInterval(() => {
-          const intBtn = $("voiceInterruptBtn");
-          if (intBtn) intBtn.hidden = !player?.speaking;
-        }, 250);
-
         call = openLive({
           voice: inputVoice?.value || localStorage.getItem("tr.liveVoice") || "Kore",
           session: active,
           onOpen: (model, voice, voices) => {
+            if (mine !== epoch) return;
             if (Array.isArray(voices) && voices.length) fillVoices(voices, voice);
             wave?.live();
             setVoiceStatus("listening · speak normally");
-            setVoiceHint(`Live with ${model || "Gemini"} as ${voice || "Kore"}. Your words stream directly into this chat.`);
+            setVoiceHint(
+              `Live with ${model || "Gemini"} as ${voice || "Kore"}. ${
+                talkOver
+                  ? "You can talk in between. Headphones keep his own voice from coming back as yours."
+                  : "Ken finishes each answer before your microphone opens."
+              } Your words stream into this chat.`,
+            );
           },
           onHeard: (piece) => {
+            if (mine !== epoch || !calling) return;
             setVoiceStatus("hearing you…");
             lineYou(piece);
             if (HANGUP.test(turn.asked)) {
@@ -2512,17 +2957,21 @@
             }
           },
           onSaid: (piece) => {
+            if (mine !== epoch || !calling) return;
             setVoiceStatus("Ken speaking…");
             lineKen(piece);
           },
           onAudio: (pcm, rate) => {
+            if (mine !== epoch) return;
             player?.feed(pcm, rate);
           },
           onActivity: () => {},
           onToolStart: (t) => {
+            if (mine !== epoch || !calling) return;
             setVoiceStatus(t.name === "pay_usdc" ? "preparing payment ticket…" : "reading the chain…");
           },
           onTool: (t) => {
+            if (mine !== epoch || !calling) return;
             turn.steps.push({
               name: t.name,
               ok: !!t.ok,
@@ -2549,11 +2998,11 @@
               scroll();
             }
             const need = addressNeed([{ name: t.name, ok: !!t.ok, result: t.result }]);
-            if (need) addressCard(need);
+            if (need) addressCard(need, { id: null, at: turn.at, owner: turn });
             const asked = requestNeed([{ name: t.name, ok: !!t.ok, result: t.result }]);
-            if (asked) requestCard(asked);
+            if (asked) requestCard(asked, { id: null, at: turn.at, owner: turn });
             if (t.result?.awaiting_signature) {
-              signCard();
+              signCard({ at: turn.at });
             }
             if (!t.ok && t.error) {
               const errLine = document.createElement("div");
@@ -2564,15 +3013,18 @@
             }
           },
           onTurn: () => {
+            if (mine !== epoch || !calling) return;
             setVoiceStatus("listening…");
             sealTurn();
             flushTurn();
           },
           onError: (msg) => {
+            if (mine !== epoch) return;
             setVoiceStatus("call notice");
             setVoiceHint(msg);
           },
           onClose: (reason) => {
+            if (mine !== epoch) return;
             setVoiceHint(reason ? `Call closed: ${reason}` : "Call closed.");
             closeVoice();
           },
@@ -2584,10 +3036,7 @@
         calling = false;
         starting = false;
         epoch++;
-        if (voiceStateTimer) {
-          clearInterval(voiceStateTimer);
-          voiceStateTimer = null;
-        }
+        clearTimeout(reminderFlash);
         const socket = call;
         call = null;
         stopMic?.();
@@ -2595,6 +3044,10 @@
         player?.close();
         player = null;
         wave?.idle();
+
+        // The dropdown menu is portaled to the body, so hiding the dock does not
+        // take it down with the dock. It would float over the page after a hangup.
+        inputVoice?.__paper?.close?.();
 
         $("voiceDock").hidden = true;
         $("composer").hidden = false;
@@ -2617,14 +3070,17 @@
         else openVoice();
       };
       $("voiceCloseBtn").onclick = closeVoice;
-      $("mic").onclick = () => {
-        if (calling) closeVoice();
-        else openVoice();
-      };
-      $("voiceInterruptBtn").onclick = () => {
-        player?.interrupt();
-        call?.hold();
-        setVoiceStatus("listening…");
+      $("mic").onclick = startDictation;
+      $("voiceModeBtn").onclick = () => {
+        talkOver = !talkOver;
+        loudRun = 0;
+        localStorage.setItem("tr.talkOver", talkOver ? "1" : "0");
+        paintTalkOver();
+        setVoiceHint(
+          talkOver
+            ? "You can talk in between. Ken stops as soon as you speak. Headphones are best, because a speaker can feed his own voice back as yours."
+            : "Ken finishes each answer before your microphone opens.",
+        );
       };
 
       if (new URLSearchParams(location.search).get("voice") === "1") {
@@ -2709,28 +3165,50 @@
       });
 
       /*
-       * A reminder is written into the thread by the server when its time comes, so
-       * the open page has to look for a new turn. It only redraws when the count grew,
-       * because redrawing a transcript under a reader is worse than a reminder that
-       * arrives a few seconds late.
+       * The clock writes a reminder into the thread, and while a call is open the
+       * server's synthetic receipt does the same, so the page has to look for rows it
+       * did not draw. It tracks the ids it has drawn rather than a count, because a
+       * count cannot see a row somebody else wrote: the next slice then starts at the
+       * wrong place and re-draws a message that is already on screen.
        */
       setInterval(async () => {
-        if (document.hidden || !active || calling || starting || busy) return;
-        if (thread.querySelector("form.panel")) return;
+        if (document.hidden || !active || starting || busy) return;
+        // A write in flight reports its own id a moment later, and a fetch that lands
+        // before that report is exactly how one row gets drawn twice.
+        if (writes.size) return;
         try {
           const res = await fetch(`/chats?session=${encodeURIComponent(active)}`, { cache: "no-store" });
           if (!res.ok) return;
           const body = await res.json();
           const turns = body.turns || [];
-          if (turns.length > shownTurns) {
-            turns.slice(shownTurns).forEach(drawTurn);
-            shownTurns = turns.length;
-            scroll();
+          // A write can begin while the read above is in flight, so the ledger is
+          // checked again before anything is drawn from the answer.
+          if (writes.size) return;
+          const fresh = turns.filter((t) => t.id && !drawnIds.has(Number(t.id)));
+          if (!fresh.length) return;
+          // A reminder has no question, so it is the one row that can be drawn in the
+          // middle of a call. A spoken turn is already on screen as it is said, and
+          // drawing the stored copy as well is what showed the last words twice.
+          const show = calling ? fresh.filter((t) => !String(t.asked || "").trim()) : fresh;
+          if (!show.length) return;
+          // Only a new question closes the boxes the person left open.
+          if (show.some((t) => String(t.asked || "").trim())) retireForms();
+          show.forEach((t) => drawTurn(t));
+          const arrived = show.find((t) => /^Reminder:/i.test(String(t.said || "")));
+          if (arrived && calling) {
+            setVoiceStatus("reminder arrived");
+            setVoiceHint(String(arrived.said));
+            clearTimeout(reminderFlash);
+            reminderFlash = setTimeout(() => {
+              // Only put the idle word back if nothing else has claimed the tag since.
+              if (calling && $("voiceStateText")?.textContent === "reminder arrived") setVoiceStatus("listening…");
+            }, 6_000);
           }
+          scroll();
         } catch {
           /* the next tick tries again */
         }
-      }, 10_000);
+      }, 3_000);
 
       /* ---------- boot ---------- */
       const params = new URLSearchParams(location.search);

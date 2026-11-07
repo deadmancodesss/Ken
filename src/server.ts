@@ -15,7 +15,7 @@ import { runTool } from "./tools.js";
 import { keepAddress, keptTurn } from "./address.js";
 import { BLOB_ID, createNote, note, notes, titleFor, type Note } from "./notes.js";
 import { line as memoryLine, lines as memoryLines, remember, searchMemory } from "./memory.js";
-import { held, hold, release, settle, type Pending } from "./pending.js";
+import { forgotten, held, hold, release, settle, type Pending } from "./pending.js";
 import { forgetAudio, synthesize, ttsState } from "./speech.js";
 import { type Fact, canonical, noteResourceId, receiptResourceId } from "./resources.js";
 import { learn, indexPayout, overCeiling, price, priceCeiling, priceUsdc, purchases, retryStuck, settleSigned, totalSpent } from "./x402.js";
@@ -25,7 +25,7 @@ import { capOwner, chainMismatch, session, useDemoWallet, useNetwork, useWallet 
 import { tally } from "./earn.js";
 import { buildStatement, cardSvg } from "./report.js";
 import { liveState, startLive, type LiveCall, type LiveEvent } from "./live.js";
-import { chatKey, DEFAULT_CHAT_DB, openChats } from "./chats.js";
+import { chatKey, DEFAULT_CHAT_DB, FORM_KINDS, openChats } from "./chats.js";
 import { currentSeat, seatId, seatFor, seatsOpen, sweepSeats, within } from "./seat.js";
 import { savedSession } from "./seat-store.js";
 import { forgetTransfers, monthSpend, recentTransfers } from "./history.js";
@@ -190,8 +190,11 @@ async function capSnapshot() {
  * accept a digest on a different standard than the one the product already trusts.
  */
 async function usdcProof(digest: string, waiting: Pending, net: Net): Promise<string | null> {
-  const proof = await waitForTransaction(digest, net);
-  if (!proof) return `no such transaction on ${net}, so nothing was recorded`;
+  // The index has been measured taking longer than fifteen seconds on testnet, and a
+  // signature that is real but not visible yet used to be reported as no transaction.
+  // Thirty seconds is still bounded, and the page now counts the seconds out loud.
+  const proof = await waitForTransaction(digest, net, 30);
+  if (!proof) return `the chain index did not show that digest within 30 seconds, so nothing was recorded. If your wallet shows it, check the digest before paying again`;
   if (proof.status !== "SUCCESS") return `that transaction ended ${proof.status}, so nothing was recorded`;
   const expected = BigInt(Math.round(waiting.usdc * 10 ** USDC_DECIMALS));
   const isUsdc = isUsdcCoin;
@@ -294,18 +297,21 @@ async function handle(req: any, res: any) {
       // words on screen so a later turn can be given the tool results it needs. Storing
       // the whole history per row would make the file grow quadratically, and storing
       // only the words would let the agent pay twice for one forgotten address.
-      chats.append(key, {
+      const at = Date.now();
+      const turnId = chats.append(key, {
         asked,
         said: turn.text,
         steps: turn.steps,
         delta: turn.history.slice(past.length),
-        at: Date.now(),
+        at,
       });
       chats.touch(owner, thread.id, asked);
       return json(res, 200, {
         text: turn.text,
         steps: turn.steps,
         session: thread.id,
+        turnId,
+        at,
         rounds: chats.count(key),
         model: modelName(),
         fallback: fallbackNote(),
@@ -371,7 +377,27 @@ async function handle(req: any, res: any) {
         session: thread.id,
         seats: seatsOpen(),
         turns: chats.turns(thread.key),
+        closed: chats.closedForms(thread.key),
       });
+    }
+
+    /*
+     * A form a person chose not to fill is closed against the turn that asked for it.
+     * The record lives with the conversation rather than in the page, so a reload or
+     * another device reads the same decision instead of asking again.
+     */
+    if (req.method === "POST" && url.pathname === "/chat/close-form") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const kind = String(body.kind ?? "");
+      const turn = Number(body.turn);
+      if (!(FORM_KINDS as readonly string[]).includes(kind)) {
+        return json(res, 400, { error: "kind has to be address, request, address_done or request_done" });
+      }
+      if (!Number.isInteger(turn) || turn <= 0) return json(res, 400, { error: "turn has to be a saved turn id" });
+      const owner = chatKey();
+      const thread = threadFor(owner, body.session);
+      chats.closeForm(thread.key, turn, kind);
+      return json(res, 200, { closed: true });
     }
 
     if (req.method === "POST" && url.pathname === "/chats/clear") {
@@ -402,7 +428,10 @@ async function handle(req: any, res: any) {
             .slice(-20)
             .map((s: any) => ({ name: s.name, ok: !!s.ok, ...(s.error ? { error: String(s.error).slice(0, 300) } : {}), ...(s.result !== undefined ? { result: s.result } : {}) }))
         : [];
-      chats.append(thread.key, {
+      // A spoken turn is stamped when it started, so a form dismissed during the call
+      // can name the turn it belonged to before the words reached the server.
+      const at = Number.isFinite(Number(body.at)) && Number(body.at) > 0 ? Number(body.at) : Date.now();
+      const turnId = chats.append(thread.key, {
         asked,
         said,
         steps,
@@ -410,11 +439,11 @@ async function handle(req: any, res: any) {
           ...(asked ? [{ role: "user", content: asked }] : []),
           ...(said ? [{ role: "assistant", content: said }] : []),
         ],
-        at: Date.now(),
+        at,
       });
       chats.touch(owner, thread.id, asked);
       const after = chats.ensure(owner, thread.id);
-      return json(res, 200, { saved: true, session: thread.id, title: after.title, turns: after.turns });
+      return json(res, 200, { saved: true, session: thread.id, title: after.title, turns: after.turns, turnId, at });
     }
 
     if (req.method === "POST" && url.pathname === "/wallet") {
@@ -595,7 +624,8 @@ async function handle(req: any, res: any) {
     }
 
     if (url.pathname === "/pending") {
-      return json(res, 200, { pending: held() });
+      const waiting = held();
+      return json(res, 200, { pending: waiting, expired: !!waiting && forgotten(waiting) });
     }
 
     if (req.method === "POST" && url.pathname === "/pending/cancel") {
@@ -630,10 +660,11 @@ async function handle(req: any, res: any) {
           balanceCache.clear();
           forgetCounterparties();
           forgetTransfers();
+          let turnId = 0;
           if (done) {
             const tool = waiting.resource.startsWith("receipt:") ? "verify_payment" : "paid_lookup";
             const line = `${released.usdc} USDC was signed in the wallet and settled on chain for an answer from the paid index.`;
-            chats.append(threadKeyFor(chatKey(), waiting.chat), {
+            turnId = chats.append(threadKeyFor(chatKey(), waiting.chat), {
               asked: "signed the payment for a paid lookup",
               said: line,
               steps: [{ name: tool, ok: true, result: { digest: released.tx, resource: waiting.resource, usdc: released.usdc } }],
@@ -641,7 +672,7 @@ async function handle(req: any, res: any) {
               at: Date.now(),
             });
           }
-          return json(res, 200, { pending: done, learned, fact: released.fact, tx: released.tx, usdc: released.usdc });
+          return json(res, 200, { pending: done, learned, fact: released.fact, tx: released.tx, usdc: released.usdc, turnId: turnId || undefined });
         } catch (err) {
           return json(res, 400, { error: `that signature could not be read as a Sui payment: ${(err as Error).message}` });
         }
@@ -664,6 +695,7 @@ async function handle(req: any, res: any) {
         );
         forgetCounterparties();
       }
+      let turnId = 0;
       if (done) {
         // The signature changed this wallet's coins, so the next page to ask must not be
         // handed a balance read from before the transfer.
@@ -675,7 +707,7 @@ async function handle(req: any, res: any) {
         // turns into an explorer link instead of a string nobody can check by eye.
         const who = done.name ?? `${done.to.slice(0, 6)}…${done.to.slice(-4)}`;
         const line = `${done.usdc} USDC to ${who} was signed in the wallet and settled on chain.`;
-        chats.append(threadKeyFor(chatKey(), waiting.chat), {
+        turnId = chats.append(threadKeyFor(chatKey(), waiting.chat), {
           asked: `signed the payment to ${who}`,
           said: line,
           steps: [{ name: "pay_usdc", ok: true, result: { digest, to: done.to, usdc: done.usdc } }],
@@ -683,7 +715,7 @@ async function handle(req: any, res: any) {
           at: Date.now(),
         });
       }
-      return json(res, 200, { pending: done });
+      return json(res, 200, { pending: done, turnId: turnId || undefined });
     }
 
     /*
@@ -750,11 +782,12 @@ async function handle(req: any, res: any) {
         // A request made from the chat form happened outside the model's turn, so it is
         // written into the conversation it belongs to. The request page and the call
         // form do not pass this flag, because they are not part of a chat.
+        let turnId = 0;
         if (input.from === "chat") {
           const owner = chatKey();
-          chats.append(threadFor(owner, input.session).key, { ...requestTurn(made), at: Date.now() });
+          turnId = chats.append(threadFor(owner, input.session).key, { ...requestTurn(made), at: Date.now() });
         }
-        return json(res, 200, { request: view });
+        return json(res, 200, { request: view, turnId: turnId || undefined });
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });
       }
@@ -865,13 +898,14 @@ async function handle(req: any, res: any) {
           },
         });
         const row = keptTurn(kept);
-        chats.append(threadFor(chatKey(), input.session).key, { ...row, at: Date.now() });
+        const turnId = chats.append(threadFor(chatKey(), input.session).key, { ...row, at: Date.now() });
         forgetCounterparties();
         return json(res, 200, {
           named: kept.person,
           payment: kept.payment,
           payment_error: kept.payment_error || undefined,
           note: row.said,
+          turnId,
         });
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });
@@ -1469,7 +1503,7 @@ const reminders = setInterval(() => {
     const cut = r.chat.indexOf("::");
     if (cut > 0) chats.touch(r.chat.slice(0, cut), r.chat.slice(cut + 2));
   }
-}, 5_000);
+}, 2_000);
 reminders.unref();
 
 server.listen(PORT, HOST, () => {
