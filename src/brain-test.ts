@@ -61,6 +61,7 @@ globalThis.fetch = (async (url: any, init: any) => {
 }) as typeof fetch;
 
 const { runTurn, groundAnswer } = await import("./brain.js");
+const { localDay } = await import("./seat.js");
 
 const checks: string[] = [];
 function expect(label: string, ok: boolean) {
@@ -138,6 +139,14 @@ const remembered = groundAnswer("Your rent is 1200 USDC.", "remember my rent is 
   { name: "remember_this", args: {}, ok: true, result: { stored: "abc123" } },
 ]);
 expect("a remembered figure is not stripped by a tool that holds no figures", remembered.includes("1200"));
+const thousands = groundAnswer("Ravi pays often.", "how often and how much does Ravi pay", [
+  { name: "money_history", args: {}, ok: true, result: { name: "Ravi", flows: 3, usual_amount: "1,234.56 USDC" } },
+]);
+expect("a thousands comma is not read as a decimal point", thousands.includes("1234.56 USDC"));
+const decimalComma = groundAnswer("Ravi pays often.", "how often and how much does Ravi pay", [
+  { name: "money_history", args: {}, ok: true, result: { name: "Ravi", flows: 3, usual_amount: "1,50 USDC" } },
+]);
+expect("a decimal comma is still read as a decimal point", decimalComma.includes("1.5 USDC"));
 
 /* A model that will not stop asking: the closing round must answer, not throw. */
 const refuse = { content: "", tool_calls: [{ id: "x", function: { name: "memory_stats", arguments: "{}" } }] };
@@ -152,7 +161,7 @@ expect("earlier requests did have tools", asked.slice(0, -1).every((b: any) => "
  * to be handed over. A payment made today read out as yesterday is a wrong statement
  * about the person's own money. */
 const said = String(asked[0].messages.find((m: any) => m.role === "system")?.content ?? "");
-expect("the model is told what today is", said.includes(new Date().toISOString().slice(0, 10)));
+expect("the model is told what today is", said.includes(localDay()));
 expect("the model is told never to guess a date", /never guess a date/i.test(said));
 expect("the instructions obey the two writing rules they teach", !/[—–;]/.test(said));
 

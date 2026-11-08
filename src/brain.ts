@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PAY_CHAIN, PAY_NET } from "./chain.js";
 import { TOOLS, TOOL_NAMES, runTool } from "./tools.js";
 import { session } from "./session.js";
+import { localDay } from "./seat.js";
 import { paymentsEnabled } from "./wallet.js";
 
 /**
@@ -156,19 +157,16 @@ export function brainRoutes() {
 }
 
 /**
- * Each lane remembers its own answer. One shared name would let the model that chose
- * a tool claim credit for the sentence, and the two are often not the same model.
- */
-let spokeBy = "";
-let decidedBy = "";
-
-/**
- * What went wrong first in the turn just finished, and who answered in the end. The
- * screen shows one line only when a provider refused and another one took the turn,
- * because "NVIDIA answered" and "Gemini was rate limited, so NVIDIA answered" are
- * different facts and a demo should be able to tell them apart.
+ * Each turn carries its own record of who answered. These used to be module globals,
+ * which meant two browsers asking at the same time could each be shown the other's
+ * model name. They are still kept below as "the last turn" for the command line and
+ * the tests, but every web answer reads the copy that travelled with its own turn.
  */
 type Miss = { route: Route; model: string; why: string };
+type Identity = { spokeBy: string; decidedBy: string; miss: Miss | null; served: { route: Route; model: string } | null };
+
+let spokeBy = "";
+let decidedBy = "";
 let turnMiss: Miss | null = null;
 let turnServed: { route: Route; model: string } | null = null;
 
@@ -187,13 +185,11 @@ function shortName(model: string) {
 const PROVIDER: Record<string, string> = { gemini: "Gemini", nvidia: "NVIDIA" };
 
 /**
- * One line about the last turn, empty when the first choice answered. It names the
- * refusal and the provider that covered it, and it never turns a 429 into a guessed
- * remaining quota. This is an observed event, not a meter.
+ * One line about a turn, empty when the first choice answered. It names the refusal
+ * and the provider that covered it, and it never turns a 429 into a guessed remaining
+ * quota. This is an observed event, not a meter.
  */
-export function fallbackNote() {
-  const miss = turnMiss;
-  const served = turnServed;
+function noteFor(miss: Miss | null, served: { route: Route; model: string } | null) {
   if (!miss || !served) return "";
   const sameRoute = miss.route.id === served.route.id;
   if (sameRoute && miss.model === served.model) return "";
@@ -202,16 +198,24 @@ export function fallbackNote() {
   return `${from} ${miss.why}, so ${to} answered this turn.`;
 }
 
+export function fallbackNote() {
+  return noteFor(turnMiss, turnServed);
+}
+
 /**
  * Routers answer with the name of the model they picked, so the served name is
  * reported rather than the requested one. A screen that said "Jev Router" while
  * a 2.6B model answered is the same lie this file exists to prevent.
  */
-export function modelName() {
+function nameFor(spoke: string) {
   const first = attempts("chat")[0];
   if (!first) return "stub rules, no model key";
   if (IS_STUB) return "stub rules, no model key";
-  return spokeBy || first.model;
+  return spoke || first.model;
+}
+
+export function modelName() {
+  return nameFor(spokeBy);
 }
 
 /** The name used for tool routing, which is often not the name that spoke. */
@@ -243,7 +247,7 @@ export function brainState() {
 
 /** One prompt for both transports, so a call and a typed question can never disagree. */
 export const systemPrompt = () => `You are Ken, a personal agent for a Sui wallet. You can see the chain through Tatum and you remember
-things on Walrus. Today is ${new Date().toISOString().slice(0, 10)}. ${
+things on Walrus. Today is ${localDay()}. ${
   session().source === "wallet"
     ? `You are speaking for the wallet ${session().wallet} on ${session().network}, which the person in front of you connected themselves. Every payment you prepare needs their signature.`
     : `The wallet you speak for is the demo wallet ${session().wallet} on ${session().network}. ${
@@ -277,20 +281,22 @@ Rules you must not break:
 - Write the way people talk. Never use an em dash and never use a semicolon. Break the thought into two short sentences instead.
 - Say "the agent wallet" only if asked about the address. Otherwise talk about people by name.
 - If a read fails, tell the user what failed plainly and do not retry more than once.
-${paymentsEnabled() ? `- Before paying anyone by name, call find_person. If it returns not_found, call pay_usdc or pay_sui once with that name and the amount, so the page can carry the amount and the coin into its address field, then ask the user for the full address in one short sentence.
+${paymentsEnabled() ? `- Before paying anyone by name, call find_person. Never call pay_usdc or pay_sui before you have both a recipient and an amount. If find_person returns not_found and the amount is already known, call pay_usdc or pay_sui once with that name and the amount, so the page can carry the amount and the coin into its address field, then ask for the full address in one short sentence. If the amount is not known, ask for the address in one short sentence and wait.
+- pay_usdc and pay_sui return needs_recipient when they were called with no person to pay, and needs_amount when the amount is missing or zero. In both cases nothing was built, no field opened, and no money moved. Ask only for what is missing in one short sentence and never describe a field, a ticket or a receipt.
 - The person's coin decides the tool. When they say SUI, call pay_sui. When they say USDC, or name no coin at all, call pay_usdc. Never convert between the two, never pick SUI on your own, and never describe one coin as the other.
 - paid_lookup costs real ${PAY_CHAIN} money. Call it only after who_is_this comes back with named_as null, and never twice for the same address in one conversation. If it answers cost_usdc 0, say you already knew it and did not pay.
 - verify_payment costs the same small fee and is the only way to settle a claim about a transaction. Use it when somebody hands you a digest and says they paid, or when a memory and a person disagree about whether money moved. Its answer is remembered, so never call it twice for one digest. If it says nothing with that digest exists, say so flatly. That is a real answer and the thing the person paid to hear.
 - open_paid_link buys what another person remembers, which is the only way to pay a person rather than a service. Use it when somebody hands you a link id and asks what is behind it, or asks to buy what another wallet knows about something. The price is written on their link, so repeat that price and never the index's. If it answers cost_usdc 0 you already opened that link, so say you read it from your own memory and paid nothing.
 - When any tool returns awaiting_signature, the money has NOT moved. The ticket is drawn right under your reply, so say it is waiting there for them to sign and never send them to another page. Never say you sent it.
-- When pay_usdc, pay_sui or find_person returns needs_address, the page is already showing a field for the full address and the payment finishes there in the same coin without another instruction. Ask for the address in one short sentence, never guess one, never read a hex string out loud, and never say the money moved. Do not call name_a_person or pay_usdc or pay_sui again for that request.
+- When pay_usdc or pay_sui returns needs_address, the page is already showing a field for the full address and the payment finishes there in the same coin without another instruction. Ask for the address in one short sentence, never guess one, never read a hex string out loud, and never say the money moved. Do not call pay_usdc or pay_sui again for that request, and do not call name_a_person for it.
 - A payment is never retried on a timeout. If a payment tool returns pending or says the money may have moved, do not call it again for that payment. Call money_history for that person and say what the chain shows. A transfer that settled is reported as sent even if the tool's wait ended first.
 - Never call pay_usdc or pay_sui twice with the same person, coin and amount in one conversation unless the user asks again after you have read the chain. A duplicate call returns the first digest, and saying it is a second payment is the lie that spends twice.
 - When pay_usdc or pay_sui returns marked_spam, nothing was built and no money moved. Say plainly that the address is marked spam, repeat the reason, and ask whether they still want to send. Call the same tool again with confirm_spam yes only after they clearly say yes in this conversation.` : `- Payments are switched off in this build, so pay_usdc, pay_sui, paid_lookup, verify_payment and open_paid_link do not exist here. If someone asks to send money or to buy a paid fact, say in one short sentence that payments are off in this build, and never say anything moved.`}
-- A person's address reaches you as text the user typed into that field, never as speech. When the user wants an address kept and you do not already hold the full 0x string, call name_a_person with the name and an empty address. Never ask them to say the address out loud, and when name_a_person comes back with needs_address, ask in one short sentence and wait. If any message in this conversation says the typed address was kept, the save has already happened. Do not call name_a_person for that name, do not call find_person for it, and never ask for the address again.`;
+- A person's address reaches you as text the user typed into that field, never as speech. When the user wants an address kept and you do not already hold the full 0x string, call name_a_person with the name and an empty address. Never ask them to say the address out loud, and when name_a_person comes back with needs_address, ask in one short sentence and wait. If any message in this conversation says the typed address was kept, the save has already happened. Do not call name_a_person for that name, do not call find_person for it, and never ask for the address again.
+- An address box or request form exists only after a tool result says needs_address or needs_request_fields. Never say one appeared, moved or sits below the conversation when no result asked for it. An address was received only when the user typed one or a tool result says it was kept. When neither is true, say plainly that nothing opened and ask again.`;
 
 export type Step = { name: string; args: Record<string, unknown>; ok: boolean; result?: unknown; error?: string };
-export type Turn = { text: string; steps: Step[] };
+export type Turn = { text: string; steps: Step[]; model: string; fallback: string };
 
 /**
  * The prompt asks for plain spoken words, and a model handed a tool result still
@@ -317,10 +323,22 @@ export function tidy(text: string) {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** A money figure in a spoken sentence. A bare number is not judged because it may be a count or a date. */
-const MONEY_SAID = /(\d+(?:[.,]\d+)?)\s*(?:USDC|USDU|SUI|USD|dollars?)\b/gi;
+const MONEY_SAID = /(\d+(?:[.,]\d+)*)\s*(?:USDC|USDU|SUI|USD|dollars?)\b/gi;
+
+/**
+ * A figure can use a comma as a thousands mark or as a decimal point. "1,234.56"
+ * is one thousand two hundred and change, while "1,50" is one and a half. Swapping
+ * the first comma for a dot read the thousands form as one dollar and change, which
+ * let a wrong figure through as if a tool had confirmed it.
+ */
+function figureOf(raw: string): number {
+  const text = String(raw);
+  const thousands = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(text);
+  return Number(thousands ? text.replace(/,/g, "") : text.replace(",", "."));
+}
 
 function moneySaid(text: string): number[] {
-  return [...text.matchAll(MONEY_SAID)].map((m) => round2(Number(m[1].replace(",", "."))));
+  return [...text.matchAll(MONEY_SAID)].map((m) => round2(figureOf(m[1])));
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -331,7 +349,7 @@ const NUMBER_WORDS: Record<string, number> = {
 /** Every count a sentence carries, digits or words, so "five times" is not read as zero. */
 function spokenNumbers(text: string): Set<number> {
   const out = new Set<number>();
-  for (const m of text.matchAll(/\d+(?:[.,]\d+)?/g)) out.add(round2(Number(m[0].replace(",", "."))));
+  for (const m of text.matchAll(/\d+(?:[.,]\d+)*/g)) out.add(round2(figureOf(m[0])));
   for (const m of text.matchAll(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty)\b/gi)) {
     out.add(NUMBER_WORDS[m[1].toLowerCase()]);
   }
@@ -355,13 +373,19 @@ type Figure = { name: string; flows: number; usual: string; unit: string };
  * is not stripped just because the only tool was remember_this.
  */
 export function groundAnswer(said: string, asked: string, steps: Step[]): string {
-  const done = steps.filter((s) => s.ok && s.result !== undefined);
-  const figureTool = done.some((s) => FIGURE_TOOLS.has(s.name));
-  if (!done.length || !figureTool) return said;
+  const done = steps.filter((s) => s.result !== undefined);
+  // A figure tool that ran and failed still counts as a turn about money. If it is
+  // dropped from this check, a sentence naming a payment that never happened is spoken
+  // exactly when the tool had nothing to say.
+  const figureTool = steps.some((s) => FIGURE_TOOLS.has(s.name));
+  if (!steps.length || !figureTool) return said;
 
   const nums = new Set<number>();
   const figures: Figure[] = [];
   const directions: { name: string; mode: "pay" | "exchange" }[] = [];
+  // An amount the person themselves said is not invented by the model, so repeating it
+  // while explaining a failure is allowed. Only figures from nowhere are withheld.
+  for (const m of asked.matchAll(MONEY_SAID)) nums.add(round2(figureOf(m[1])));
 
   const walk = (value: unknown, inherited = "") => {
     if (Array.isArray(value)) {
@@ -374,9 +398,9 @@ export function groundAnswer(said: string, asked: string, steps: Step[]): string
     const flows = Number(row.flows);
     const raw = row.usual_amount ?? row.usualAmount ?? row.usual;
     if (Number.isFinite(flows) && typeof raw === "string") {
-      const number = raw.match(/\d+(?:[.,]\d+)?/)?.[0];
+      const number = raw.match(/\d+(?:[.,]\d+)*/)?.[0];
       const unit = raw.match(/\b(USDC|USDU|SUI)\b/i)?.[0] ?? (typeof row.asset === "string" ? row.asset : "");
-      if (number) figures.push({ name, flows, usual: number.replace(",", "."), unit });
+      if (number) figures.push({ name, flows, usual: String(round2(figureOf(number))), unit });
     }
     if (name && typeof row.direction === "string") {
       if (row.direction === "sent") directions.push({ name, mode: "pay" });
@@ -385,11 +409,16 @@ export function groundAnswer(said: string, asked: string, steps: Step[]): string
     for (const v of Object.values(row)) {
       if (typeof v === "number" && Number.isFinite(v)) nums.add(round2(v));
       else if (typeof v === "string") {
-        for (const m of v.matchAll(/\d+(?:[.,]\d+)?/g)) nums.add(round2(Number(m[0].replace(",", "."))));
+        for (const m of v.matchAll(/\d+(?:[.,]\d+)*/g)) nums.add(round2(figureOf(m[0])));
       } else walk(v, name);
     }
   };
   done.forEach((s) => walk(s.result));
+  // A refusal carries the figure it refused, and that number is as real as one in a
+  // result. Walking the errors keeps an honest "the limit is 2 USDC" from being cut.
+  steps.forEach((s) => {
+    if (s.error) walk({ error: s.error });
+  });
 
   let out = said;
   // A sentence with a money figure no tool returned is not spoken. The rest of the
@@ -417,6 +446,23 @@ export function groundAnswer(said: string, asked: string, steps: Step[]): string
         return s.replace(new RegExp(owes.source, "gi"), d.mode === "pay" ? `You pay ${d.name}` : `You exchange with ${d.name}`);
       })
       .join(" ");
+  }
+
+  /*
+   * A ticket is not a transfer. A payment tool answers with awaiting_signature until
+   * the person's own wallet signs, and a model that reads that field and still says
+   * "I sent it" is describing money it did not move. Those sentences are replaced with
+   * what the ticket actually is, because the number checks above cannot catch a verb.
+   */
+  const waiting = steps.find((s) => (s.result as { awaiting_signature?: unknown } | undefined)?.awaiting_signature);
+  if (waiting) {
+    const claimsSent =
+      /\b(?:i|we)(?:'ve| have)?(?:\s+(?:just|already))?\s+(?:sent|paid|transferred|settled)\b|\b(?:payment|transfer|money|funds)\s+(?:has\s+|have\s+|was\s+|were\s+)?(?:been\s+)?(?:sent|paid|went through|settled|completed)\b|\b(?:it|that)(?:'s| is)\s+(?:sent|paid|done)\b/i;
+    const parts = out.split(/(?<=[.!?])\s+/);
+    const keptParts = parts.filter((s) => !claimsSent.test(s));
+    if (keptParts.length !== parts.length) {
+      out = `${keptParts.join(" ")} The payment is waiting for your signature on the ticket under this reply, so no money has moved yet.`.trim();
+    }
   }
 
   // The question asked how often and how much, the tool holds both, and the answer
@@ -505,7 +551,7 @@ async function attempt(route: Route, model: string, messages: unknown[], withToo
  * API key", so a 400 that names the key is treated as a dead route too. Everything else
  * moves politely to the next name.
  */
-async function complete(messages: unknown[], lane: "decide" | "chat", signal?: AbortSignal, withTools = true): Promise<Message> {
+async function complete(messages: unknown[], lane: "decide" | "chat", signal: AbortSignal | undefined, withTools: boolean, id: Identity): Promise<Message> {
   const failures: string[] = [];
   const dead = new Set<string>();
   for (const { route, model } of attempts(lane)) {
@@ -520,19 +566,19 @@ async function complete(messages: unknown[], lane: "decide" | "chat", signal?: A
       if (ok && message) {
         // A router reports the model it actually ran, and that is the name for the screen.
         const served = String(parsed.model ?? model);
-        if (lane === "decide") decidedBy = served;
-        else spokeBy = served;
-        turnServed = { route, model };
+        if (lane === "decide") id.decidedBy = served;
+        else id.spokeBy = served;
+        id.served = { route, model };
         // A decide round that returns no tool call is the answer, not a classification.
         // Without this, a fallback that speaks in the tool round is reported as the first
         // configured name, which is the exact lie this file exists to prevent.
-        if (lane === "decide" && !(message.tool_calls ?? []).length) spokeBy = served;
+        if (lane === "decide" && !(message.tool_calls ?? []).length) id.spokeBy = served;
         return message as Message;
       }
       failures.push(`${model} (${status || "no status"}) ${reason(parsed)}`);
       const why = reason(parsed);
       const refusedKey = status === 401 || status === 403 || (status === 400 && /api[_ ]?key|unauthenticated/i.test(why));
-      if (!turnMiss) turnMiss = { route, model, why: status === 429 ? "was rate limited" : refusedKey ? "refused the key" : "failed" };
+      if (!id.miss) id.miss = { route, model, why: status === 429 ? "was rate limited" : refusedKey ? "refused the key" : "failed" };
       // A bad key does not get better on the next model name, so the whole route is
       // dropped rather than walked. Every other failure is the provider's problem and
       // moves politely to the next name.
@@ -543,7 +589,7 @@ async function complete(messages: unknown[], lane: "decide" | "chat", signal?: A
     } catch (err) {
       const name = (err as Error).name;
       failures.push(`${model} ${name === "TimeoutError" ? `was cut off after ${Math.round(TIMEOUT / 1000)} s` : (err as Error).message}`);
-      if (!turnMiss) turnMiss = { route, model, why: name === "TimeoutError" ? "timed out" : "could not be reached" };
+      if (!id.miss) id.miss = { route, model, why: name === "TimeoutError" ? "timed out" : "could not be reached" };
     }
   }
   throw new Error(`every model in the ${lane} lane failed. ${failures.join(" · ") || "no route has a key"}`);
@@ -585,6 +631,32 @@ export function probeRoutes() {
   return [GEMINI, NVIDIA].filter((r) => r.key && !IS_STUB).map((r) => ({ id: r.id, base: r.base, models: r.models }));
 }
 
+/*
+ * A typed turn is bounded twice: each tool has a budget and the whole turn has one.
+ * Six model rounds at the per-attempt timeout can already be a minute and a half, and
+ * a tool that never answers used to hold the browser's request open until the socket
+ * gave up. A payment gets the longer budget because it waits for finality, and a
+ * timeout on one is reported as unknown rather than invited to run again.
+ */
+const TURN_BUDGET_MS = Number(process.env.TURN_BUDGET_MS ?? 180_000);
+const TOOL_BUDGET_MS = Number(process.env.TOOL_BUDGET_MS ?? 90_000);
+const MONEY_TOOLS = new Set(["pay_usdc", "pay_sui", "open_paid_link", "paid_lookup", "verify_payment"]);
+
+function withinBudget<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = new Promise<never>((_, reject) => {
+    const pending = (timer = setTimeout(() => {
+      const err = new Error(`${what} did not answer within ${Math.round(ms / 1000)} s`);
+      err.name = "TimeoutError";
+      reject(err);
+    }, Math.max(1, ms)));
+    pending.unref?.();
+  });
+  return Promise.race([work, stop]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /** Runs one user turn to completion, resolving every tool call the model asks for. */
 export async function runTurn(
   text: string,
@@ -592,8 +664,24 @@ export async function runTurn(
   maxRounds = 6,
   signal?: AbortSignal,
 ): Promise<Turn & { history: unknown[] }> {
-  turnMiss = null;
-  turnServed = null;
+  const id: Identity = { spokeBy: "", decidedBy: "", miss: null, served: null };
+  const started = Date.now();
+  const left = () => TURN_BUDGET_MS - (Date.now() - started);
+  const finish = (said: string, steps: Step[], seen: unknown[]) => {
+    // The command line and the route test read the last turn through the module
+    // globals. A web answer uses these two fields, which no other request overwrites.
+    spokeBy = id.spokeBy;
+    decidedBy = id.decidedBy;
+    turnMiss = id.miss;
+    turnServed = id.served;
+    return {
+      text: said,
+      steps,
+      model: nameFor(id.spokeBy),
+      fallback: noteFor(id.miss, id.served),
+      history: [...seen.slice(1), { role: "assistant", content: said }],
+    };
+  };
   const messages: unknown[] = [
     { role: "system", content: systemPrompt() },
     ...history,
@@ -602,36 +690,57 @@ export async function runTurn(
   const steps: Step[] = [];
 
   for (let round = 0; round < maxRounds; round++) {
+    if (left() <= 0) {
+      throw new Error(`this turn used its whole ${Math.round(TURN_BUDGET_MS / 1000)} s before it could ask the model again. Nothing more was started`);
+    }
     const last = round === maxRounds - 1;
     // Picking a tool is a classification and speaking is a sentence, so the two rounds
     // are allowed to be answered by different models. No extra call is spent to do it.
-    const message = await complete(messages, last ? "chat" : "decide", signal, !last);
+    const cutOff = AbortSignal.timeout(Math.max(1, left()));
+    const message = await complete(messages, last ? "chat" : "decide", signal ? AbortSignal.any([signal, cutOff]) : cutOff, !last, id);
     const calls = last ? [] : (message.tool_calls ?? []);
     if (calls.length === 0) {
       const said = groundAnswer(tidy(message.content?.trim() || "(the model returned nothing to say)"), text, steps);
       // The tool results have to travel with the answer. A next turn that cannot see
       // which address it already paid for is the one way this product double spends.
-      return { text: said, steps, history: [...messages.slice(1), { role: "assistant", content: said }] };
+      return finish(said, steps, messages);
     }
 
     messages.push({ role: "assistant", content: message.content ?? "", tool_calls: calls });
     for (const call of calls) {
       const name = call.function?.name ?? "";
       let args: Record<string, unknown> = {};
+      let malformed = "";
       try {
-        args = JSON.parse(call.function?.arguments || "{}");
-      } catch {
-        args = {};
+        const raw = call.function?.arguments;
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          malformed = `the arguments for ${name || "this tool"} were not a JSON object, so nothing ran`;
+        } else args = parsed;
+      } catch (err) {
+        // Swallowing this left the tool reading "undefined" as a name. The model gets the
+        // parse failure back and can call again with arguments that are actually JSON.
+        malformed = `the arguments for ${name || "this tool"} were not valid JSON (${(err as Error).message}), so nothing ran`;
       }
       const step: Step = { name, args, ok: false };
-      if (!TOOL_NAMES.includes(name)) {
+      if (malformed) {
+        step.error = malformed;
+      } else if (!TOOL_NAMES.includes(name)) {
         step.error = `this build has no ${name} tool, so nothing happened`;
+      } else if (left() <= 0) {
+        step.error = `this turn ran out of time before ${name} could run, so nothing was started`;
       } else {
+        const money = MONEY_TOOLS.has(name);
+        const budget = Math.min(money ? TOOL_BUDGET_MS * 2 : TOOL_BUDGET_MS, Math.max(1, left()));
         try {
-          step.result = await runTool(name, args);
+          step.result = await withinBudget(runTool(name, args), budget, money ? `the ${name} payment` : name);
           step.ok = true;
         } catch (err) {
-          step.error = (err as Error).message;
+          const e = err as Error;
+          step.error =
+            e.name === "TimeoutError" && money
+              ? `${e.message}. The money may already be in flight, so do not call ${name} again for it. Read the history for that person and say what the chain shows`
+              : e.message;
         }
       }
       steps.push(step);

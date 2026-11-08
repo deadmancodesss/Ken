@@ -58,6 +58,11 @@ function checked(to: string, baseUnits: bigint, asset: PayAsset): void {
  */
 const SUI_GAS_RESERVE = 5_000_000n;
 
+/* The coin listing is paged by the gateway. The cap is a guard against reading a
+   dust wallet forever, not an expectation: a normal wallet finishes on page one. */
+const COIN_PAGE = 100;
+const COIN_PAGES = 10;
+
 /*
  * A wallet transaction is read back by the extension with whichever Sui SDK that
  * extension shipped. The newest SDK now builds a SUI transfer from the address balance,
@@ -65,15 +70,27 @@ const SUI_GAS_RESERVE = 5_000_000n;
  * "Invalid input" before showing anyone a popup. Ordinary coin objects are the shape
  * every generation reads, so a payment spends those whenever they cover it.
  */
-async function spendableCoins(
+export async function spendableCoins(
   client: ReturnType<typeof payClient>,
   owner: string,
   coinType: string,
   need: bigint,
   single = false,
 ): Promise<{ objectId: string; version: string; digest: string; balance: string }[]> {
-  const page: any = await client.core.listCoins({ owner, coinType });
-  const coins = (page?.objects ?? [])
+  // Coins come back one page at a time, and a wallet that has been paid a few times
+  // holds more than one page. Reading only the first page made the rest invisible,
+  // which showed up as a wallet that could not spend a balance it clearly held.
+  const seen: any[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < COIN_PAGES; page++) {
+    const listed: any = await client.core.listCoins({ owner, coinType, limit: COIN_PAGE, cursor });
+    seen.push(...(listed?.objects ?? []));
+    if (!listed?.hasNextPage || !listed.cursor) break;
+    cursor = listed.cursor;
+    if (single && seen.some((c: any) => BigInt(c?.balance ?? 0n) >= need)) break;
+    if (!single && seen.reduce((sum: bigint, c: any) => sum + BigInt(c?.balance ?? 0n), 0n) >= need) break;
+  }
+  const coins = seen
     .filter((c: any) => c?.objectId && BigInt(c.balance ?? 0) > 0n)
     .sort((a: any, b: any) => (BigInt(b.balance) > BigInt(a.balance) ? 1 : -1));
   if (single) return coins[0] && BigInt(coins[0].balance) >= need ? [coins[0]] : [];

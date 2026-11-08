@@ -256,6 +256,16 @@ export function openLive(handlers) {
   let busy = false;
   let dead = false;
   let dropping = false;
+  // A server that is down or redeploying leaves the browser retrying an event stream
+  // that never opens, with the microphone already hot. The guard turns that into a
+  // sentence the room can act on instead of a spinner that never ends.
+  const openGuard = setTimeout(() => {
+    if (id || dead) return;
+    dead = true;
+    es.close();
+    handlers.onError?.("the live call did not open in 15 seconds. Check the server and start again");
+    handlers.onClose?.("the live call did not open");
+  }, 15_000);
 
   const pump = async () => {
     if (busy || !id || dead) return;
@@ -287,6 +297,7 @@ export function openLive(handlers) {
   es.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.kind === "open") {
+      clearTimeout(openGuard);
       id = m.id;
       handlers.onOpen?.(m.model, m.voice);
       return;
@@ -358,6 +369,7 @@ export function openLive(handlers) {
      * issued is not a leak waiting behind it.
      */
     hangup() {
+      clearTimeout(openGuard);
       dead = true;
       es.close();
       if (!id) return Promise.resolve();

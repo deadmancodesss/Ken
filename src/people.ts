@@ -84,7 +84,9 @@ async function roster(): Promise<Person[]> {
     })
     .catch((err: any) => {
       console.warn(`walrus recall unavailable (${(err as Error).message}), using cached or empty roster`);
-      return cached?.rows ?? [];
+      // A failed read for one wallet must not answer with the roster of the wallet that
+      // was open before it, even when the cache still holds one from seconds ago.
+      return cached && cached.namespace === namespace ? cached.rows : [];
     })
     .finally(() => {
       if (loading?.read === read) loading = null;

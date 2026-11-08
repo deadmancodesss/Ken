@@ -671,13 +671,20 @@ function personalMessageSignerOf(w, account) {
 }
 
 const WATCHED_WALLETS = new WeakSet();
+/* More than one thing listens to a wallet: the masthead follows a network change and
+   a switch dialogue waits for the same event. Each registration used to attach its own
+   callback, and the second one was dropped because the wallet was already watched, so
+   the dialogue waited for an event nobody was listening for. */
+const WALLET_LISTENERS = new Set();
 
 /**
  * Subscribes to Wallet Standard `standard:events` (`change`) across all discovered Sui
  * wallets so that if a user switches networks or accounts directly inside their wallet
  * extension (Slush, Suiet, Nightly, etc.), the page hears the event immediately.
+ * Returns a function that removes this listener, for waits that end.
  */
 export function watchWalletEvents(onChange) {
+  if (typeof onChange === "function") WALLET_LISTENERS.add(onChange);
   for (const w of dedupe()) {
     if (WATCHED_WALLETS.has(w)) continue;
     const events = w.features?.["standard:events"];
@@ -696,18 +703,28 @@ export function watchWalletEvents(onChange) {
         const hasTestnet = rawChains.includes("sui:testnet");
         const hasMainnet = rawChains.includes("sui:mainnet");
         const singleNet = hasTestnet && !hasMainnet ? "testnet" : hasMainnet && !hasTestnet ? "mainnet" : null;
-        onChange?.({
+        const ev = {
           wallet: w,
           name: label(w),
           chains: rawChains,
           singleNet,
           address: props?.accounts?.[0] ? addressOf(props.accounts[0]) : "",
-        });
+        };
+        for (const listener of [...WALLET_LISTENERS]) {
+          try {
+            listener(ev);
+          } catch {
+            /* one page listener must not starve the others */
+          }
+        }
       });
     } catch {
       /* ignore wallets whose event emitter throws on registration */
     }
   }
+  return () => {
+    if (typeof onChange === "function") WALLET_LISTENERS.delete(onChange);
+  };
 }
 
 /**
@@ -895,6 +912,39 @@ export async function signX402({ address, chain, bytesBase64, onStatus }) {
 }
 
 /**
+ * Proves that this browser can sign for the address it is about to claim. An address
+ * string is public, so without this any visitor could type someone else's and read
+ * that wallet's memory. The challenge is issued per seat, one use, and moves no money.
+ */
+export async function proveWallet({ address, chain, onStatus }) {
+  const found = await holderFor(address, onStatus);
+  const signMsg = personalMessageSignerOf(found.wallet, found.account);
+  if (!signMsg) {
+    throw new Error(`${label(found.wallet)} publishes no way to sign a message, so this page cannot confirm the address belongs to it. Try a wallet that can sign a message`);
+  }
+  onStatus?.(`checking that ${label(found.wallet)} holds ${short(found.at)}`);
+  const res = await fetch("/wallet/challenge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address: found.at }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+  const bytes = new TextEncoder().encode(String(body.message || ""));
+  let signed;
+  try {
+    signed = await signMsg(bytes, chain || found.chain);
+  } catch (err) {
+    throw new Error(`${label(found.wallet)} did not sign the wallet proof: ${clean(err) || "the popup closed"}`);
+  }
+  const signature = signed?.signature ?? "";
+  if (!signature) {
+    throw new Error(`${label(found.wallet)} closed without signing the wallet proof, so this page cannot confirm the address`);
+  }
+  return { message: String(body.message || ""), bytes: String(signed?.bytes ?? ""), signature: String(signature) };
+}
+
+/**
  * Forces a real wallet extension popup confirmation (plus active-chain check via
  * `standard:events`) before allowing the page to switch between `testnet` and `mainnet`.
  * If the user rejects the popup or leaves their wallet on the wrong chain, this throws
@@ -918,19 +968,23 @@ export async function confirmNetworkSwitch({ address, targetNet, onStatus, contr
   if (!supportsTarget(found.account)) {
     onStatus?.(`waiting for ${walletName} to switch to Sui ${targetNet}…`);
     let switched = false;
-    watchWalletEvents((ev) => {
+    const stopWatching = watchWalletEvents((ev) => {
       if (ev.chains.includes(targetChain)) switched = true;
     });
-    const started = Date.now();
-    while (!supportsTarget(found.account) && !switched) {
-      if (control.cancelled) throw new Error(`stayed on the previous network because ${walletName} was not switched to ${targetNet}`);
-      if (Date.now() - started > 60000) {
-        throw new Error(`${walletName} is still set to ${found.chain} instead of ${targetChain}. Switch the network inside ${walletName} first, then try again`);
+    try {
+      const started = Date.now();
+      while (!supportsTarget(found.account) && !switched) {
+        if (control.cancelled) throw new Error(`stayed on the previous network because ${walletName} was not switched to ${targetNet}`);
+        if (Date.now() - started > 60000) {
+          throw new Error(`${walletName} is still set to ${found.chain} instead of ${targetChain}. Switch the network inside ${walletName} first, then try again`);
+        }
+        await new Promise((r) => setTimeout(r, 400));
+        await resume();
+        const latest = holders().find((p) => p.at.toLowerCase() === String(address).toLowerCase());
+        if (latest) found = latest;
       }
-      await new Promise((r) => setTimeout(r, 400));
-      await resume();
-      const latest = holders().find((p) => p.at.toLowerCase() === String(address).toLowerCase());
-      if (latest) found = latest;
+    } finally {
+      stopWatching();
     }
   }
 

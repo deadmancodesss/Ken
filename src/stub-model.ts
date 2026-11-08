@@ -70,7 +70,13 @@ function spoken(n: string | number): string {
 /** Nobody says "second of November" either. */
 function when(iso: string | null): string {
   if (!iso) return "a while ago";
-  const days = Math.round((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(iso)) / 86_400_000);
+  const then = new Date(Date.parse(iso));
+  const now = new Date();
+  // A day is a calendar day on the person's clock. Subtracting UTC midnights
+  // called an 11 pm payment "tomorrow" in one direction and "today" a day late
+  // in the other.
+  const start = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((start(now) - start(then)) / 86_400_000);
   if (days <= 0) return "today";
   if (days === 1) return "yesterday";
   if (days < 7) return `${days} days ago`;

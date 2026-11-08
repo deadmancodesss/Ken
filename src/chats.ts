@@ -19,7 +19,7 @@ import { session } from "./session.js";
  * owner::session pair. Voice and text write to the same pair, which is what lets a
  * spoken call continue as a typed question without repeating itself.
  */
-export type StoredStep = { name: string; ok: boolean; error?: string; result?: unknown };
+export type StoredStep = { name: string; args?: Record<string, unknown>; ok: boolean; error?: string; result?: unknown };
 export type ChatTurn = { id?: number; asked: string; said: string; steps: StoredStep[]; at: number };
 export type ChatRecord = ChatTurn & { delta: unknown[] };
 export type ChatSession = { id: string; title: string; created: number; updated: number; turns: number };
@@ -55,6 +55,42 @@ export function autoTitle(asked: string): string {
   const cut = clean.slice(0, TITLE_CHARS);
   const space = cut.lastIndexOf(" ");
   return `${(space > 24 ? cut.slice(0, space) : cut).trim()}…`;
+}
+
+/**
+ * The voice path stores what it heard and what it said, but the model also called
+ * tools along the way. A delta of only the two texts leaves the next turn blind to a
+ * payment that failed and to an address it never received, so each step is written as
+ * the same assistant call and tool reply the typed page keeps. The live socket speaks
+ * Gemini's shape and carries no OpenAI call id, so one is made here. The id only has
+ * to be unique inside this turn, because a tool reply is matched to it right below.
+ */
+export function liveDelta(
+  asked: string,
+  said: string,
+  steps: { name: string; args?: Record<string, unknown>; ok: boolean; result?: unknown; error?: string }[],
+  at: number,
+): unknown[] {
+  const calls = steps.map((s, i) => ({
+    id: `live-${at}-${i}`,
+    type: "function",
+    function: { name: s.name, arguments: JSON.stringify(s.args ?? {}) },
+  }));
+  const exchange = calls.length
+    ? [
+        { role: "assistant", content: "", tool_calls: calls },
+        ...steps.map((s, i) => ({
+          role: "tool",
+          tool_call_id: calls[i].id,
+          content: JSON.stringify(s.ok ? s.result ?? null : { error: s.error || "the tool failed" }),
+        })),
+      ]
+    : [];
+  return [
+    ...(asked ? [{ role: "user", content: asked }] : []),
+    ...exchange,
+    ...(said ? [{ role: "assistant", content: said }] : []),
+  ];
 }
 
 export function openChats(file: string) {
@@ -117,11 +153,17 @@ export function openChats(file: string) {
   }
 
   const insert = db.prepare("insert into turns (chat, asked, said, steps, delta, at) values (?, ?, ?, ?, ?, ?)");
-  const recent = db.prepare("select id, asked, said, steps, at from turns where chat = ? order by id desc limit ?");
-  const deltas = db.prepare("select delta from turns where chat = ? order by id desc limit ?");
+  /*
+   * A voice turn is written when the call ends but stamped with the second it was
+   * spoken, so the row id and the clock disagree after a conversation that continued
+   * in text. Reading by id would put the call after messages it came before. The row
+   * id is only the tie breaker for two turns stamped in the same millisecond.
+   */
+  const recent = db.prepare("select id, asked, said, steps, at from turns where chat = ? order by at desc, id desc limit ?");
+  const deltas = db.prepare("select delta from turns where chat = ? order by at desc, id desc limit ?");
   const count = db.prepare("select count(*) as n from turns where chat = ?");
   const wipe = db.prepare("delete from turns where chat = ?");
-  const firstAsked = db.prepare("select asked from turns where chat = ? order by id asc limit 1");
+  const firstAsked = db.prepare("select asked from turns where chat = ? order by at asc, id asc limit 1");
   const anyTurns = db.prepare("select count(*) as n from turns where chat = ?");
   const moveTurns = db.prepare("update turns set chat = ? where chat = ?");
   const closeTurn = db.prepare(
@@ -254,9 +296,12 @@ export function openChats(file: string) {
     },
 
     create(owner: string, title = NEW_TITLE, at = Date.now()): ChatSession {
-      const id = randomUUID().slice(0, 8);
-      make.run(id, owner, title || NEW_TITLE, at, at);
-      return { id, title: title || NEW_TITLE, created: at, updated: at, turns: 0 };
+      // Eight hex characters is 32 bits shared by every thread one wallet makes. Twelve
+      // keeps a guessed id out of reach without making a name nobody can read.
+      const id = randomUUID().slice(0, 12);
+      const clean = String(title ?? "").replace(/\s+/g, " ").trim().slice(0, 80) || NEW_TITLE;
+      make.run(id, owner, clean, at, at);
+      return { id, title: clean, created: at, updated: at, turns: 0 };
     },
 
     sessions(owner: string): ChatSession[] {

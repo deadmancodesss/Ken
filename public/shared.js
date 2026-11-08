@@ -1,7 +1,7 @@
 // Shared behaviour for every page: the masthead state, the wallet handshake and
 // the scroll reveals. Keeping it here is what stops the app and the landing page
 // from disagreeing about what the same chip does.
-import { discover, connect, resume, whyNoSuiWallet, confirmNetworkSwitch, watchWalletEvents } from "./wallet.js";
+import { discover, connect, resume, whyNoSuiWallet, confirmNetworkSwitch, watchWalletEvents, proveWallet } from "./wallet.js";
 import { dialogue, walletAsked, walletWaiting, walletOpen, walletFailed } from "./dialogue.js";
 
 // The four word-shaping helpers live in format.js, so a node test can read them
@@ -21,6 +21,16 @@ export const payNetwork = () => settleNet;
 export const payChain = () => `sui:${settleNet}`;
 
 export const $ = (id) => document.getElementById(id);
+
+/* The server cannot know which clock a visitor reads. The offset goes in a cookie
+   because every later request, including the voice socket, carries it back without
+   any page passing it by hand. getTimezoneOffset counts minutes behind UTC, so the
+   value stored is how far east the browser is. */
+try {
+  document.cookie = `tr_tz=${-new Date().getTimezoneOffset()}; Path=/; SameSite=Lax; Max-Age=31536000`;
+} catch {
+  /* a browser that refuses the cookie falls back to the server's own clock */
+}
 
 /**
  * A receipt is only useful if the long string on it can leave the screen, and a
@@ -292,10 +302,15 @@ export async function speakRemote(text, { onLevel, onEnd, onVoice } = {}) {
 }
 
 async function post(payload) {
+  // A wallet claim carries a one use signature from the account it names. The address
+  // alone is public, so it cannot be the thing that decides whose memory is read.
+  const proof = payload.address && !payload.demo
+    ? await proveWallet({ address: payload.address, chain: payload.chain })
+    : {};
   const res = await fetch("/wallet", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, ...proof }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error || "http " + res.status);
@@ -919,6 +934,57 @@ export function mountNetwork(onChange) {
 
   watchWalletEvents(async (ev) => {
     if (!connectedWallet) return;
+    /* Switching accounts inside the extension changes which wallet this person is
+       holding without telling the page. Nothing was signed for the new one, so it
+       cannot become this seat's wallet from a background event. The old wallet is
+       let go at once and the new one waits for a click, because a signature popup
+       that appears without one is the kind of window people learn to dismiss. */
+    if (ev.address && ev.address.toLowerCase() !== connectedWallet.toLowerCase()) {
+      const before = connectedWallet;
+      connectedWallet = "";
+      let released = false;
+      try {
+        const left = await post({ demo: true });
+        released = left?.source === "demo" || left?.source === "none";
+      } catch {
+        /* the sheet below says the server kept the old address */
+      }
+      const btn = $("connect");
+      if (released) {
+        forgetBrowser();
+        if (btn) {
+          btn.textContent = "Connect wallet";
+          btn.dataset.mode = "";
+          btn.classList.remove("on");
+          btn.removeAttribute("title");
+        }
+        syncWalletGate(false);
+        document.dispatchEvent(new CustomEvent("wallet:changed"));
+        onChange?.();
+      }
+      dialogue({
+        who: "mouse",
+        tone: "bad",
+        kicker: "the wallet changed its account",
+        title: released ? "this page let go of the old account" : "this page may still read the old account",
+        line: released
+          ? `The extension is now holding ${shortAddr(ev.address)}, and nothing here was proved for it. Connect it once and every read belongs to it.`
+          : `The extension is now holding ${shortAddr(ev.address)}, but the server would not let go of ${shortAddr(before)}. Reload the page before doing anything with money.`,
+        beats: [
+          { text: `the account this page had been speaking for was ${shortAddr(before)}`, mark: "dot" },
+          ...(released
+            ? [{ text: "the wallet name and the stored brief from the old account were dropped with it", mark: "check" }]
+            : [{ text: "the old address is still the account the server answers from", mark: "cross" }]),
+        ],
+        stamp: released ? "let go" : "still stale",
+        actions: [
+          released
+            ? { label: "connect this account", primary: true, onClick: () => $("connect")?.click() }
+            : { label: "reload the page", primary: true, onClick: () => location.reload() },
+        ],
+      });
+      return;
+    }
     if (ev.singleNet && ev.singleNet !== current) {
       try {
         const res = await fetch("/network", {

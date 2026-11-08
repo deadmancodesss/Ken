@@ -8,7 +8,7 @@ import { noteResourceId, receiptResourceId, resourceId } from "./resources.js";
 import { note } from "./notes.js";
 import { hold } from "./pending.js";
 import { capOwner, chainMismatch, session } from "./session.js";
-import { currentSeat } from "./seat.js";
+import { currentSeat, localDay } from "./seat.js";
 import { buildStatement } from "./report.js";
 import { PAY_CHAIN, PAY_NET, allHoldings, formatAmount } from "./chain.js";
 import { usdPrices } from "./price.js";
@@ -505,7 +505,15 @@ export const TOOLS: Tool[] = [
     parameters: { name: { type: "STRING", description: "The person's name as the user said it" } },
     required: ["name"],
     run: async (a) => {
-      const name = String(a.name).trim();
+      // A missing argument used to become the literal string "undefined", which then
+      // looked up a person by that name and answered with a memory of nobody.
+      const name = String(a.name ?? "").trim();
+      if (!name) {
+        return {
+          needs_recipient: true,
+          note: "No name was given, so nothing was looked up and no field is open. Ask who they mean in one short sentence.",
+        };
+      }
       const m = await matchPerson(name);
       // A miss is what puts the address field on screen. The page reads this shape, so
       // the miss is a result rather than a thrown error the model would swallow.
@@ -529,7 +537,11 @@ export const TOOLS: Tool[] = [
     positional: ["text"],
     parameters: { text: { type: "STRING", description: "A single self-contained fact" } },
     required: ["text"],
-    run: (a) => remember(String(a.text)).then((blob) => ({ stored: blob })),
+    run: (a) => {
+      const fact = String(a.text ?? "").trim();
+      if (!fact) throw new Error("remember_this needs one self-contained fact, and nothing was given");
+      return remember(fact).then((blob) => ({ stored: blob }));
+    },
   },
   {
     name: "what_do_i_remember",
@@ -544,7 +556,16 @@ export const TOOLS: Tool[] = [
        * the rest is matched on the words that carry meaning, which is also the only
        * place a misspelled name is worth catching.
        */
-      const spoken = String(a.query);
+      const spoken = String(a.query ?? "").trim();
+      if (!spoken) {
+        return {
+          asked_for: "",
+          people: [],
+          memories: [],
+          matched: 0,
+          note: "Nothing was searched because no words were given. Ask what they want remembered in one short sentence.",
+        };
+      }
       const asked = await canonicalNames(spoken);
       const query = asked.toLowerCase();
       const words = [...new Set(query.split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !FILLER.has(w)))];
@@ -724,10 +745,29 @@ if (paymentsEnabled()) {
    */
   async function payPerson(a: Record<string, unknown>, asset: PayAsset) {
     const tool = asset === "SUI" ? "pay_sui" : "pay_usdc";
-    const raw = String(a.to).trim();
+    // String(undefined) is the name "undefined", which would otherwise be looked up
+    // as a person and drawn in the address field as if someone were called that.
+    const raw = String(a.to ?? "").trim();
     const amount = Number(a.amount);
-    if (!raw) throw new Error("who should the money go to? Give a name or a full Sui address");
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error("amount must be a positive number");
+    // A refused call that throws reads as a broken tool and leaves the page with no
+    // result to draw from, which is how a model ends up describing a field that was
+    // never there. These two refusals are ordinary states of the conversation, so
+    // they say what is missing and say plainly that nothing opened.
+    if (!raw) {
+      return {
+        needs_recipient: true,
+        asset,
+        note: "No recipient is known, so nothing was built and no field is open. Ask for the person's name or full 0x Sui address, and for the amount if it is still missing, in one short sentence. Do not say a field, ticket or receipt exists, and do not say money moved.",
+      };
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return {
+        needs_amount: true,
+        who: raw,
+        asset,
+        note: "The amount is missing, so nothing was built and no field is open. Ask for the amount in one short sentence. Do not say a field, ticket or receipt exists, and do not say money moved.",
+      };
+    }
 
     // Exact match only, on purpose. Reading memory can afford a guess about who a
     // speaker meant, moving money to the wrong person cannot.
@@ -788,7 +828,7 @@ if (paymentsEnabled()) {
     // A duplicate is the same settled transfer, so writing it to Walrus again would
     // make one payment read as two in the very history that is meant to be trusted.
     if (!payment.duplicate) {
-      await remember(`Paid ${payment.amount} ${payment.asset} to ${address}${name ? ` (${name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${payment.digest}`);
+      await remember(`Paid ${payment.amount} ${payment.asset} to ${address}${name ? ` (${name})` : ""} on ${localDay()}. tx ${payment.digest}`);
     }
     return {
       ...payment,
@@ -919,7 +959,7 @@ if (paymentsEnabled()) {
     parameters: { digest: { type: "STRING", description: "The base58 Sui transaction digest that was claimed, exactly as it was given" } },
     required: ["digest"],
     run: async (a) => {
-      const digest = String(a.digest).trim();
+      const digest = String(a.digest ?? "").trim();
       const resource = receiptResourceId(digest);
       const payer = session().wallet;
 
@@ -997,7 +1037,7 @@ if (paymentsEnabled()) {
     parameters: { id: { type: "STRING", description: "The link id from the address, the twelve characters after /ask/, exactly as it was given" } },
     required: ["id"],
     run: async (a) => {
-      const id = String(a.id).trim().toLowerCase();
+      const id = String(a.id ?? "").trim().toLowerCase();
       const resource = noteResourceId(id);
       const payer = session().wallet;
 

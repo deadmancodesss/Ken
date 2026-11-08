@@ -647,6 +647,25 @@
       function wirePay(r) {
         const btn = $("pay");
         if (!btn || btn.disabled) return;
+        // A digest that has come back from the wallet is money already in flight. Every
+        // later press reads that same transaction again, because preparing a fresh one
+        // would sign a second transfer for a request the first one may have already paid.
+        let sent = "";
+        const readChain = async () => {
+          const res = await fetch(`/requests/${r.id}/settle`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ digest: sent }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          return body;
+        };
+        const paid = (settled) => {
+          draw(paidView(settled.request));
+          wireReceipt(settled.request);
+          loadMeta();
+        };
         btn.onclick = async () => {
           if (st?.session?.source !== "wallet") {
             $("connect").click();
@@ -654,8 +673,13 @@
           }
           const hint = $("payHint");
           btn.disabled = true;
-          btn.textContent = "building…";
           try {
+            if (sent) {
+              btn.textContent = "reading the chain again…";
+              paid(await readChain());
+              return;
+            }
+            btn.textContent = "building…";
             const prep = await fetch(`/requests/${r.id}/prepare`, { method: "POST" }).then(async (res) => {
               const body = await res.json();
               if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
@@ -665,24 +689,16 @@
             btn.textContent = "check your wallet…";
             const signed = await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
             if (!signed.digest) throw new Error("the wallet returned no transaction digest");
+            sent = signed.digest;
             btn.textContent = "reading the chain…";
-            const settled = await fetch(`/requests/${r.id}/settle`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ digest: signed.digest }),
-            }).then(async (res) => {
-              const body = await res.json();
-              if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
-              return body;
-            });
-            draw(paidView(settled.request));
-            wireReceipt(settled.request);
-            loadMeta();
+            paid(await readChain());
           } catch (err) {
-            btn.disabled = false;
-            btn.textContent = "Pay with my wallet";
             hint.className = "hint bad";
             hint.textContent = err.message;
+            btn.disabled = false;
+            // The digest is kept even when the read fails, so the next press checks the
+            // chain rather than asking the wallet for a payment that may already exist.
+            btn.textContent = sent ? "Check the payment again" : "Pay with my wallet";
           }
         };
       }

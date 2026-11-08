@@ -15,6 +15,8 @@ export type Seat = {
   pending: Pending | null;
   /** The owner::session key of the thread this request is reading or writing. */
   chat: string | null;
+  /** Minutes east of UTC as this browser reports them, refreshed on every request. */
+  tz: number | null;
   seen: number;
 };
 
@@ -42,7 +44,7 @@ export function seatFor(id: string, restore?: () => Session | null): Seat {
     kept.seen = Date.now();
     return kept;
   }
-  const fresh: Seat = { id, session: restore?.() ?? null, pending: null, chat: null, seen: Date.now() };
+  const fresh: Seat = { id, session: restore?.() ?? null, pending: null, chat: null, tz: null, seen: Date.now() };
   byId.set(id, fresh);
   return fresh;
 }
@@ -66,4 +68,20 @@ export function sweepSeats(maxAgeMs = 24 * 60 * 60 * 1000): number {
 
 export function seatsOpen(): number {
   return byId.size;
+}
+
+/**
+ * The calendar day on the clock of the person using this seat. The browser reports
+ * its offset in a cookie, because a person at 1 am in one country is still on
+ * yesterday in UTC and the agent would date a payment a day it did not happen.
+ * A command line has no seat and falls back to the machine's own clock.
+ */
+export function localDay(at: Date = new Date()): string {
+  const east = currentSeat()?.tz;
+  const shifted = typeof east === "number";
+  const clock = shifted ? new Date(at.getTime() + east * 60_000) : at;
+  const year = shifted ? clock.getUTCFullYear() : clock.getFullYear();
+  const month = shifted ? clock.getUTCMonth() : clock.getMonth();
+  const day = shifted ? clock.getUTCDate() : clock.getDate();
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }

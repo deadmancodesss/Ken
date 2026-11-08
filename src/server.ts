@@ -25,8 +25,8 @@ import { capOwner, chainMismatch, session, useDemoWallet, useNetwork, useWallet 
 import { tally } from "./earn.js";
 import { buildStatement, cardSvg, previewStatement, type Range } from "./report.js";
 import { liveState, startLive, type LiveCall, type LiveEvent } from "./live.js";
-import { chatKey, DEFAULT_CHAT_DB, FORM_KINDS, openChats } from "./chats.js";
-import { currentSeat, seatId, seatFor, seatsOpen, sweepSeats, within } from "./seat.js";
+import { chatKey, DEFAULT_CHAT_DB, FORM_KINDS, liveDelta, openChats } from "./chats.js";
+import { currentSeat, localDay, seatId, seatFor, seatsOpen, sweepSeats, within } from "./seat.js";
 import { savedSession } from "./seat-store.js";
 import { forgetTransfers, monthSpend, recentTransfers } from "./history.js";
 import { capMeter, capUsdc, clearCap, setCapBase, usdcToBase } from "./cap.js";
@@ -72,6 +72,27 @@ const chats = (() => {
 const calls = new Map<string, { call: LiveCall; seat: string }>();
 
 const balanceCache = new Map<string, { at: number; body: unknown }>();
+
+/*
+ * An address posted by a page is a claim, not a fact. Without a signature behind it a
+ * visitor could store somebody else's wallet under their own seat and read that
+ * person's balance, memories and inbox. Each challenge is bound to this browser's seat,
+ * expires in two minutes, and is spent by the one wallet switch that uses it.
+ */
+const walletChallenges = new Map<string, { address: string; message: string; at: number }>();
+const CHALLENGE_MS = 120_000;
+
+/*
+ * One answer at a time per thread. Two presses on the send button used to start two
+ * model turns over the same history, and both could decide to move the same money.
+ * The lock is held for the whole turn, tool calls included, and released in a finally
+ * so a failed turn does not leave the conversation unable to speak again.
+ */
+const turnsRunning = new Set<string>();
+
+function sweepChallenges(now: number) {
+  for (const [key, open] of [...walletChallenges]) if (now - open.at > CHALLENGE_MS) walletChallenges.delete(key);
+}
 
 /* An open call is a model conversation started under the previous wallet's name,
    and it goes on speaking that person's money until the socket closes. Ending this
@@ -221,6 +242,13 @@ const server = createServer((req, res) => {
     res.setHeader("set-cookie", `tr_seat=${found.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
   }
   const seat = seatFor(found.id, () => savedSession(found.id));
+  // The browser's clock rides along in a cookie so a "today" written into memory or
+  // into the agent's own prompt is the person's day, not the server's UTC day.
+  const tz = String(req.headers.cookie ?? "").match(/(?:^|;\s*)tr_tz=(-?\d{1,4})\b/);
+  if (tz) {
+    const minutes = Number(tz[1]);
+    if (Number.isFinite(minutes) && Math.abs(minutes) <= 14 * 60) seat.tz = minutes;
+  }
   // The seat travels with the request through every await, so a tool three calls deep
   // still reads the wallet of the browser that asked rather than whichever one spoke
   // last. The catch is here because a rejected promise must still answer the browser.
@@ -273,7 +301,7 @@ async function handle(req: any, res: any) {
     "/report.json",
   ];
   const isGatedApi =
-    GATED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + "/")) &&
+    GATED_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p.endsWith("/") ? p : p + "/")) &&
     !(req.method === "GET" && (url.pathname === "/ask" || /^\/ask\/[A-Za-z0-9_-]{1,16}$/.test(url.pathname)));
 
   try {
@@ -291,38 +319,46 @@ async function handle(req: any, res: any) {
       const owner = chatKey();
       const thread = threadFor(owner, wanted);
       const key = thread.key;
-      const past = chats.history(key);
-      const turn = await runTurn(asked, past);
-      // A demo payment moves coins in the same wallet the page reads, and the balance
-      // answer is held for twenty seconds. Without this, the rail refreshed after the
-      // turn still prints the number from before the money moved.
-      if (turn.steps.some((s) => s.name === "pay_usdc" && s.ok)) {
-        balanceCache.clear();
-        forgetTransfers();
+      if (turnsRunning.has(key)) {
+        return json(res, 409, { error: "this conversation is still answering the previous question. Wait for that answer before sending another" });
       }
-      // The delta is what this turn added to the model's own history, kept beside the
-      // words on screen so a later turn can be given the tool results it needs. Storing
-      // the whole history per row would make the file grow quadratically, and storing
-      // only the words would let the agent pay twice for one forgotten address.
-      const at = Date.now();
-      const turnId = chats.append(key, {
-        asked,
-        said: turn.text,
-        steps: turn.steps,
-        delta: turn.history.slice(past.length),
-        at,
-      });
-      chats.touch(owner, thread.id, asked);
-      return json(res, 200, {
-        text: turn.text,
-        steps: turn.steps,
-        session: thread.id,
-        turnId,
-        at,
-        rounds: chats.count(key),
-        model: modelName(),
-        fallback: fallbackNote(),
-      });
+      turnsRunning.add(key);
+      try {
+        const past = chats.history(key);
+        const turn = await runTurn(asked, past);
+        // A demo payment moves coins in the same wallet the page reads, and the balance
+        // answer is held for twenty seconds. Without this, the rail refreshed after the
+        // turn still prints the number from before the money moved.
+        if (turn.steps.some((s) => (s.name === "pay_usdc" || s.name === "pay_sui") && s.ok)) {
+          balanceCache.clear();
+          forgetTransfers();
+        }
+        // The delta is what this turn added to the model's own history, kept beside the
+        // words on screen so a later turn can be given the tool results it needs. Storing
+        // the whole history per row would make the file grow quadratically, and storing
+        // only the words would let the agent pay twice for one forgotten address.
+        const at = Date.now();
+        const turnId = chats.append(key, {
+          asked,
+          said: turn.text,
+          steps: turn.steps,
+          delta: turn.history.slice(past.length),
+          at,
+        });
+        chats.touch(owner, thread.id, asked);
+        return json(res, 200, {
+          text: turn.text,
+          steps: turn.steps,
+          session: thread.id,
+          turnId,
+          at,
+          rounds: chats.count(key),
+          model: turn.model,
+          fallback: turn.fallback,
+        });
+      } finally {
+        turnsRunning.delete(key);
+      }
     }
 
     /*
@@ -418,9 +454,10 @@ async function handle(req: any, res: any) {
 
     /*
      * A completed live turn arrives here after the call page has already heard both
-     * sides. It joins the same thread the typed page reads, with a small delta so a
-     * later typed question can build on what was said out loud. The steps are kept for
-     * the trace under the message, and nothing from the audio itself is stored.
+     * sides. It joins the same thread the typed page reads, with the tool exchanges
+     * kept so a later typed question can see what the call actually did. The steps are
+     * also kept for the trace under the message, and nothing from the audio itself is
+     * stored.
      */
     if (req.method === "POST" && url.pathname === "/live/turn") {
       const body = JSON.parse((await readBody(req)) || "{}");
@@ -433,7 +470,13 @@ async function handle(req: any, res: any) {
         ? body.steps
             .filter((s: any) => s && typeof s.name === "string")
             .slice(-20)
-            .map((s: any) => ({ name: s.name, ok: !!s.ok, ...(s.error ? { error: String(s.error).slice(0, 300) } : {}), ...(s.result !== undefined ? { result: s.result } : {}) }))
+            .map((s: any) => ({
+              name: s.name,
+              args: s.args && typeof s.args === "object" && !Array.isArray(s.args) ? s.args : {},
+              ok: !!s.ok,
+              ...(s.error ? { error: String(s.error).slice(0, 300) } : {}),
+              ...(s.result !== undefined ? { result: s.result } : {}),
+            }))
         : [];
       // A spoken turn is stamped when it started, so a form dismissed during the call
       // can name the turn it belonged to before the words reached the server.
@@ -442,10 +485,7 @@ async function handle(req: any, res: any) {
         asked,
         said,
         steps,
-        delta: [
-          ...(asked ? [{ role: "user", content: asked }] : []),
-          ...(said ? [{ role: "assistant", content: said }] : []),
-        ],
+        delta: liveDelta(asked, said, steps, at),
         at,
       });
       chats.touch(owner, thread.id, asked);
@@ -453,8 +493,71 @@ async function handle(req: any, res: any) {
       return json(res, 200, { saved: true, session: thread.id, title: after.title, turns: after.turns, turnId, at });
     }
 
+    /*
+     * The popup that follows is the whole point: it is the only moment this server can
+     * learn that the browser actually holds the key for the address it is about to
+     * speak for. The words say plainly that no money moves, so an approval is a proof
+     * of identity rather than a payment somebody did not expect.
+     */
+    if (req.method === "POST" && url.pathname === "/wallet/challenge") {
+      const { address } = JSON.parse((await readBody(req)) || "{}");
+      const wanted = String(address ?? "");
+      if (!/^0x[0-9a-fA-F]{64}$/.test(wanted)) {
+        return json(res, 400, { error: "a full Sui address is needed before the wallet proof can be asked for" });
+      }
+      const now = Date.now();
+      sweepChallenges(now);
+      const message = [
+        "Ken wallet sign in",
+        `Address: ${wanted}`,
+        `Nonce: ${randomBytes(16).toString("hex")}`,
+        `Issued: ${new Date(now).toISOString()}`,
+        "This signature proves this browser holds the key for this address. It moves no money.",
+      ].join("\n");
+      walletChallenges.set(seatId(), { address: wanted, message, at: now });
+      return json(res, 200, { message });
+    }
+
     if (req.method === "POST" && url.pathname === "/wallet") {
-      const { address, chain, demo } = JSON.parse((await readBody(req)) || "{}");
+      const { address, chain, demo, message, bytes, signature } = JSON.parse((await readBody(req)) || "{}");
+      if (!demo) {
+        const wanted = String(address ?? "");
+        const open = walletChallenges.get(seatId());
+        // A challenge is one use whether or not the signature checks out, so a failed
+        // attempt cannot be replayed with a different address.
+        walletChallenges.delete(seatId());
+        if (!/^0x[0-9a-fA-F]{64}$/.test(wanted)) return json(res, 400, { error: `${wanted} is not a full Sui address` });
+        if (!open) return json(res, 403, { error: "ask for a wallet challenge first, then approve the popup it opens" });
+        if (Date.now() - open.at > CHALLENGE_MS) {
+          return json(res, 403, { error: "that wallet challenge expired. Ask for a new one and approve it in the wallet" });
+        }
+        if (open.address.toLowerCase() !== wanted.toLowerCase()) {
+          return json(res, 403, { error: "the challenge this seat was given belongs to a different address" });
+        }
+        if (!signature) {
+          return json(res, 403, { error: "approve the wallet proof popup so this page can prove the address it claims" });
+        }
+        const signedText =
+          typeof bytes === "string" && bytes
+            ? new TextDecoder().decode(new Uint8Array(Buffer.from(bytes, "base64")))
+            : typeof message === "string"
+              ? message
+              : "";
+        if (signedText !== open.message) {
+          return json(res, 403, { error: "the signed words are not the challenge this seat was given. Approve the popup the page just opened" });
+        }
+        try {
+          const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
+          const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(open.message), String(signature), {
+            address: wanted,
+          });
+          if (pub.toSuiAddress().toLowerCase() !== wanted.toLowerCase()) {
+            return json(res, 403, { error: "the wallet signature belongs to a different account than the address this page is claiming" });
+          }
+        } catch (err) {
+          return json(res, 403, { error: `the wallet proof did not check out: ${(err as Error).message}` });
+        }
+      }
       /*
        * Whoever this page speaks for can change, and everything derived from the previous
        * wallet has to change with it. The balance read is cached under the address, the
@@ -729,7 +832,7 @@ async function handle(req: any, res: any) {
       // payments that were prepared and then refused in the wallet.
       if (done) {
         await remember(
-          `Paid ${done.amount} ${done.asset} to ${done.to}${done.name ? ` (${done.name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${done.digest}`,
+          `Paid ${done.amount} ${done.asset} to ${done.to}${done.name ? ` (${done.name})` : ""} on ${localDay()}. tx ${done.digest}`,
         );
         forgetCounterparties();
       }
@@ -914,7 +1017,7 @@ async function handle(req: any, res: any) {
       settle(digest);
       const paid = markRequestPaid(found.id, digest, waiting.sender) ?? found;
       await remember(
-        `Paid ${found.usdc_text} USDC to ${found.to}${found.note ? ` for "${found.note}"` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${digest}`,
+        `Paid ${found.usdc_text} USDC to ${found.to}${found.note ? ` for "${found.note}"` : ""} on ${localDay()}. tx ${digest}`,
       );
       forgetCounterparties();
       forgetTransfers();
@@ -1072,7 +1175,12 @@ async function handle(req: any, res: any) {
         if (!one) return json(res, 404, { error: `no link ${id} is open here` });
         return json(res, 200, { note: offered(one) });
       }
-      return json(res, 200, { notes: notes().map(offered) });
+      // A single link can be read by anyone holding it, because that is what a link is.
+      // The list is this wallet's own links, since a catalogue of somebody else's
+      // titles and payout addresses is not a list this page has any use for.
+      const s = session();
+      if (s.source !== "wallet") return json(res, 401, { error: "connect a wallet to see the links it wrote", needs: "wallet" });
+      return json(res, 200, { notes: notes().filter((n) => n.pay_to.toLowerCase() === s.wallet.toLowerCase()).map(offered) });
     }
 
     if (url.pathname === "/earned") {
@@ -1085,9 +1193,13 @@ async function handle(req: any, res: any) {
        * promised. The arithmetic itself is in earn.ts so it can be tested one fake
        * transfer at a time instead of by moving real USDC.
        */
-      const all = notes();
       const net = session().network;
       const onNet = (resource: string) => salesOf(resource, net);
+      const s = session();
+      // Only links this wallet is paid on. The tally already separates money that landed
+      // in another address, but printing that other seller's rows would still hand a
+      // visitor the buyer addresses and takings of somebody else's catalogue.
+      const all = notes().filter((n) => n.pay_to.toLowerCase() === s.wallet.toLowerCase());
       const paid = new Map<string, string>();
       for (const n of all) {
         for (const s of onNet(`note:${n.id}`)) {
@@ -1099,7 +1211,6 @@ async function handle(req: any, res: any) {
           paid.set(key, (await personForAddress(s.payer))?.alias ?? `${s.payer.slice(0, 10)}…`);
         }
       }
-      const s = session();
       return json(res, 200, tally(all, onNet, s.wallet, (a) => paid.get(a.toLowerCase()) ?? `${a.slice(0, 10)}…`));
     }
 

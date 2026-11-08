@@ -390,6 +390,10 @@
       let epoch = 0;
       let tailUntil = 0;
       let busyState = "";
+      // A payment tool that has not answered yet is money the chain may already have
+      // recorded. Hanging up would close the stream carrying the only receipt, so the
+      // end of the call waits for it instead.
+      let settling = 0;
       let wave = null;
       let spokenAs = "";
       let closedForms = new Set();
@@ -509,32 +513,35 @@
         formTimers.set(form, setTimeout(() => disableForm(form, text), left));
       }
 
-      function closeNeed(kind, turn, chat) {
+      function closeNeed(kind, turn, chat, done) {
         if (!kind) return;
+        // A filled form and a dismissed one both have to stay closed on reload, but the
+        // transcript must not describe the answered one as still waiting.
+        const record = done ? `${kind}_done` : kind;
         if (turn?.owner && Array.isArray(turn.owner.closedKinds)) {
           // A box is usually dismissed after its turn has been written, and a kind
           // pushed onto an array whose write already ran would never be read, so a
           // turn that has an id is written straight through.
           const saved = Number(turn.owner.id);
           if (Number.isInteger(saved) && saved > 0) {
-            closedForms.add(`${saved}:${kind}`);
+            closedForms.add(`${saved}:${record}`);
             fetch("/chat/close-form", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ session: chat || session, turn: saved, kind }),
+              body: JSON.stringify({ session: chat || session, turn: saved, kind: record }),
             }).catch(() => {});
             return;
           }
-          if (!turn.owner.closedKinds.includes(kind)) turn.owner.closedKinds.push(kind);
+          if (!turn.owner.closedKinds.includes(record)) turn.owner.closedKinds.push(record);
           return;
         }
         const id = Number(turn?.id);
         if (!Number.isInteger(id) || id <= 0) return;
-        closedForms.add(`${id}:${kind}`);
+        closedForms.add(`${id}:${record}`);
         fetch("/chat/close-form", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ session: chat || session, turn: id, kind }),
+          body: JSON.stringify({ session: chat || session, turn: id, kind: record }),
         }).catch(() => {});
       }
 
@@ -568,7 +575,11 @@
           const id = Number(t.id);
           const at = Number(t.at) || 0;
           const dismissed = Number.isInteger(id) && closedForms.has(`${id}:${kind}`);
+          // A form that was filled already has its outcome in the transcript, so it gets
+          // no note and is never drawn again.
+          const answered = Number.isInteger(id) && closedForms.has(`${id}:${kind}_done`);
           const movedOn = turns.slice(index + 1).some((x) => String(x.asked || "").trim());
+          if (answered) continue;
           if (dismissed) add(index, `the ${label[kind]} was closed. Ask Ken again if you still need it.`);
           else if (!at || Date.now() - at > FORM_TTL_MS) {
             add(index, `the ${label[kind]} expired after 30 minutes. Ask Ken again if you still need it.`);
@@ -753,16 +764,25 @@
         const field = form.querySelector("input");
         const go = form.querySelector("button.primary");
         const line = form.querySelector(".hint");
-        title.textContent = need.looksLikeAddress
-          ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
-          : amount
-            ? `keep ${need.who} and send ${amount}`
-            : `the address for ${need.who}`;
-        go.textContent = amount ? `keep it and send ${amount}` : "keep this address";
+        const isInspect = !!need.inspect;
+        title.textContent = isInspect
+          ? need.who && need.who !== "inspect"
+            ? `inspect the wallet for ${need.who}`
+            : "inspect a wallet address"
+          : need.looksLikeAddress
+            ? `the full address that starts with ${need.who}${amount ? `, then send ${amount}` : ""}`
+            : amount
+              ? `keep ${need.who} and send ${amount}`
+              : `the address for ${need.who}`;
+        go.textContent = isInspect ? "inspect this address" : amount ? `keep it and send ${amount}` : "keep this address";
         form.querySelector(".quietBtn").onclick = () => {
           closeNeed("address", turn, chat);
           form.closest(".msg")?.remove();
-          call?.say("The user did not type an address, so nothing was kept and no money was sent. Do not pay that person and do not ask again unless they bring it up.");
+          call?.say(
+            isInspect
+              ? "The user closed the inspection box without giving an address. Acknowledge in one short sentence."
+              : "The user did not type an address, so nothing was kept and no money was sent. Do not pay that person and do not ask again unless they bring it up.",
+          );
         };
         form.onsubmit = async (e) => {
           e.preventDefault();
@@ -771,6 +791,19 @@
             line.textContent = "That is not a full Sui address. A Sui address is 0x followed by 64 hex characters.";
             line.classList.add("bad");
             field.focus();
+            return;
+          }
+          // Inspecting a floor address is a read, not a naming. Sending it through
+          // /address with an empty name would keep nothing and say a name was saved.
+          if (isInspect) {
+            clearFormTimer(form);
+            closeNeed("address", turn, chat, true);
+            form.closest(".msg")?.remove();
+            if (call) {
+              call.say(`The person entered the full Sui address ${address} in the inspection box. Call address_activity with address "${address}" now and summarize its recent transactions in one or two short sentences.`);
+            } else {
+              note("Start a call and ask Ken to inspect that address.", true);
+            }
             return;
           }
           go.disabled = true;
@@ -792,6 +825,7 @@
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
             const label = body.named?.alias || "this person";
             clearFormTimer(form);
+            closeNeed("address", turn, chat, true);
             form.closest(".msg")?.remove();
             const said = body.note || "the address is kept.";
             if (!call) {
@@ -886,6 +920,7 @@
             if (!res.ok) throw new Error(body.error || `http ${res.status}`);
             const made = body.request;
             clearFormTimer(form);
+            closeNeed("request", turn, chat, true);
             form.closest(".msg")?.remove();
             const card = panelMessage(requestDone(made));
             thread.appendChild(card);
@@ -1111,6 +1146,9 @@
                   receipt.append(answer);
                 }
                 clearFormTimer(form);
+                // The form stays in the transcript as a receipt, but it is no longer
+                // waiting for a keyboard, so it must stop muting the microphone.
+                form.classList.add("settled");
                 acts.remove();
                 line.className = "hint good";
                 const settledAsset = done.asset ?? asset;
@@ -1233,6 +1271,10 @@
 
       function lineYou(piece) {
         if (!turn.youEl) {
+          // The turn starts when the person starts speaking, not when the page loaded.
+          // A room left open all afternoon used to stamp its first form with a time
+          // thirty minutes in the past, so the form was born expired.
+          turn.at = Date.now();
           const el = userMessage("");
           if (turn.itEl) thread.insertBefore(el, turn.itEl);
           else thread.appendChild(el);
@@ -1272,8 +1314,15 @@
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ asked, said, steps: work.steps, session, at: work.at }),
+          // The write outlives a tab that is closed in the same moment, so the last
+          // words are not lost to the navigation that followed them.
+          keepalive: true,
         })
-          .then((r) => r.json())
+          .then(async (r) => {
+            const body = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(body.error || `the turn was not saved (${r.status})`);
+            return body;
+          })
           .then(async (body) => {
             if (body?.title) paintTitle(body.title);
             if (body?.session) session = body.session;
@@ -1303,6 +1352,7 @@
       function onTool(t) {
         turn.steps.push({
           name: t.name,
+          args: t.args && typeof t.args === "object" && !Array.isArray(t.args) ? t.args : {},
           ok: !!t.ok,
           ...(t.error ? { error: String(t.error).slice(0, 300) } : {}),
           ...(t.result !== undefined ? { result: t.result } : {}),
@@ -1328,7 +1378,7 @@
           host.appendChild(line);
           follow();
         }
-        const need = addressNeed([{ result: t.result }]);
+        const need = addressNeed(turn.steps);
         if (need) {
           addressCard(need, { id: null, at: turn.at, owner: turn });
           return;
@@ -1349,7 +1399,7 @@
       }
 
       /* ---------- the call ---------- */
-      const HANGUP = /\b(?:bye|goodbye|hang\s*up|end (?:the )?call|stop (?:the )?call|abort(?: the call)?|cut (?:the )?call|that'?s all)\b/i;
+      const HANGUP = /\b(?:bye|goodbye|hang\s*up|end (?:the )?call|stop (?:the )?call|abort(?: the call)?|cut (?:the )?call)\b/i;
 
       async function startCall() {
         if (call || starting || !liveReady) return;
@@ -1373,8 +1423,10 @@
               const floor = floorIsMine({ barge: false, speaking: player?.speaking, now: Date.now(), tailUntil });
               tailUntil = floor.tailUntil;
               // An open form means a keyboard is in use, so the microphone is handed
-              // silence rather than a room that would hear the keys as speech.
-              const typing = !!thread.querySelector("form.panel");
+              // silence rather than a room that would hear the keys as speech. A form
+              // that is spent, settled or answered is not waiting for a keyboard, and
+              // keeping the microphone silent for it made the call deaf for good.
+              const typing = !!thread.querySelector("form.panel:not(.spent):not(.settled)");
               call?.push(upstream(frame, floor.open && !typing));
             },
             (level) => {
@@ -1445,11 +1497,13 @@
           onToolStart: (t) => {
             if (mine !== epoch || !call) return;
             if (!["pay_usdc", "pay_sui", "paid_lookup", "open_paid_link", "verify_payment"].includes(t.name)) return;
+            if (t.name === "pay_usdc" || t.name === "pay_sui") settling++;
             busyState = t.name === "pay_usdc" || t.name === "pay_sui" || t.name === "paid_lookup" ? "waiting for the chain" : "checking the chain";
             say(busyState, "wait");
           },
           onTool: (t) => {
             if (mine !== epoch || !call) return;
+            if (t.name === "pay_usdc" || t.name === "pay_sui") settling = Math.max(0, settling - 1);
             onTool(t);
           },
           onTurn: () => {
@@ -1475,6 +1529,11 @@
       async function endCall(stay) {
         if (ending) return;
         ending = true;
+        if (settling > 0) {
+          note("waiting for the payment to finish before hanging up…");
+          const until = Date.now() + 30_000;
+          while (settling > 0 && Date.now() < until) await new Promise((r) => setTimeout(r, 250));
+        }
         epoch++;
         const socket = call;
         call = null;

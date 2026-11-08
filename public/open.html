@@ -112,14 +112,16 @@
       /* Absolute paths, because this one page is served under /ask/<id> and a relative
          import would look for the script inside the link rather than at the root. */
       import { $, loadMeta, pickWallet, shortAddr, spoken, payNetwork, payChain } from "/shared.js";
-      import { signX402, discover } from "/wallet.js";
+      import { signX402, discover, proveWallet } from "/wallet.js";
       import { dialogue, walletAsked, walletFailed } from "/dialogue.js";
 
       const id = location.pathname.split("/")[2] ?? "";
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-      // Page state rather than server state, because a person opening a link must not
-      // change which wallet the rest of the product narrates.
+      // The link is paid by whichever wallet this browser proves it holds. The page
+      // keeps that address itself so the quote, the signed transfer and the receipt
+      // are all about the same account, and the server seat is switched to it because
+      // the index refuses to price a note for a browser that has not connected.
       let payer = null;
       let terms = null;
 
@@ -157,7 +159,7 @@
             pick.disabled = true;
             const dlg = dialogue(walletAsked(discover().length));
             try {
-              const picked = await pickWallet(dlg, (s) => dlg.status(s));
+              const picked = await pickWallet(dlg, { onStatus: (s) => dlg.status(s) });
               pick.disabled = false;
               if (picked.chain && !String(picked.chain).toLowerCase().includes(payNetwork())) {
                 dlg.replace({
@@ -171,7 +173,21 @@
                 });
                 return;
               }
-              payer = picked.address;
+              const proof = await proveWallet({
+                address: picked.address,
+                chain: picked.chain,
+                onStatus: (s) => dlg.status(s),
+              });
+              const joined = await fetch("/wallet", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ address: picked.address, chain: picked.chain, ...proof }),
+              }).then(async (res) => {
+                const body = await res.json();
+                if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+                return body;
+              });
+              payer = joined.wallet || picked.address;
               dlg.close(true);
               await open();
             } catch (err) {

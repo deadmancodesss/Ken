@@ -449,6 +449,39 @@
             btn.textContent = "Cancel";
           }
         };
+        // A signature that has left the wallet is money in flight. Cancel and the coin
+        // switch close before the popup opens and stay closed if the chain read fails,
+        // because releasing the ticket then would leave a signed transfer with no receipt.
+        let sent = null;
+
+        async function confirm(payload) {
+          const res = await fetch("/pending/settle", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          return body;
+        }
+
+        async function finish(settled, buysFact) {
+          render(settled.pending ?? p, st);
+          loadMeta();
+          // The signature moved coins in this very wallet, so the amount printed
+          // under the ticket has to be read again or it shows the balance from
+          // before the transfer the person just approved.
+          balance();
+          // A ticket that bought an answer from the paid index has to show that
+          // answer where it was asked for, or the cent looks like it bought nothing.
+          const box = $("verifyAnswer");
+          if (box && p.resource?.startsWith("receipt:") && settled.learned?.note) {
+            box.hidden = false;
+            box.className = "hint good";
+            box.textContent = settled.learned.note;
+          }
+        }
+
         $("sign").onclick = async () => {
           const btn = $("sign");
           const warn = $("signWarn");
@@ -458,48 +491,49 @@
           warn.textContent = "";
           btn.disabled = true;
           btn.textContent = "check your wallet…";
+          $("cancel").disabled = true;
+          $("coinSwitch")?.querySelectorAll("button").forEach((x) => (x.disabled = true));
           pinCycle(flow(), 2);
+          const buysFact = !!p.resource;
           try {
             // A receipt check is a paid fact, so the wallet signs and stops. The
             // index's facilitator settles the exact bytes it was shown.
-            const buysFact = !!p.resource;
             const signed = buysFact
               ? await signX402({ address: p.sender, chain: p.chain, bytesBase64: p.bytes })
               : await signAndExecute({ address: p.sender, chain: p.chain, bytesBase64: p.bytes });
             if (!buysFact && !signed.digest) throw new Error("the wallet returned no transaction digest");
+            sent = buysFact
+              ? { bytes: signed.bytes, signature: signed.signature }
+              : { digest: signed.digest };
             btn.textContent = "Confirming on chain…";
-            $("cancel").disabled = true;
             pinCycle(flow(), 3);
-            const settled = await fetch("/pending/settle", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(buysFact ? { bytes: signed.bytes, signature: signed.signature } : { digest: signed.digest }),
-            }).then((r) => r.json());
-            // The answer already says whether the chain agreed, so show that at once
-            // instead of waiting on a full re-read to notice the ticket changed.
-            if (settled.error) throw new Error(settled.error);
-            render(settled.pending ?? p, st);
-            loadMeta();
-            // The signature moved coins in this very wallet, so the amount printed
-            // under the ticket has to be read again or it shows the balance from
-            // before the transfer the person just approved.
-            balance();
-            // A ticket that bought an answer from the paid index has to show that
-            // answer where it was asked for, or the cent looks like it bought nothing.
-            // Only for this panel's own ticket, or a name bought by the agent would
-            // print under a question about a transaction.
-            const box = $("verifyAnswer");
-            if (box && p.resource?.startsWith("receipt:") && settled.learned?.note) {
-              box.hidden = false;
-              box.className = "hint good";
-              box.textContent = settled.learned.note;
-            }
+            await finish(await confirm(sent), buysFact);
           } catch (err) {
             pinCycle(flow(), 1);
+            warn.hidden = false;
+            warn.textContent = sent
+              ? `${err.message}. The wallet has already signed, so do not sign again. Check the chain with the same signature`
+              : err.message;
+            if (sent) {
+              btn.textContent = "Check the chain again";
+              btn.disabled = false;
+              btn.onclick = async () => {
+                btn.disabled = true;
+                btn.textContent = "reading the chain…";
+                try {
+                  await finish(await confirm(sent), buysFact);
+                } catch (again) {
+                  btn.disabled = false;
+                  btn.textContent = "Check the chain again";
+                  warn.textContent = `${again.message}. The wallet has already signed, so do not sign again`;
+                }
+              };
+              return;
+            }
+            $("cancel").disabled = false;
+            $("coinSwitch")?.querySelectorAll("button").forEach((x) => (x.disabled = false));
             btn.disabled = false;
             btn.textContent = "Sign in wallet";
-            warn.hidden = false;
-            warn.textContent = err.message;
           }
         };
       }

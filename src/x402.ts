@@ -6,6 +6,7 @@ import { recallAbout, remember } from "./memory.js";
 import { labelPerson, personForAddress } from "./people.js";
 import { scope } from "./scope.js";
 import { session } from "./session.js";
+import { localDay } from "./seat.js";
 import { canonical, parseResource, type Fact } from "./resources.js";
 import {
   HEADER_REQUIRED,
@@ -235,7 +236,7 @@ function recordSale(resource: string, payer: string, released: Exclude<Release, 
     payer,
     digest: released.tx,
     usdc: released.usdc,
-    at: new Date().toISOString().slice(0, 10),
+    at: localDay(),
     network: net,
   };
   l.sold[netKey(net, payer, resource)] = sale;
@@ -351,7 +352,7 @@ export async function learn(
   on?: string,
 ): Promise<{ name: string; note: string }> {
   const parsed = parseResource(resource);
-  const day = on || new Date().toISOString().slice(0, 10);
+  const day = on || localDay();
   const cost = usdc > 0 ? `bought for ${usdc} USDC on ${day}` : `nothing charged, already owned on ${day}`;
   if (parsed.kind === "profile") {
     const text = `Chain profile for ${parsed.address}: ${fact.note}. ${cost}, tx ${digest}`;
