@@ -285,13 +285,14 @@
     </footer>
 
     <script type="module">
-      import { reveal, loadMeta, fillStats, mountWallet, castNotice } from "./shared.js";
+      import { reveal, loadMeta, fillStats, mountWallet, mountNetwork, castNotice } from "./shared.js";
       reveal();
       const paint = (body) => {
         fillStats(body);
         castNotice(body);
       };
       mountWallet(() => loadMeta().then(paint));
+      mountNetwork(() => loadMeta().then(paint));
       loadMeta().then(paint);
     </script>
   </body>

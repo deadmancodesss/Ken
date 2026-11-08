@@ -1084,9 +1084,10 @@
     </footer>
 
     <script type="module">
-      import { loadMeta, fillStats, mountWallet } from "./shared.js";
+      import { loadMeta, fillStats, mountWallet, mountNetwork } from "./shared.js";
       const paint = (body) => fillStats(body);
       mountWallet(() => loadMeta().then(paint));
+      mountNetwork(() => loadMeta().then(paint));
       loadMeta().then(paint);
     </script>
 
