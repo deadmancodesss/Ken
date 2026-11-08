@@ -1,0 +1,61 @@
+services:
+  - type: web
+    name: ken-agent
+    runtime: docker
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAY_ENABLED
+        value: "1"
+      - key: PAY_NETWORK
+        value: testnet
+      - key: DEMO_WALLET_NETWORK
+        value: testnet
+      - key: SELLER_WALLET
+        value: 0x81cd5dad14a509f609431e5ae99d22aeb9b1f14fad84cb0eac31ab3096cb8d8f
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MODEL_NAME
+        sync: false
+      - key: MODEL_API_KEY
+        sync: false
+      - key: MODEL_BASE_URL
+        sync: false
+      - key: MEMWAL_KEY
+        sync: false
+      - key: MEMWAL_AGENT_ID
+        sync: false
+      - key: MEMWAL_ACCOUNT_ID
+        sync: false
+      - key: MEMWAL_NAMESPACE
+        sync: false
+      - key: MEMWAL_SERVER_URL
+        sync: false
+      - key: TATUM_API_KEY
+        sync: false
+      - key: TATUM_SUI_GRAPHQL_URL
+        sync: false
+      - key: TATUM_API_KEY_TESTNET
+        sync: false
+      - key: TATUM_SUI_GRAPHQL_URL_TESTNET
+        sync: false
+      - key: AGENT_ADDRESS
+        sync: false
+      - key: AGENT_SECRET_KEY
+        sync: false
+      - key: FISH_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_BASE_URL
+        sync: false
+      - key: NVIDIA_MODEL
+        sync: false
+
