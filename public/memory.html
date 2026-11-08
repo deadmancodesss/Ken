@@ -384,11 +384,15 @@
         const body = await loadMeta();
         if (!body) return;
         // people-testnet-80713a48331f reads as a database key. The wallet tail is
-        // already in the masthead, so the chip only needs the kind and the network.
-        const ns = (body.stats.namespaces ?? [])
-          .map((n) => `<span>${esc(n.name.split("-").slice(0, 2).join(" · "))} <b>${n.memories}</b></span>`)
+        // already in the masthead, so the chip only needs the kind and the network,
+        // and the network is the same on every row, so it is named once at the end.
+        const names = body.stats.namespaces ?? [];
+        const nets = [...new Set(names.map((n) => n.name.split("-")[1]).filter(Boolean))];
+        const ns = names
+          .map((n) => `<span>${esc(n.name.split("-")[0])} <b>${n.memories}</b></span>`)
           .join("");
-        $("counts").innerHTML = `<span>total <b>${body.stats.total}</b></span>${ns}`;
+        const net = nets.length === 1 ? `<span>${esc(nets[0])}</span>` : "";
+        $("counts").innerHTML = `<span>total <b>${body.stats.total}</b></span>${ns}${net}`;
       }
 
       const reload = () => {
