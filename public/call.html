@@ -840,11 +840,11 @@
             }
             if (body.payment?.awaiting_signature) {
               signCard();
-              call?.say(`The address for ${label} was typed into the form, the name is saved, and the transfer is now waiting in the ticket under this transcript. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it is waiting for their signature.`);
+              call?.say(`[System note: The user typed the address for ${label} into the form on screen. The address is saved and the transfer is now waiting for their wallet signature. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it is waiting for their signature.]`);
             } else if (body.payment) {
-              call?.say(`The address for ${label} was typed into the form, the name is saved, and ${body.payment.amount} ${body.payment.asset ?? "USDC"} was sent and settled on chain. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it was sent.`);
+              call?.say(`[System note: The user typed the address for ${label} into the form on screen. The address is saved and ${body.payment.amount} ${body.payment.asset ?? "USDC"} was sent and settled on chain. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it was sent.]`);
             } else {
-              call?.say(`The address for ${label} was typed into the form and is kept. The name is saved, so do not call name_a_person or find_person for it. Do not ask for it again. Say one short sentence that it is kept.`);
+              call?.say(`[System note: The user typed the address for ${label} into the form on screen. The address is saved to memory. Do not call name_a_person or find_person for it. Do not ask for it again. Say one short sentence that it is kept.]`);
             }
           } catch (err) {
             line.textContent = err.message;

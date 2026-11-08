@@ -809,7 +809,10 @@ async function handle(req: any, res: any) {
               asked: "signed the payment for a paid lookup",
               said: line,
               steps: [{ name: tool, ok: true, result: { digest: released.tx, resource: waiting.resource, usdc: released.usdc } }],
-              delta: [{ role: "user", content: `I signed the payment for the paid lookup in my wallet. ${line} Do not pay for this lookup again.` }],
+              delta: [
+                { role: "user", content: `I signed the payment for the paid lookup in my wallet. ${line} Do not pay for this lookup again.` },
+                { role: "assistant", content: line },
+              ],
               at: Date.now(),
             });
           }
@@ -853,7 +856,10 @@ async function handle(req: any, res: any) {
           asked: `signed the payment to ${who}`,
           said: line,
           steps: [{ name: tool, ok: true, result: { digest, to: done.to, amount: done.amount, asset: done.asset, chain: waiting.chain } }],
-          delta: [{ role: "user", content: `I signed the payment to ${who} in my wallet. ${line} Do not call ${tool} again for this payment.` }],
+          delta: [
+            { role: "user", content: `I signed the payment to ${who} in my wallet. ${line} Do not call ${tool} again for this payment.` },
+            { role: "assistant", content: line },
+          ],
           at: Date.now(),
         });
       }

@@ -130,6 +130,9 @@ export function keptTurn(kept: Kept): KeptTurn {
     asked: person ? `typed the address for ${label}: ${masked}` : `typed the address ${masked}`,
     said,
     steps,
-    delta: [{ role: "user", content: `${what}${note ? ` ${note}` : ""} Keep it and use it from now on.` }],
+    delta: [
+      { role: "user", content: `${what}${note ? ` ${note}` : ""} Keep it and use it from now on.` },
+      { role: "assistant", content: said },
+    ],
   };
 }

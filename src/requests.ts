@@ -92,19 +92,24 @@ export function requestTurn(r: StoredRequest): {
   asked: string;
   said: string;
   steps: { name: string; ok: boolean; result: unknown }[];
-  delta: { role: "user"; content: string }[];
+  delta: { role: string; content: string }[];
 } {
   const view = publicRequest(r);
   const whatFor = r.note ? ` for "${r.note}"` : "";
   const minutes = Math.max(1, Math.round((r.expires_at - r.created) / 60_000));
+  const said = `The link is ready. It asks for ${r.usdc_text} USDC${whatFor} and closes in ${minutes} minutes.`;
   return {
     asked: `made a payment request for ${r.usdc_text} USDC${whatFor}`,
-    said: `The link is ready. It asks for ${r.usdc_text} USDC${whatFor} and closes in ${minutes} minutes.`,
+    said,
     steps: [{ name: "request_money", ok: true, result: view }],
     delta: [
       {
         role: "user",
         content: `A payment request was made in the form. It asks for ${r.usdc_text} USDC${whatFor}. The link is ${view.link} and it closes in ${minutes} minutes. It has not been sent to anyone. Do not make another request unless I ask.`,
+      },
+      {
+        role: "assistant",
+        content: said,
       },
     ],
   };

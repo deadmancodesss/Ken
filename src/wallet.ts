@@ -59,8 +59,9 @@ function checked(to: string, baseUnits: bigint, asset: PayAsset): void {
 const SUI_GAS_RESERVE = 5_000_000n;
 
 /* The coin listing is paged by the gateway. The cap is a guard against reading a
-   dust wallet forever, not an expectation: a normal wallet finishes on page one. */
-const COIN_PAGE = 100;
+   dust wallet forever, not an expectation: a normal wallet finishes on page one.
+   Sui GraphQL limits page sizes to 50 items maximum. */
+const COIN_PAGE = 50;
 const COIN_PAGES = 10;
 
 /*

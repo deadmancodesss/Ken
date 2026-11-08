@@ -1803,10 +1803,10 @@
             const who = need.looksLikeAddress ? "that address" : need.who;
             call?.say(
               body.payment?.awaiting_signature
-                ? `${who}'s address is saved and a ${body.payment.amount} ${body.payment.asset ?? "USDC"} payment ticket is open on the page waiting for the wallet signature. Do not call name_a_person, pay_usdc or pay_sui again. Tell the person in one short sentence to sign it in their wallet.`
+                ? `[System note: The user typed the address for ${who} into the form on screen. The address is saved and a ${body.payment.amount} ${body.payment.asset ?? "USDC"} payment ticket is open waiting for their wallet signature. Tell them in one short sentence to sign it in their wallet. Do not ask for the address.]`
                 : body.payment_error
-                  ? `${who}'s address is saved, but the payment did not go through: ${body.payment_error}. Explain that in one short sentence.`
-                  : `${who}'s address is now saved in the address book. Confirm that in one short sentence.`,
+                  ? `[System note: The user typed the address for ${who} into the form on screen. The address is saved, but the payment could not be prepared: ${body.payment_error}. Explain that in one short sentence.]`
+                  : `[System note: The user typed the address for ${who} into the form on screen. The address is saved to memory. Acknowledge in one short sentence that ${who}'s address is kept and ready to use. Do not ask for the address.]`,
             );
           } catch (err) {
             hint.textContent = err.message;
@@ -2131,7 +2131,7 @@
               // saying the payment is still waiting for a signature while the person is
               // already looking at the chain wait.
               call?.say(
-                `The person has opened their wallet to sign the ${pending.amount} ${asset} payment to ${who}. Do not ask them to sign again. Say in one short sentence that you are watching for it on chain and will confirm when it lands.`,
+                `[System note: The person has opened their wallet to sign the ${pending.amount} ${asset} payment to ${who}. Do not ask them to sign again. Say in one short sentence that you are watching for it on chain and will confirm when it lands.]`,
               );
               try {
                 const buysFact = !!pending.resource;
@@ -2201,8 +2201,8 @@
                 refreshSessions();
                 call?.say(
                   buysFact
-                    ? `The person signed the ${done.amount} USDC x402 payment in their wallet, the seller settled it on Sui (digest ${done.digest}), and the paid answer was released: ${settled.learned?.note ?? "recorded in memory"}. Tell the person what the paid lookup returned in one or two short sentences.`
-                    : `The person signed the ${done.amount} ${settledAsset} payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.`,
+                    ? `[System note: The person signed the ${done.amount} USDC x402 payment in their wallet, the seller settled it on Sui (digest ${done.digest}), and the paid answer was released: ${settled.learned?.note ?? "recorded in memory"}. Tell the person what the paid lookup returned in one or two short sentences.]`
+                    : `[System note: The person signed the ${done.amount} ${settledAsset} payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.]`,
                 );
               } catch (err) {
                 clearInterval(clock);
@@ -2220,8 +2220,8 @@
                   : err.message;
                 call?.say(
                   signedAt
-                    ? `The payment was signed in the wallet but the page could not confirm it: ${err.message}. Read the recipient's history and say honestly whether it landed. Do not ask for a second signature.`
-                    : `The wallet did not sign the ${pending.amount} ${asset} payment: ${err.message}. Nothing moved. Say that in one short sentence.`,
+                    ? `[System note: The payment was signed in the wallet but the page could not confirm it: ${err.message}. Read the recipient's history and say honestly whether it landed. Do not ask for a second signature.]`
+                    : `[System note: The wallet did not sign the ${pending.amount} ${asset} payment: ${err.message}. Nothing moved. Say that in one short sentence.]`,
                 );
               }
             };
