@@ -87,7 +87,7 @@ The price is one cent for a profile, three cents above twenty transactions becau
 
 <p align="center"><em>The call dock under the same thread. Listening, one voice, one way to end it.</em></p>
 
-## What the sponsors carry
+## What each service does
 
 | Piece | What it does here |
 | --- | --- |

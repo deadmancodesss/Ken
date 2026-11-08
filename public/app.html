@@ -1078,6 +1078,17 @@
       </form>
     </dialog>
 
+    <dialog class="sheet" id="callGuardDlg">
+      <form id="callGuardForm">
+        <h3>End the voice call?</h3>
+        <p id="callGuardMsg">A live voice call is currently active. Leaving this chat will end the call and save what was said.</p>
+        <div class="sheetActs">
+          <button type="button" data-close="callGuardDlg">Stay on the call</button>
+          <button type="submit" class="primary" id="callGuardLeave">End call and leave</button>
+        </div>
+      </form>
+    </dialog>
+
     <script type="module">
       import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, explorerAccount, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
       import { signAndExecute, signX402 } from "./wallet.js";
@@ -2412,11 +2423,47 @@
         renderSessions();
       }
 
+      function askCallGuard(msg) {
+        if (!calling && !starting) return Promise.resolve(true);
+        return new Promise((resolve) => {
+          const dlg = $("callGuardDlg");
+          if (!dlg || typeof dlg.showModal !== "function") return resolve(true);
+          const p = $("callGuardMsg");
+          if (p && msg) p.textContent = msg;
+          const form = $("callGuardForm");
+
+          let settled = false;
+          const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            dlg.removeEventListener("close", onClose);
+            form?.removeEventListener("submit", onSubmit);
+            try { dlg.close(); } catch {}
+            resolve(ok);
+          };
+
+          const onClose = () => finish(false);
+          const onSubmit = (e) => {
+            e.preventDefault();
+            finish(true);
+          };
+
+          dlg.addEventListener("close", onClose, { once: true });
+          form?.addEventListener("submit", onSubmit, { once: true });
+          dlg.showModal();
+        });
+      }
+
       async function switchSession(id) {
         if (!id) return;
         if (id === active) {
           closeRail();
           return;
+        }
+        if (calling || starting) {
+          const ok = await askCallGuard("A live voice call is currently active. Switching to another chat will end the call and save what was said.");
+          if (!ok) return;
+          await closeVoice();
         }
         active = id;
         renderSessions();
@@ -2435,6 +2482,11 @@
           closeRail();
           input.focus();
           return;
+        }
+        if (calling || starting) {
+          const ok = await askCallGuard("A live voice call is currently active. Starting a new chat will end the call and save this conversation.");
+          if (!ok) return;
+          await closeVoice();
         }
         const was = btn.innerHTML;
         btn.disabled = true;
@@ -2525,8 +2577,13 @@
         }
       };
 
-      $("deleteBtn").onclick = () => {
+      $("deleteBtn").onclick = async () => {
         setMenu(false);
+        if (calling || starting) {
+          const ok = await askCallGuard("A live voice call is currently active. Deleting this chat will end the call.");
+          if (!ok) return;
+          await closeVoice();
+        }
         $("deleteDlg").showModal();
       };
       $("deleteForm").onsubmit = async (e) => {
@@ -3188,6 +3245,42 @@
       if (new URLSearchParams(location.search).get("voice") === "1") {
         setTimeout(openVoice, 350);
       }
+
+      /*
+       * A voice call is live in this chat alone, so clicking away to another page or
+       * closing the tab asks before ending the call and tearing down the live socket.
+       */
+      document.addEventListener("click", async (e) => {
+        if (!calling && !starting) return;
+        const a = e.target.closest("a[href]");
+        if (!a) return;
+        if (a.target === "_blank" || a.hasAttribute("download")) return;
+        const href = a.getAttribute("href") || "";
+        if (href.startsWith("#") || href.startsWith("javascript:") || href.startsWith("mailto:")) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+
+        let targetUrl;
+        try {
+          targetUrl = new URL(a.href, location.href);
+        } catch {
+          return;
+        }
+
+        if (targetUrl.pathname !== location.pathname || targetUrl.search !== location.search) {
+          e.preventDefault();
+          const ok = await askCallGuard("A live voice call is currently active. Leaving this page will end the call and save what was said.");
+          if (!ok) return;
+          await closeVoice();
+          location.assign(targetUrl.href);
+        }
+      }, true);
+
+      window.addEventListener("beforeunload", (e) => {
+        if (calling || starting) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      });
 
       /* ---------- wallet, balance and the masthead ---------- */
       async function loadState(force) {
