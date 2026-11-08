@@ -108,19 +108,6 @@
       .balance .balAmt small { font: var(--step--1)/1 var(--mono); color: var(--ink-3); margin-left: 5px; letter-spacing: 0.05em; }
       .balance .balGas { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
       .balance .balGas.low { color: var(--brick); }
-      .proveBtn {
-        width: 100%;
-        padding: 6px 10px;
-        border: 1px dashed var(--rule-strong);
-        border-radius: 8px;
-        background: var(--paper);
-        color: var(--ink-2);
-        font: 600 10px/1.2 var(--mono);
-        letter-spacing: 0.04em;
-        text-align: center;
-        box-shadow: none;
-      }
-      .proveBtn:hover { border-color: var(--moss); color: var(--moss); transform: none; box-shadow: none; }
       .railLinks { display: flex; flex-wrap: wrap; gap: 6px 12px; font: var(--step--1)/1 var(--mono); }
       .railLinks a { color: var(--ink-3); border-bottom: 0; }
       .railLinks a:hover { color: var(--clay); }
@@ -965,7 +952,6 @@
             <span class="balLabel">wallet</span>
             <span class="balAmt"><b id="balUsdc">·</b><small>USDC</small></span>
             <span class="balGas" id="balGas">reading the balance</span>
-            <button type="button" class="proveBtn" id="proveNetBtn" title="Sign a zero-gas wallet challenge to prove live cryptographic + RPC + Walrus connectivity on this network">✓ Prove network live (0 gas)</button>
           </div>
           <div class="railLinks">
             <a href="/pay">Pay</a>
@@ -1093,7 +1079,7 @@
     </dialog>
 
     <script type="module">
-      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain, switchOrProveNetwork } from "./shared.js";
+      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
       import { signAndExecute, signX402 } from "./wallet.js";
       import { mountSelect } from "./ui.js";
       import { createWave } from "./wave.js";
@@ -2333,7 +2319,7 @@
       async function loadChats(id) {
         // A session switch empties the pane before the read starts, and a blank sheet
         // for a second reads as an empty chat. Only a pane that is already empty gets
-        // the line, so a live thread is never wiped by a poll or a change of wallet.
+        // the line, so a live thread is never cleared by a poll or a change of wallet.
         const blank = !thread.children.length;
         if (blank) thread.innerHTML = '<div class="threadLoading">reading the chat…</div>';
         try {
@@ -3245,19 +3231,6 @@
       };
       mountWallet(refresh);
       mountNetwork(refresh);
-
-      $("proveNetBtn")?.addEventListener("click", async () => {
-        const res = await switchOrProveNetwork(payNetwork(), { verifyOnly: true });
-        if (res?.proof) {
-          const p = res.proof;
-          opening();
-          const msg = kenMessage(
-            `Zero-gas ${res.network.toUpperCase()} verification complete: Ed25519 signature verified for ${shortAddr(p.signer)} (${p.sig_short}), Tatum ${res.network} GraphQL RPC answered in ${p.rpc_ms}ms (${p.holdings_count} coin type${p.holdings_count === 1 ? "" : "s"}), and Walrus MemWal namespace ${p.walrus_namespace} is active (${p.walrus_memories} saved memor${p.walrus_memories === 1 ? "y" : "ies"}).`,
-          );
-          thread.appendChild(msg);
-          scroll();
-        }
-      });
 
       document.addEventListener("wallet:changed", async () => {
         // The call belongs to the wallet that has just been left, and the server has

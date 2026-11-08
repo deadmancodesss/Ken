@@ -391,6 +391,7 @@ function forgetBrowser({ name = true, briefs = true } = {}) {
 export function mountWallet(onChange) {
   const btn = $("connect");
   if (!btn) return;
+  mountWalletPanel();
 
   const toDemo = async () => {
     btn.textContent = "letting go…";
@@ -631,6 +632,7 @@ export function paintMeta(body) {
        wallet find the account later without opening a window on page load. */
     if (on) resumeWallet();
   }
+  feedWalletCard?.(body);
   return body;
 }
 
@@ -856,7 +858,7 @@ export async function switchOrProveNetwork(net, { verifyOnly = false } = {}) {
       beats: [
         {
           text: p?.signature_verified
-            ? `Ed25519 signature verified for ${shortAddr(p.signer)} (${p.sig_short}) — 0 SUI gas`
+            ? `Ed25519 signature verified for ${shortAddr(p.signer)} (${p.sig_short}), 0 SUI gas`
             : `Connected wallet confirmed: ${shortAddr(connectedWallet)}`,
           mark: "check",
         },
@@ -873,7 +875,7 @@ export async function switchOrProveNetwork(net, { verifyOnly = false } = {}) {
           mark: "check",
         },
         {
-          text: `Note on Slush: Browser extensions do not let websites flip Slush's own internal green badge — tap the top-left pill inside Slush when you want to view ${target.toUpperCase()} inside the extension`,
+          text: `Note on Slush: Browser extensions do not let websites flip Slush's own internal green badge. Tap the top-left pill inside Slush when you want to view ${target.toUpperCase()} inside the extension`,
           mark: "dot",
         },
       ],
@@ -891,7 +893,8 @@ export async function switchOrProveNetwork(net, { verifyOnly = false } = {}) {
 export function mountNetwork(onChange) {
   globalNetChange = onChange;
   const slot = document.querySelector(".wallet");
-  if (!slot || slot.querySelector(".nets")) return null;
+  const cardNet = document.getElementById("wpanelNet");
+  if (!slot || slot.querySelector(".nets") || cardNet?.querySelector(".nets")) return null;
   const box = document.createElement("div");
   box.className = "nets";
   box.setAttribute("role", "group");
@@ -950,11 +953,376 @@ export function mountNetwork(onChange) {
     });
     box.append(b);
   }
-  slot.insertBefore(box, slot.querySelector("#connect") ?? slot.firstChild);
+  if (cardNet) cardNet.append(box);
+  else slot.insertBefore(box, slot.querySelector("#connect") ?? slot.firstChild);
   /* The switch is born after the masthead has already placed its pieces, and on a
      phone it belongs inside the menu sheet rather than the wallet row. */
   document.dispatchEvent(new CustomEvent("masthead:layout"));
   return box;
+}
+
+/*
+ * The masthead used to carry the wallet name, the short address, the ledger switch, the
+ * connect chip and a status dot for one subject. They are one button and one card now.
+ * The card reads /state and /balance for itself because every page that calls mountWallet
+ * has to print the same ledger, including story pages that never read a balance before.
+ */
+let feedWalletCard = null;
+
+const savedWalletName = (address) => {
+  try {
+    const saved = JSON.parse(localStorage.getItem("walletName") || "null");
+    if (saved?.address === address) return saved.name || "";
+  } catch {
+    /* the address is plenty when storage is unavailable */
+  }
+  return "";
+};
+
+function purseGlyph() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of ["M4 8.5h16v9.5l-2 2.5H6l-2-2.5z", "M8 8.5V7a4 4 0 0 1 8 0v1.5", "M14.5 13.5H17"]) {
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+export function mountWalletPanel() {
+  const existing = document.getElementById("walletPanel");
+  if (existing) return existing;
+  const head = document.querySelector("header");
+  const slot = head?.querySelector(".wallet");
+  const connectBtn = $("connect");
+  if (!head || !slot || !connectBtn) return null;
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.id = "walletTrigger";
+  trigger.className = "wpanelTrigger";
+  trigger.dataset.on = "false";
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-controls", "walletPanel");
+  trigger.setAttribute("aria-label", "Wallet. No wallet connected. Open the wallet card to connect.");
+  const glyph = document.createElement("span");
+  glyph.className = "wpanelGlyph";
+  glyph.append(purseGlyph());
+  const word = document.createElement("span");
+  word.className = "wpanelWord";
+  word.textContent = "wallet";
+  const dot = document.createElement("span");
+  dot.className = "wpanelDot";
+  dot.setAttribute("aria-hidden", "true");
+  trigger.append(glyph, word, dot);
+  slot.append(trigger);
+
+  const scrim = document.createElement("div");
+  scrim.className = "wpanelScrim";
+  scrim.hidden = true;
+  document.body.append(scrim);
+
+  const root = document.createElement("div");
+  root.className = "wpanel";
+  root.id = "walletPanel";
+  root.hidden = true;
+  root.innerHTML = `
+    <span class="wpanelPet" aria-hidden="true"><img src="/assets/cast-four-cut.webp" alt="" width="1100" height="628" decoding="async" /></span>
+    <div class="wpanelSheet" role="dialog" aria-label="Wallet" tabindex="-1">
+      <div class="wpanelHead">
+        <p class="wpanelKicker">wallet</p>
+        <span class="wpanelStamp" id="wpanelStamp" data-state="none">not linked</span>
+      </div>
+      <div class="wpanelId">
+        <p class="wpanelName" id="wpanelName">reading your wallet</p>
+        <div class="wpanelAddrRow" id="wpanelAddrRow" hidden>
+          <code class="wpanelAddr" id="wpanelAddr"></code>
+          <button class="wpanelCopy" id="wpanelCopy" type="button" aria-label="Copy the wallet address">copy</button>
+        </div>
+        <p class="wpanelSub" id="wpanelSub" hidden></p>
+      </div>
+      <section class="wpanelSec">
+        <div class="wpanelLabel"><span>ledger</span><span id="wpanelNetState">reading</span></div>
+        <div class="wpanelNet" id="wpanelNet"></div>
+        <p class="wpanelNote good" id="wpanelProof" hidden></p>
+      </section>
+      <section class="wpanelSec">
+        <div class="wpanelLabel"><span>coins</span><a class="wpanelLink" href="/report">statement</a></div>
+        <div class="wpanelCoins">
+          <div class="wpanelCoin" data-coin="usdc">
+            <span class="wpanelCoinName">USDC</span>
+            <b id="wpanelUsdc">·</b>
+            <small id="wpanelUsdcSub">reading</small>
+          </div>
+          <div class="wpanelCoin" data-coin="sui">
+            <span class="wpanelCoinName">SUI</span>
+            <b id="wpanelSui">·</b>
+            <small id="wpanelSuiSub">reading</small>
+          </div>
+        </div>
+        <p class="wpanelNote bad" id="wpanelGas" hidden></p>
+      </section>
+      <section class="wpanelSec">
+        <div class="wpanelLabel"><span>memory</span><a class="wpanelLink" href="/memory">open memory</a></div>
+        <p class="wpanelMem muted" id="wpanelMem">nothing to read yet</p>
+      </section>
+      <div class="wpanelReads">
+        <div><span>chain</span><b id="wpanelChain">·</b></div>
+        <div><span>brain</span><b id="wpanelBrain">·</b></div>
+        <div><span>spent</span><b id="wpanelSpend">·</b></div>
+        <div><span>names</span><b id="wpanelNames">·</b></div>
+      </div>
+      <div class="wpanelActions">
+        <button class="wpanelProve" id="wpanelProve" type="button" aria-label="Prove network live" hidden>
+          <span id="wpanelProveWord">prove live</span>
+          <span class="wpanelProveGas" id="wpanelProveGas">0 gas</span>
+        </button>
+      </div>
+    </div>
+    <button class="wpanelClose" id="wpanelClose" type="button" aria-label="Close the wallet card">✕</button>
+  `;
+  document.body.append(root);
+
+  const node = (id) => document.getElementById(id);
+  const write = (id, text) => {
+    const el = node(id);
+    if (el) el.textContent = text;
+  };
+  const sheet = root.querySelector(".wpanelSheet");
+  const prove = node("wpanelProve");
+  let meta = null;
+  let lastPull = 0;
+  let generation = 0;
+  let copyTimer = 0;
+
+  function clearProof() {
+    const line = node("wpanelProof");
+    line.hidden = true;
+    line.textContent = "";
+  }
+
+  function applyMeta(body) {
+    if (!body) return;
+    meta = body;
+    const s = body.session ?? {};
+    const on = s.source === "wallet" && Boolean(s.wallet);
+    const net = s.network || body.pay_network || "";
+    const live = Boolean(body.payments);
+    const named = on ? savedWalletName(s.wallet) : "";
+    write("wpanelName", on ? named || "your wallet" : "no wallet linked");
+    const stamp = node("wpanelStamp");
+    stamp.textContent = on ? (live ? "live" : "read only") : "not linked";
+    stamp.dataset.state = on ? (live ? "live" : "read") : "none";
+    node("wpanelAddrRow").hidden = !on;
+    const sub = node("wpanelSub");
+    sub.hidden = on;
+    if (!on) sub.textContent = "Connect a wallet to read coins and memory.";
+    if (on) write("wpanelAddr", s.wallet);
+    write("wpanelNetState", net ? `${net} · ${live ? "live" : "read only"}` : "reading");
+    const total = Number(body.stats?.total ?? 0);
+    const namespaces = body.stats?.namespaces?.length ?? 0;
+    const mem = node("wpanelMem");
+    mem.classList.toggle("muted", !on);
+    if (!on) {
+      mem.textContent = "no wallet linked";
+    } else if (!total) {
+      mem.textContent = "nothing saved yet";
+    } else {
+      mem.replaceChildren();
+      const count = document.createElement("b");
+      count.textContent = String(total);
+      const tail = total === 1 ? " memory" : " memories";
+      mem.append(count, document.createTextNode(namespaces ? `${tail} · ${namespaces} ${namespaces === 1 ? "namespace" : "namespaces"}` : tail));
+    }
+    write("wpanelChain", net ? `${net}, ${live ? "live" : "read only"}` : "reading");
+    write("wpanelBrain", (body.model || "none").replace("gemini-", "gem "));
+    const lookups = Number(body.spend?.lookups ?? 0);
+    write("wpanelSpend", `${Number(body.spend?.usdc ?? 0).toFixed(2)} · ${lookups} ${lookups === 1 ? "read" : "reads"}`);
+    write("wpanelNames", String(total));
+    prove.hidden = !on;
+    trigger.dataset.on = String(on);
+    word.textContent = on ? named || "wallet" : "connect";
+    trigger.setAttribute(
+      "aria-label",
+      on
+        ? `Wallet. ${named || "your wallet"} ${shortAddr(s.wallet)}. Open the wallet card.`
+        : "Wallet. No wallet connected. Open the wallet card to connect.",
+    );
+  }
+
+  function applyBalance(body) {
+    const connected = meta
+      ? meta.session?.source === "wallet" && Boolean(meta.session?.wallet)
+      : body?.source === "wallet";
+    const usdcAmt = node("wpanelUsdc");
+    const suiAmt = node("wpanelSui");
+    const usdcSub = node("wpanelUsdcSub");
+    const suiSub = node("wpanelSuiSub");
+    const gas = node("wpanelGas");
+    if (!body) {
+      usdcAmt.textContent = "·";
+      suiAmt.textContent = "·";
+      usdcSub.textContent = connected ? "could not read" : "connect to read";
+      suiSub.textContent = connected ? "could not read" : "connect to read";
+      usdcSub.classList.toggle("bad", connected);
+      suiSub.classList.toggle("bad", connected);
+      gas.hidden = true;
+      return;
+    }
+    if (!connected) {
+      usdcAmt.textContent = "·";
+      suiAmt.textContent = "·";
+      usdcSub.textContent = "connect to read";
+      suiSub.textContent = "connect to read";
+      usdcSub.classList.remove("bad");
+      suiSub.classList.remove("bad");
+      gas.hidden = true;
+      return;
+    }
+    const coins = body.holdings ?? [];
+    const usdc = coins.find((h) => String(h.symbol).toUpperCase() === "USDC");
+    const sui = coins.find((h) => String(h.symbol).toUpperCase() === "SUI");
+    const suiAmount = sui ? Number(sui.amount) : 0;
+    usdcAmt.textContent = usdc ? Number(usdc.amount).toFixed(2) : "0.00";
+    suiAmt.textContent = suiAmount.toFixed(3);
+    usdcSub.textContent = !usdc ? "no USDC here" : usdc.usd !== undefined ? `$${Number(usdc.usd).toFixed(2)}` : "spot price unavailable";
+    suiSub.textContent = !sui ? "no SUI for gas" : sui.usd !== undefined ? `$${Number(sui.usd).toFixed(2)} for gas` : "for network fees";
+    usdcSub.classList.remove("bad");
+    suiSub.classList.toggle("bad", suiAmount < 0.5);
+    gas.hidden = suiAmount >= 0.5;
+    gas.textContent =
+      suiAmount === 0
+        ? "No SUI for network fees. A USDC transfer still needs a little SUI for gas."
+        : "Low on SUI for network fees. Keep at least 0.5 SUI here.";
+  }
+
+  async function read(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`http ${res.status}`);
+    return res.json();
+  }
+
+  async function pull(force) {
+    if (!force && Date.now() - lastPull < 2500) return;
+    lastPull = Date.now();
+    const mine = ++generation;
+    root.dataset.busy = "1";
+    try {
+      const [state, balance] = await Promise.allSettled([read("/state"), read("/balance")]);
+      if (mine !== generation) return;
+      if (state.status === "fulfilled") applyMeta(state.value);
+      applyBalance(balance.status === "fulfilled" ? balance.value : null);
+    } finally {
+      if (mine === generation) delete root.dataset.busy;
+    }
+  }
+
+  function place() {
+    if (root.hidden) return;
+    if (matchMedia("(max-width: 680px)").matches) {
+      root.style.top = "";
+      root.style.right = "";
+      scrim.hidden = false;
+      return;
+    }
+    scrim.hidden = true;
+    const r = trigger.getBoundingClientRect();
+    const h = head.getBoundingClientRect();
+    root.style.top = `${Math.round(h.bottom + 10)}px`;
+    root.style.right = `${Math.max(12, Math.round(window.innerWidth - r.right))}px`;
+  }
+
+  function openCard() {
+    if (!root.hidden) return;
+    root.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    place();
+    pull(false);
+    sheet.focus({ preventScroll: true });
+  }
+
+  function closeCard(refocus) {
+    if (root.hidden) return;
+    root.hidden = true;
+    scrim.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    if (refocus) trigger.focus({ preventScroll: true });
+  }
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (root.hidden) openCard();
+    else closeCard(true);
+  });
+  node("wpanelClose").addEventListener("click", () => closeCard(true));
+  scrim.addEventListener("click", () => closeCard(false));
+  document.addEventListener("click", (e) => {
+    if (root.hidden || document.getElementById("dlg") || e.target.closest?.(".dlg")) return;
+    if (root.contains(e.target) || trigger.contains(e.target)) return;
+    closeCard(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || root.hidden || document.getElementById("dlg")) return;
+    closeCard(true);
+  });
+  window.addEventListener("resize", place);
+  document.addEventListener("masthead:layout", place);
+
+  node("wpanelCopy").addEventListener("click", async () => {
+    const address = node("wpanelAddr").textContent.trim();
+    if (!address) return;
+    const clean = await copyText(address);
+    const button = node("wpanelCopy");
+    button.textContent = clean ? "copied" : "copy failed";
+    button.classList.toggle("ok", clean);
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      button.textContent = "copy";
+      button.classList.remove("ok");
+    }, 1800);
+  });
+
+  prove.addEventListener("click", async () => {
+    if (prove.disabled) return;
+    prove.disabled = true;
+    write("wpanelProveWord", "proving…");
+    write("wpanelProveGas", "wallet open");
+    try {
+      const body = await switchOrProveNetwork(payNetwork(), { verifyOnly: true });
+      if (body?.proof) {
+        const p = body.proof;
+        const line = node("wpanelProof");
+        line.hidden = false;
+        line.textContent = `Verified just now. Wallet signature, Tatum ${String(body.network || payNetwork()).toUpperCase()} in ${p.rpc_ms}ms, and Walrus namespace ${p.walrus_namespace} holding ${p.walrus_memories} ${p.walrus_memories === 1 ? "memory" : "memories"}.`;
+      }
+    } finally {
+      prove.disabled = false;
+      write("wpanelProveWord", "Prove network live");
+      write("wpanelProveGas", "0 gas");
+    }
+  });
+
+  document.addEventListener("wallet:changed", () => {
+    clearProof();
+    pull(true);
+  });
+  document.addEventListener("network:changed", () => {
+    clearProof();
+    pull(true);
+  });
+
+  /* The chat page needs a name and an address before this card exists. paintMeta calls
+     this feed after the card mounts, and the card also reads on open for every page. */
+  connectBtn.classList.add("wpanelConnect");
+  root.querySelector(".wpanelActions").append(connectBtn);
+  head.querySelector("#whose")?.remove();
+  head.querySelectorAll(".statusBtn, .statusBox").forEach((el) => el.remove());
+  feedWalletCard = applyMeta;
+
+  return root;
 }
 
 /** The same read, fetched here rather than handed in. Missing ids are skipped so each page shows a subset. */
@@ -1091,15 +1459,15 @@ export function mountMasthead() {
     const nets = wallet.querySelector(".nets") ?? extra.querySelector(".nets");
     if (narrow.matches) {
       for (const el of [statusBtn, statusBox, whose, nets]) {
-        if (el && el.parentElement !== extra) extra.append(el);
+        if (el?.isConnected && el.parentElement !== extra) extra.append(el);
       }
       return;
     }
-    if (whose && whose.parentElement !== wallet) wallet.insertBefore(whose, wallet.firstChild);
-    const anchor = wallet.querySelector("#connect") ?? statusBtn ?? null;
-    if (nets && nets.parentElement !== wallet) wallet.insertBefore(nets, anchor);
-    if (statusBox && statusBox.parentElement !== wallet) wallet.append(statusBox);
-    if (statusBtn && statusBtn.parentElement !== wallet) wallet.insertBefore(statusBtn, statusBox);
+    if (whose?.isConnected && whose.parentElement !== wallet) wallet.insertBefore(whose, wallet.firstChild);
+    const anchor = wallet.querySelector("#connect");
+    if (nets?.isConnected && nets.parentElement !== wallet) wallet.insertBefore(nets, anchor);
+    if (statusBox?.isConnected && statusBox.parentElement !== wallet) wallet.append(statusBox);
+    if (statusBtn?.isConnected && statusBtn.parentElement !== wallet) wallet.insertBefore(statusBtn, statusBox);
   };
 
   btn?.addEventListener("click", () => {
