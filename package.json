@@ -1,7 +1,7 @@
 {
   "name": "ken",
   "version": "1.0.0",
-  "description": "Voice-first personal agent for a Sui wallet — Tatum chain indexing, Walrus MemWal memory, and keyless x402 v2 USDC settlement.",
+  "description": "Voice-first personal agent for a Sui wallet. Tatum chain indexing, Walrus MemWal memory, and keyless x402 v2 USDC settlement.",
   "main": "src/server.ts",
   "scripts": {
     "start": "tsx src/seller.ts & tsx src/server.ts",
