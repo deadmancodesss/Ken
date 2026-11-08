@@ -13,6 +13,7 @@ import { buildStatement } from "./report.js";
 import { PAY_CHAIN, PAY_NET, allHoldings, formatAmount } from "./chain.js";
 import { usdPrices } from "./price.js";
 import { addressActivity, moneyOrigin, monthSpend } from "./history.js";
+import { explorerAccount } from "./explorer.js";
 import { faucetLabel } from "./known.js";
 import { capMeter, capUsdc, clearCap, setCapBase, usdcToBase } from "./cap.js";
 import { DEFAULT_MINUTES, NOTE_MAX } from "./requests.js";
@@ -58,7 +59,7 @@ async function whoIs(raw: string): Promise<unknown> {
   return {
     address,
     network: net,
-    explorer_url: `https://suiscan.xyz/${net}/account/${address}`,
+    explorer_url: explorerAccount(net, address),
     named_as: person?.alias ?? party?.name ?? faucet,
     named_by: person ? "memory" : faucet ? "the faucet's own published address" : party?.service ? "this build's vendor list" : null,
     note: person?.note ?? "",

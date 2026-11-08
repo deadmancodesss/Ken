@@ -7,8 +7,8 @@ import { dialogue, walletAsked, walletWaiting, walletOpen, walletFailed } from "
 // The four word-shaping helpers live in format.js, so a node test can read them
 // without loading this file and hitting wallet.js's use of window. They are bound
 // here too because the masthead prints a shortened address.
-import { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx } from "./format.js";
-export { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx };
+import { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx, explorerAccount } from "./format.js";
+export { shortAddr, faceUrl, spoken, when, plain, addressNeed, requestNeed, maskAddress, SUI_ADDRESS, explorerTx, explorerAccount };
 
 /*
  * Which ledger this build settles on is a server field. Pages that print a payment

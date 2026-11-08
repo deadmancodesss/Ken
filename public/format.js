@@ -10,13 +10,20 @@ export const shortAddr = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export const SUI_ADDRESS = /^0x[0-9a-fA-F]{64}$/;
 
 /**
- * The one place a digest becomes a link a person can press. Suiscan names the network
- * in the path, so a testnet receipt can never open on mainnet and look missing. The
- * digest is base58 and has no character that needs escaping, but it is encoded anyway
- * because this function is fed values from a browser.
+ * The one place a digest becomes a link a person can press. SuiVision names the network
+ * in the host, not the path: the mainnet host says "Invalid Transaction digest" for a
+ * testnet digest, so the host has to carry the network. The digest is base58 and has no
+ * character that needs escaping, but it is encoded anyway because this function is fed
+ * values from a browser.
  */
+const explorerHost = (network) =>
+  network === "mainnet" ? "https://suivision.xyz" : "https://testnet.suivision.xyz";
+
 export const explorerTx = (network, digest) =>
-  `https://suiscan.xyz/${network === "mainnet" ? "mainnet" : "testnet"}/tx/${encodeURIComponent(String(digest))}`;
+  `${explorerHost(network)}/txblock/${encodeURIComponent(String(digest))}`;
+
+export const explorerAccount = (network, address) =>
+  `${explorerHost(network)}/account/${encodeURIComponent(String(address))}`;
 
 /** Enough of an address to recognise a paste without printing all 66 characters on screen. */
 export const maskAddress = (a) => `${String(a).slice(0, 8)}…${String(a).slice(-6)}`;

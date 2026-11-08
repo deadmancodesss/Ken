@@ -11,6 +11,7 @@ import {
 import { faucetLabel } from "./known.js";
 import { peopleRoster } from "./people.js";
 import { sellerWallet } from "./x402.js";
+import { explorerAccount, explorerTx } from "./explorer.js";
 
 const PAGE = 50;
 const PAGES = 4;
@@ -375,8 +376,8 @@ export async function moneyOrigin(wallet: string, net: Net): Promise<MoneyOrigin
         from: f.counterparty,
         from_name: labels.get(f.counterparty.toLowerCase()) ?? null,
         tx: f.digest,
-        tx_url: `https://suiscan.xyz/${net}/tx/${f.digest}`,
-        from_url: `https://suiscan.xyz/${net}/account/${f.counterparty}`,
+        tx_url: explorerTx(net, f.digest),
+        from_url: explorerAccount(net, f.counterparty),
       };
     });
 
@@ -436,7 +437,7 @@ export async function moneyOrigin(wallet: string, net: Net): Promise<MoneyOrigin
   return {
     wallet,
     network: net,
-    explorer_url: `https://suiscan.xyz/${net}/account/${wallet}`,
+    explorer_url: explorerAccount(net, wallet),
     balance: held,
     transfers,
     in_by_coin: inByCoin,
@@ -544,13 +545,13 @@ export async function addressActivity(address: string, net: Net, me: string): Pr
       address: a,
       name: labels.get(a) ?? null,
       flows: n,
-      explorer_url: `https://suiscan.xyz/${net}/account/${a}`,
+      explorer_url: explorerAccount(net, a),
     }));
 
   const transactions = statementMoves(flows, decimals, labels, 12).map((row) => ({
     ...row,
-    tx_url: `https://suiscan.xyz/${net}/tx/${row.tx}`,
-    who_url: `https://suiscan.xyz/${net}/account/${row.address}`,
+    tx_url: explorerTx(net, row.tx),
+    who_url: explorerAccount(net, row.address),
   }));
 
   const times = flows.map((f) => f.timestamp).filter((t): t is string => !!t).sort();
@@ -580,7 +581,7 @@ export async function addressActivity(address: string, net: Net, me: string): Pr
   const body: AddressActivity = {
     address,
     network: net,
-    explorer_url: `https://suiscan.xyz/${net}/account/${address}`,
+    explorer_url: explorerAccount(net, address),
     transactions_read: page.count,
     first_seen: times[0]?.slice(0, 10) ?? null,
     last_seen: times.at(-1)?.slice(0, 10) ?? null,

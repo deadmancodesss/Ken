@@ -1043,7 +1043,7 @@
         <h1>Ask anything. Do anything. Plan anything.</h1>
         <p class="lede">Your voice-first wallet superpower: inspect any wallet's transactions &amp; links, plan monthly budgets, set timed reminders, block scammers, or pay by name.</p>
         <div class="asks">
-          <button type="button" data-q="where did my money come from and show my recent transactions?">Inspect my wallet &amp; transactions<span>Full funding trail, amounts &amp; Suiscan links</span></button>
+          <button type="button" data-q="where did my money come from and show my recent transactions?">Inspect my wallet &amp; transactions<span>Full funding trail, amounts &amp; SuiVision links</span></button>
           <button type="button" data-q="what is my monthly summary and who have I paid most this month?">Plan my month<span>Monthly spend, people paid &amp; budget cap</span></button>
           <button type="button" data-q="remind me in 1 minute to review my monthly statement">Set a live reminder<span>Server clock nudges you right inside this chat</span></button>
           <button type="button" data-q="make my monthly statement">Build my vector statement<span>Typeset SVG, printable PDF &amp; CSV ledger</span></button>
@@ -1079,7 +1079,7 @@
     </dialog>
 
     <script type="module">
-      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
+      import { $, spoken, shortAddr, mountWallet, mountNetwork, paintMeta, fillStats, langSetting, addressNeed, requestNeed, copyText, explorerTx, explorerAccount, SUI_ADDRESS, payNetwork, payChain } from "./shared.js";
       import { signAndExecute, signX402 } from "./wallet.js";
       import { mountSelect } from "./ui.js";
       import { createWave } from "./wave.js";
@@ -1466,7 +1466,7 @@
         const addr = String(r.address || r.wallet || "");
         if (!addr) return null;
         const net = String(r.network || lastState?.session?.network || payNetwork() || "mainnet");
-        const accountUrl = r.explorer_url || `https://suiscan.xyz/${net}/account/${addr}`;
+        const accountUrl = r.explorer_url || explorerAccount(net, addr);
         const label = r.named_as || (step.name === "how_money_came" ? "Your Wallet" : shortAddr(addr));
 
         // Normalize transaction rows across address_activity, who_is_this, and how_money_came
@@ -1481,8 +1481,8 @@
                 who: t.from_name || shortAddr(t.from),
                 address: t.from,
                 tx: t.tx,
-                tx_url: t.tx_url || `https://suiscan.xyz/${net}/tx/${t.tx}`,
-                who_url: t.from_url || `https://suiscan.xyz/${net}/account/${t.from}`,
+                tx_url: t.tx_url || explorerTx(net, t.tx),
+                who_url: t.from_url || explorerAccount(net, t.from),
               }))
             : [];
 
@@ -1540,7 +1540,7 @@
         suiLink.href = accountUrl;
         suiLink.target = "_blank";
         suiLink.rel = "noreferrer";
-        suiLink.textContent = "Suiscan Wallet ↗";
+        suiLink.textContent = "SuiVision Wallet ↗";
         links.append(copyBtn, suiLink);
         head.append(idBox, links);
         card.appendChild(head);
@@ -1572,7 +1572,7 @@
           const txWrap = document.createElement("div");
           const lbl = document.createElement("div");
           lbl.className = "dosSectionLabel";
-          lbl.textContent = `Recent Transactions (${Math.min(rawTxs.length, 8)} shown · click any digest to inspect on Suiscan)`;
+          lbl.textContent = `Recent Transactions (${Math.min(rawTxs.length, 8)} shown · click any digest to inspect on SuiVision)`;
           const list = document.createElement("div");
           list.className = "dosTxList";
           for (const tx of rawTxs.slice(0, 8)) {
@@ -1589,7 +1589,7 @@
             const who = document.createElement("span");
             who.className = "dosWho";
             const whoA = document.createElement("a");
-            whoA.href = tx.who_url || `https://suiscan.xyz/${net}/account/${tx.address}`;
+            whoA.href = tx.who_url || explorerAccount(net, tx.address);
             whoA.target = "_blank";
             whoA.rel = "noreferrer";
             whoA.textContent = `${tx.dir === "out" ? "to " : "from "}${tx.who || shortAddr(tx.address)} ↗`;
@@ -1618,13 +1618,13 @@
           const cpWrap = document.createElement("div");
           const lbl = document.createElement("div");
           lbl.className = "dosSectionLabel";
-          lbl.textContent = "Top Counterparties (click to open on Suiscan)";
+          lbl.textContent = "Top Counterparties (click to open on SuiVision)";
           const chips = document.createElement("div");
           chips.className = "dosParties";
           for (const cp of r.counterparties.slice(0, 6)) {
             const a = document.createElement("a");
             a.className = "dosPartyChip";
-            a.href = cp.explorer_url || `https://suiscan.xyz/${net}/account/${cp.address}`;
+            a.href = cp.explorer_url || explorerAccount(net, cp.address);
             a.target = "_blank";
             a.rel = "noreferrer";
             a.textContent = `${cp.name || shortAddr(cp.address)} · ${cp.flows} tx${cp.flows === 1 ? "" : "s"} ↗`;
@@ -1990,7 +1990,7 @@
               link.href = explorerTx(net, pending.digest);
               link.target = "_blank";
               link.rel = "noreferrer";
-              link.textContent = "open on Suiscan ↗";
+              link.textContent = "open on SuiVision ↗";
               receipt.append(top, code, link);
               form.append(receipt);
               thread.appendChild(panelMessage(form));
@@ -2168,7 +2168,7 @@
                 link.href = explorerTx(net, done.digest);
                 link.target = "_blank";
                 link.rel = "noreferrer";
-                link.textContent = "open on Suiscan ↗";
+                link.textContent = "open on SuiVision ↗";
                 receipt.append(top, code, link);
                 if (buysFact && settled.learned?.note) {
                   const answer = document.createElement("p");

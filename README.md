@@ -74,7 +74,7 @@ The price is one cent for a profile, three cents above twenty transactions becau
 | The signed ticket | The wallet card |
 | --- | --- |
 | <img src="docs/assets/app-ticket.webp" alt="A settled 0.03 USDC transfer with a green check and a transaction digest" width="420"> | <img src="docs/assets/wallet-card.webp" alt="Wallet card showing Slush, testnet, USDC and SUI balances, and the memory count" width="420"> |
-| A signed 0.03 USDC transfer to a saved name. The check is a read back from the chain, and the digest opens in Suiscan. | Ledger, both coins, the memory count and the model, all in one card. |
+| A signed 0.03 USDC transfer to a saved name. The check is a read back from the chain, and the digest opens in SuiVision. | Ledger, both coins, the memory count and the model, all in one card. |
 
 | Memory on Walrus | The monthly statement |
 | --- | --- |
@@ -225,7 +225,7 @@ The script pins `PAY_NETWORK=testnet`. The cast and its money only exist on that
 - Every workspace route (`/app`, `/memory`, `/pay`, `/request`, `/ask`, `/report`, `/call`) is strictly gated behind a connected Wallet Standard extension (`Slush`, `Suiet`, `Nightly`, `Surf`, `Backpack`). There is no shared demo wallet, so one visitor can never touch another wallet's Walrus memory, chat sessions, spending limits, spam marks, or payment tickets.
 - Each browser seat holds its own active network (`session().network`), allowing multiple users to operate on `sui:testnet` and `sui:mainnet` simultaneously on the same server.
 - Switching networks or pressing `Prove network live (0 gas)` challenges the connected wallet to sign a personal message and verifies the Ed25519 signature via `@mysten/sui/verify`, measures live Tatum GraphQL latency on the target ledger, and confirms the wallet's Walrus MemWal namespace without spending gas.
-- Every address lookup returns a structured wallet dossier with live coin holdings, directional counterparty breakdowns, and direct Suiscan transaction links alongside the x402 receipt.
+- Every address lookup returns a structured wallet dossier with live coin holdings, directional counterparty breakdowns, and direct SuiVision transaction links alongside the x402 receipt.
 - The people list and the monthly summary read the newest 40 transactions, while `how_money_came` pages up to 200 and states honestly when it reaches its read window.
 
 ## Layout
