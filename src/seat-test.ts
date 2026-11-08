@@ -21,11 +21,12 @@ const A = `0x${"a".repeat(64)}`;
 const B = `0x${"b".repeat(64)}`;
 const CHAIN = "testnet";
 
-const ticket = (sender: string, usdc: number) => ({
+const ticket = (sender: string, amount: number) => ({
   sender,
   to: B,
   name: null,
-  usdc,
+  amount,
+  asset: "USDC" as const,
   bytes: "unsigned",
   chain: CHAIN,
 });
@@ -64,7 +65,7 @@ within(two, () => {
 
 within(one, () => release());
 within(two, () => {
-  expect("releasing one seat does not drop the other seat's ticket", held()?.usdc === 0.1);
+  expect("releasing one seat does not drop the other seat's ticket", held()?.amount === 0.1);
   release();
 });
 

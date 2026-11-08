@@ -522,12 +522,12 @@
       const fill = (st) => {
         if (!$("payTo").value.trim() && st?.session?.wallet) $("payTo").value = st.session.wallet;
         const hint = $("hint");
-        /* The paid note is collected on whichever ledger this build settles, so the
-           sentence is written from the server field rather than from the markup. A hint
-           holding an error keeps it until the next submit clears it. */
+        /* A note is not tied to one ledger. Whoever opens it pays on the ledger their
+           own page is reading, so the hint names no network and promises nothing the
+           reader has not already chosen. A hint holding an error keeps it until the
+           next submit clears it. */
         if (hint && !hint.classList.contains("bad")) {
-          const net = st?.pay_network === "testnet" ? "testnet" : "mainnet";
-          hint.textContent = `${net} USDC only. Money arrives at the address named at the top of this page, and you can replace it there with any ${net} address you own.`;
+          hint.textContent = "USDC only, on whichever ledger the buyer is reading. Money arrives at the address named at the top of this page, and you can replace it there with any Sui address you own.";
         }
       };
 

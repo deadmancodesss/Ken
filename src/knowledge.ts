@@ -73,7 +73,7 @@ function gapInDays(a: string, b: string): number {
 /**
  * Groups a wallet's flows by counterparty and joins the chain facts against
  * Walrus, so one call answers "who is this", "what do I usually pay them" and
- * "when is it due". The features that cost an hour each all read from here.
+ * "how often has this repeated". The features that cost an hour each all read from here.
  *
  * Each call is several seconds of network time, so a result is kept for the whole
  * session. The history only moves when money moves, and every place money moves
@@ -235,139 +235,6 @@ function mostFrequent(values: string[]): string {
   const counts = new Map<string, number>();
   for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-}
-
-export type Due = {
-  address: string;
-  name: string;
-  note: string;
-  asset: string;
-  every_days: number | null;
-  last: string | null;
-  since_days: number | null;
-  expected_on: string | null;
-  usual: string | null;
-  who_pays: "you" | "them" | "both";
-  state: "late" | "due" | "on track" | "no rhythm yet";
-  line: string;
-};
-
-const DAY_MS = 86_400_000;
-const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-/** Midnight of the day a timestamp falls in, so a rhythm is counted in whole days and never in hours. */
-const dayStart = (ms: number) => Date.parse(iso(ms));
-const count = (n: number, word: string) => `${n} ${n === 1 ? word : word + "s"}`;
-
-/**
- * Out loud, money has two decimals. The chain carries six and a spoken "zero point five
- * one six four four three" is not a sentence anyone says about a coffee.
- */
-const spoken = (amount: string) => {
-  const n = Number(amount);
-  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : amount;
-};
-
-/**
- * A rhythm is the only thing memory gives you that a ledger cannot. Two dated flows
- * make a period, the period projects a date, and the date is either past or it is not.
- * Nothing here is guessed: one flow says "no rhythm yet" out loud rather than inventing
- * a monthly bill from a single payment, which is how a summariser turns into a liar.
- */
-export function dueRows(parties: Party[], today = Date.now()): Due[] {
-  const now = dayStart(today);
-  return parties
-    /* A lookup service is bought whenever a name is missing, so it has a rhythm for the
-       same reason a person does and none of the obligation. Reading "you pay the paid
-       address index about a cent every day, and it is overdue" as a bill is the moment
-       the product stops being believable, so vendors never enter the due list. */
-    .filter((p) => !p.service && !p.faucet && (p.flows > 1 || p.name))
-    .map((p) => {
-      const who: Due["who_pays"] = p.direction === "mixed" ? "both" : p.direction === "sent" ? "you" : "them";
-      const last = p.lastSeen ? Date.parse(p.lastSeen) : null;
-      const since = last === null ? null : Math.round((now - last) / DAY_MS);
-      const every = p.gapDays;
-      const expected = every && last !== null ? iso(last + every * DAY_MS) : null;
-      // Positive means days until it is due, negative means days past it. The window
-      // that counts as "coming up" is a quarter of the rhythm and never under a day,
-      // because a fortnightly bill a week out is worth mentioning and a daily coffee
-      // run two days out is noise.
-      const toDue = expected ? Math.round((Date.parse(expected) - now) / DAY_MS) : null;
-      const soon = every === null ? 1 : Math.max(1, Math.round(every / 4));
-      const state: Due["state"] =
-        every === null || since === null || toDue === null ? "no rhythm yet" : toDue < 0 ? "late" : toDue <= soon ? "due" : "on track";
-      const whoWord = who === "you" ? "you pay" : who === "them" ? `${p.name ?? "they"} pays you` : "you exchange";
-      const cadence = every === null ? "" : every === 1 ? "every day" : `every ${count(every, "day")}`;
-      const sum = p.usualAmount ? `${spoken(p.usualAmount)} ${p.asset}` : `what you usually send`;
-      /*
-       * The sentence never carries a date. A model reading this aloud says "today" or
-       * "in two days", and an ISO string that reaches its mouth is a sentence nobody
-       * said to it. The exact date stays in the data field beside it.
-       */
-      const whenDue = toDue === 0 ? "today" : toDue === 1 ? "tomorrow" : `in ${count(toDue ?? 0, "day")}`;
-      const line =
-        state === "late"
-          ? `${whoWord} about ${sum} ${cadence}, ${since === 0 ? "the last one was today" : `the last one was ${count(since ?? 0, "day")} ago`}, and it is ${count(-toDue!, "day")} overdue`
-          : state === "due"
-            ? `${whoWord} about ${sum} ${cadence}, and the next one is due ${whenDue}`
-            : state === "on track"
-              ? `${whoWord} about ${sum} ${cadence}, nothing due for another ${count(toDue!, "day")}`
-              : `only ${count(p.flows, "payment")} with ${p.name ?? p.address.slice(0, 10)} so far, so there is no rhythm to expect yet`;
-      return {
-        address: p.address,
-        name: p.name ?? p.address.slice(0, 10) + "…",
-        note: p.note,
-        asset: p.asset,
-        every_days: every ?? null,
-        last: p.lastSeen,
-        since_days: since,
-        expected_on: expected,
-        usual: p.usualAmount ? `${p.usualAmount} ${p.asset}` : null,
-        who_pays: who,
-        state,
-        line,
-      };
-    })
-    .sort((a, b) => {
-      const rank = { late: 0, due: 1, "on track": 2, "no rhythm yet": 3 } as const;
-      return rank[a.state] - rank[b.state] || (b.since_days ?? 0) - (a.since_days ?? 0);
-    });
-}
-
-export type Commitment = { asset: string; per_month: string; people: string[] };
-
-/**
- * A bill is a rhythm you are expected to keep. The paid index takes money per question,
- * so listing it as something due tomorrow would turn a price into a promise. Every
- * surface that speaks about commitments filters through here, so the filter is one rule
- * rather than three that can drift apart.
- */
-export function bills(rows: Due[], exclude: string[] = []): Due[] {
-  const skip = new Set(exclude.map((a) => a.toLowerCase()));
-  return rows.filter((r) => !skip.has(r.address.toLowerCase()));
-}
-
-/**
- * "What do I pay every month" is the question a person with a budget actually asks, and
- * the answer is arithmetic over rhythms that have already been measured. Amounts never
- * cross an asset boundary, because a total that quietly adds USDC to SUI is the exact
- * error this product exists to avoid.
- */
-export function commitments(rows: Due[]): Commitment[] {
-  const by = new Map<string, { total: number; people: string[] }>();
-  for (const r of rows) {
-    if (!r.every_days || !r.usual) continue;
-    const [number, ...word] = r.usual.split(" ");
-    const amount = Number(number);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    const asset = word.join(" ") || r.asset || "USDC";
-    const row = by.get(asset) ?? { total: 0, people: [] };
-    row.total += (amount * 30) / r.every_days;
-    row.people.push(r.name);
-    by.set(asset, row);
-  }
-  return [...by.entries()]
-    .map(([asset, r]) => ({ asset, per_month: `${r.total.toFixed(2)} ${asset}`, people: r.people }))
-    .sort((a, b) => Number(b.per_month.split(" ")[0]) - Number(a.per_month.split(" ")[0]));
 }
 
 export type Month = { month: string; asset: string; in: string; out: string; flows: number };

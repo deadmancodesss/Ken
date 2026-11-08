@@ -211,6 +211,14 @@
       .amount b { font: 10px/1 var(--mono); font-weight: 400; color: var(--ink-2); }
       .samount { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
       .samount small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); margin-left: 6px; }
+      .coinPickRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 0; }
+      .coinPickRow > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .panel .coinPick { display: inline-flex; border: var(--edge) solid var(--rule-strong); border-radius: 8px; overflow: hidden; background: var(--rule); gap: 1px; flex: 0 0 auto; }
+      .panel .coinPick button { border: 0; border-radius: 0; box-shadow: none; background: var(--paper); color: var(--ink-3); font: 11px/1 var(--mono); letter-spacing: 0.06em; padding: 6px 10px; min-width: 46px; text-align: center; }
+      .panel .coinPick button:hover { background: var(--paper-sunk); color: var(--ink); transform: none; box-shadow: none; }
+      .panel .coinPick button.on { background: var(--ink); color: var(--paper); }
+      .panel .coinPick button:active { transform: none; box-shadow: none; }
+      .coinNote { flex: 1 1 100%; margin: 0; font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); max-width: 48ch; }
       .sline { display: flex; gap: 10px; align-items: baseline; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); min-width: 0; }
       .sline b { font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
       .receipt { display: grid; gap: 6px; padding-top: 2px; }
@@ -584,7 +592,7 @@
           const waiting = pendingInfo.pending;
           const settled = turns
             .slice(signIndex)
-            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
+            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "pay_sui", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
           if (waiting && !waiting.digest) {
             if (pendingInfo.expired || !at || Date.now() - at > FORM_TTL_MS) {
               add(signIndex, "the payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
@@ -603,7 +611,6 @@
         who_is_this: "looking up an address",
         money_history: "reading the chain",
         monthly_summary: "month by month",
-        what_is_due: "reading the rhythm",
         name_a_person: "writing a name to Walrus",
         find_person: "finding a name",
         remember_this: "writing to Walrus",
@@ -616,6 +623,7 @@
         set_monthly_limit: "the monthly limit",
         request_money: "opening the request form",
         pay_usdc: "holding it for your sign",
+        pay_sui: "holding it for your sign",
         paid_lookup: "buying a profile",
         verify_payment: "checking a claim",
       };
@@ -646,7 +654,7 @@
         seal.textContent = "✓";
         const mid = document.createElement("span");
         const amt = document.createElement("b");
-        amt.textContent = `${step.result?.usdc ?? ""} USDC`;
+        amt.textContent = `${step.result?.amount ?? ""} ${step.result?.asset ?? "USDC"}`;
         const to = document.createElement("span");
         to.className = "to";
         to.textContent = step.result?.named_as ? ` to ${step.result.named_as}` : step.result?.to ? ` to ${shortAddr(step.result.to)}` : "";
@@ -735,7 +743,8 @@
         form.dataset.chat = chat;
         form.dataset.turn = String(Number(turn?.id) || "");
         armExpiry(form, turn?.at ?? Date.now(), "this address box expired after 30 minutes. Ask Ken again if you still need it.");
-        const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
+        const coin = need.asset === "SUI" ? "SUI" : "USDC";
+        const amount = need.amount ? spoken(`${need.amount} ${coin}`) : "";
         form.innerHTML = `<h4></h4>
           <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
           <p class="hint">The address is the one thing a microphone cannot carry. Type or paste it here. Ken will not guess one.</p>
@@ -774,7 +783,8 @@
               body: JSON.stringify({
                 name: need.looksLikeAddress ? "" : need.who,
                 address,
-                usdc: need.amount ?? undefined,
+                amount: need.amount ?? undefined,
+                asset: need.amount ? coin : undefined,
                 session,
               }),
             });
@@ -787,17 +797,18 @@
             if (!call) {
               const msg = kenMessage(said);
               const steps = [{ name: "name_a_person", ok: true }];
-              if (body.payment) steps.push({ name: "pay_usdc", ok: true, result: body.payment });
-              else if (body.payment_error) steps.push({ name: "pay_usdc", ok: false, error: body.payment_error });
+              const paidTool = body.payment?.asset === "SUI" ? "pay_sui" : "pay_usdc";
+              if (body.payment) steps.push({ name: paidTool, ok: true, result: body.payment });
+              else if (body.payment_error) steps.push({ name: paidTool, ok: false, error: body.payment_error });
               traceInto(msg, steps);
               thread.appendChild(msg);
               scroll();
             }
             if (body.payment?.awaiting_signature) {
               signCard();
-              call?.say(`The address for ${label} was typed into the form, the name is saved, and the transfer is now waiting in the ticket under this transcript. Do not call name_a_person, find_person or pay_usdc again. Say one short sentence that it is waiting for their signature.`);
+              call?.say(`The address for ${label} was typed into the form, the name is saved, and the transfer is now waiting in the ticket under this transcript. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it is waiting for their signature.`);
             } else if (body.payment) {
-              call?.say(`The address for ${label} was typed into the form, the name is saved, and ${body.payment.usdc} USDC was sent and settled on chain. Do not call name_a_person, find_person or pay_usdc again. Say one short sentence that it was sent.`);
+              call?.say(`The address for ${label} was typed into the form, the name is saved, and ${body.payment.amount} ${body.payment.asset ?? "USDC"} was sent and settled on chain. Do not call name_a_person, find_person, pay_usdc or pay_sui again. Say one short sentence that it was sent.`);
             } else {
               call?.say(`The address for ${label} was typed into the form and is kept. The name is saved, so do not call name_a_person or find_person for it. Do not ask for it again. Say one short sentence that it is kept.`);
             }
@@ -912,11 +923,12 @@
             form.className = "panel signPanel moss";
             form.dataset.kind = "sign";
             form.dataset.turn = String(Number(turn?.id) || "");
+            const asset = pending.asset === "SUI" ? "SUI" : "USDC";
             const amount = document.createElement("div");
             amount.className = "samount";
-            amount.textContent = spoken(String(pending.usdc));
+            amount.textContent = spoken(String(pending.amount));
             const unit = document.createElement("small");
-            unit.textContent = "USDC";
+            unit.textContent = asset;
             amount.append(unit);
             form.appendChild(amount);
 
@@ -978,7 +990,7 @@
               form.closest(".msg")?.remove();
               await fetch("/pending/cancel", { method: "POST" }).catch(() => {});
               formNoteMessage("the payment ticket was closed unsigned. Nothing moved.");
-              call?.say("The payment was left unsigned, so no money moved. Do not call pay_usdc again unless they ask for that payment again.");
+              call?.say("The payment was left unsigned, so no money moved. Do not call pay_usdc or pay_sui again unless they ask for that payment again.");
             };
             acts.append(sign, elsewhere, later);
 
@@ -986,7 +998,49 @@
             line.className = "hint";
             line.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
 
-            form.append(to, from, acts, line);
+            // A plain payment may be paid in either coin. A request link and an x402
+            // price both carry a coin in their terms, so no switch is offered there.
+            const pick = document.createElement("div");
+            if (!pending.resource && !pending.request) {
+              pick.className = "coinPickRow";
+              const pickLabel = document.createElement("span");
+              pickLabel.textContent = "pay in";
+              const group = document.createElement("div");
+              group.className = "coinPick";
+              for (const c of ["USDC", "SUI"]) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.textContent = c;
+                b.classList.toggle("on", c === asset);
+                b.onclick = async () => {
+                  if (c === asset) return;
+                  group.querySelectorAll("button").forEach((x) => (x.disabled = true));
+                  line.className = "hint";
+                  line.textContent = `building the same ticket in ${c}…`;
+                  try {
+                    const res = await fetch("/pending/switch", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ asset: c }),
+                    });
+                    const back = await res.json();
+                    if (!res.ok) throw new Error(back.error || `the server answered ${res.status}`);
+                    signCard(turn);
+                  } catch (err) {
+                    line.className = "hint bad";
+                    line.textContent = err.message;
+                    group.querySelectorAll("button").forEach((x) => (x.disabled = false));
+                  }
+                };
+                group.append(b);
+              }
+              const note = document.createElement("p");
+              note.className = "coinNote";
+              note.textContent = "switching keeps the number and changes the coin. One USDC and one SUI are not worth the same.";
+              pick.append(pickLabel, group, note);
+            }
+
+            form.append(to, from, pick, acts, line);
             const createdAt = Number(pending.createdAt) || Number(turn?.at) || Date.now();
             const left = createdAt + FORM_TTL_MS - Date.now();
             formTimers.set(
@@ -1059,14 +1113,15 @@
                 clearFormTimer(form);
                 acts.remove();
                 line.className = "hint good";
+                const settledAsset = done.asset ?? asset;
                 line.textContent = buysFact
-                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered.`
-                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent}.`;
+                  ? `${spoken(String(done.amount))} USDC reached the index and it answered.`
+                  : `${spoken(String(done.amount))} ${settledAsset} reached ${toWho.textContent}.`;
                 form.append(receipt);
                 call?.say(
                   buysFact
-                    ? `The ${done.usdc} USDC payment for a paid lookup was signed in the browser wallet and settled on chain. The answer was: ${settled.learned?.note ?? "released"}. Do not buy that lookup again. Say one short sentence about what it found.`
-                    : `The ${done.usdc} USDC transfer to ${toWho.textContent} was signed in the browser wallet and settled on chain. Do not call pay_usdc again. Say one short sentence that it was sent.`,
+                    ? `The ${done.amount} USDC payment for a paid lookup was signed in the browser wallet and settled on chain. The answer was: ${settled.learned?.note ?? "released"}. Do not buy that lookup again. Say one short sentence about what it found.`
+                    : `The ${done.amount} ${settledAsset} transfer to ${toWho.textContent} was signed in the browser wallet and settled on chain. Do not call pay_usdc or pay_sui again. Say one short sentence that it was sent.`,
                 );
               } catch (err) {
                 sign.disabled = false;
@@ -1096,7 +1151,7 @@
         const msg = kenMessage(t.said || "");
         traceInto(msg, t.steps || []);
         for (const s of t.steps || []) {
-          if (!s.ok || s.name !== "pay_usdc") continue;
+          if (!s.ok || !["pay_usdc", "pay_sui"].includes(s.name)) continue;
           const receipt = receiptLink(s);
           if (receipt) msg.appendChild(receipt);
         }
@@ -1253,7 +1308,7 @@
           ...(t.result !== undefined ? { result: t.result } : {}),
         });
         const host = ensureKen();
-        if (t.name === "pay_usdc" && t.ok && t.result?.digest) {
+        if ((t.name === "pay_usdc" || t.name === "pay_sui") && t.ok && t.result?.digest) {
           const receipt = receiptLink({ result: t.result });
           if (receipt) host.appendChild(receipt);
           follow();
@@ -1389,8 +1444,8 @@
           },
           onToolStart: (t) => {
             if (mine !== epoch || !call) return;
-            if (!["pay_usdc", "paid_lookup", "open_paid_link", "verify_payment"].includes(t.name)) return;
-            busyState = t.name === "pay_usdc" || t.name === "paid_lookup" ? "waiting for the chain" : "checking the chain";
+            if (!["pay_usdc", "pay_sui", "paid_lookup", "open_paid_link", "verify_payment"].includes(t.name)) return;
+            busyState = t.name === "pay_usdc" || t.name === "pay_sui" || t.name === "paid_lookup" ? "waiting for the chain" : "checking the chain";
             say(busyState, "wait");
           },
           onTool: (t) => {

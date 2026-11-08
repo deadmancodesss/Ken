@@ -1,7 +1,10 @@
-import { bills, counterparties, dueRows, monthlyTotals, type Due, type Party } from "./knowledge.js";
+import { counterparties, monthlyTotals, type Party } from "./knowledge.js";
 import { memoryStats } from "./people.js";
-import { indexPayout, priceUsdc, purchases, totalSpent } from "./x402.js";
+import { priceUsdc, purchases, totalSpent } from "./x402.js";
 import { session } from "./session.js";
+import { recentStatement, type StatementMove } from "./history.js";
+
+export type Range = "week" | "month";
 
 export type Sender = {
   name: string;
@@ -15,8 +18,17 @@ export type Statement = {
   wallet: string;
   network: string;
   isDemo: boolean;
+  preview: boolean;
+  range: Range;
   period: string;
   headline: string;
+  inPeriod: string;
+  outPeriod: string;
+  netPeriod: string;
+  netDirection: "in" | "out" | "even";
+  otherPeriod: string;
+  moves: StatementMove[];
+  movesComplete: boolean;
   direction: "out" | "in" | "none";
   totalOut: string;
   otherAssets: string;
@@ -27,9 +39,7 @@ export type Statement = {
   sendCount: number;
   senders: Sender[];
   months: { month: string; amount: number; label: string }[];
-  people: { name: string; amount: string; flows: number; cadence: string | null; state: Due["state"] | null; lastSeen: string | null; memorised: boolean }[];
-  overdue: number;
-  dueNow: number;
+  people: { name: string; amount: string; flows: number; cadence: string | null; lastSeen: string | null; memorised: boolean }[];
   remembered: number;
   bought: number;
   paid: string;
@@ -38,6 +48,8 @@ export type Statement = {
 };
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DAY = 86_400_000;
+const USDC_UNIT = 1_000_000;
 
 /** "1.328459 USDC" is never spoken or printed, so one rounding rule covers every surface. */
 function money(v: number, asset: string) {
@@ -159,45 +171,121 @@ export function summarise(parties: Party[]): Totals {
   };
 }
 
-/**
- * A printed card has room for three words per person, not the sentence the voice lane
- * needs. Same measurement, shorter telling, so the card and the agent cannot disagree
- * about whether a payment is late.
- */
-function duePhrase(d: Due, today = Date.now()) {
-  if (d.state === "no rhythm yet" || !d.expected_on) return "no rhythm yet";
-  const midnight = Math.floor(today / 86_400_000) * 86_400_000;
-  const days = Math.round((Date.parse(`${d.expected_on}T00:00:00Z`) - midnight) / 86_400_000);
-  if (days < 0) return `${-days}d late`;
-  if (days === 0) return "due today";
-  if (days === 1) return "due tomorrow";
-  return `due in ${days}d`;
+export type Window = { start: number; end: number; label: string };
+
+function dayLabel(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`;
 }
 
-export async function buildStatement(): Promise<Statement> {
+/**
+ * A statement window that a person can name and a chain can answer. A month is the
+ * calendar month in UTC, which is the same boundary the monthly limit uses. A week is
+ * today and the six days before it in UTC, not a locale week: Sunday in one country is
+ * Saturday in another, and a figure that changes with the reader is not a statement.
+ */
+export function windowOf(range: Range, now = Date.now()): Window {
+  const d = new Date(now);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+
+  if (range === "week") {
+    const end = Date.UTC(year, month, d.getUTCDate() + 1);
+    const start = end - 7 * DAY;
+    const a = new Date(start);
+    const b = new Date(end - 1);
+    const label =
+      a.getUTCMonth() === b.getUTCMonth()
+        ? `${a.getUTCDate()} to ${b.getUTCDate()} ${MONTH_NAMES[a.getUTCMonth()]} ${a.getUTCFullYear()}`
+        : a.getUTCFullYear() === b.getUTCFullYear()
+          ? `${dayLabel(start)} to ${dayLabel(end - 1)} ${a.getUTCFullYear()}`
+          : `${dayLabel(start)} ${a.getUTCFullYear()} to ${dayLabel(end - 1)} ${b.getUTCFullYear()}`;
+    return { start, end, label };
+  }
+
+  return {
+    start: Date.UTC(year, month, 1),
+    end: Date.UTC(year, month + 1, 1),
+    label: `${MONTH_NAMES[month]} ${year}`,
+  };
+}
+
+function headlineFor(range: Range) {
+  return range === "week" ? "Your week, as the agent remembers it" : "Your month, as the agent remembers it";
+}
+
+/** The card a page with no wallet shows: real geometry, zeros, and no invented money. */
+export function previewStatement(network: string, range: Range = "month"): Statement {
+  return {
+    wallet: "0x" + "0".repeat(64),
+    network,
+    isDemo: false,
+    preview: true,
+    range,
+    period: windowOf(range).label,
+    headline: headlineFor(range),
+    inPeriod: money(0, "USDC"),
+    outPeriod: money(0, "USDC"),
+    netPeriod: money(0, "USDC"),
+    netDirection: "even",
+    otherPeriod: "",
+    moves: [],
+    movesComplete: true,
+    direction: "none",
+    totalOut: money(0, "USDC"),
+    otherAssets: "",
+    asset: "USDC",
+    totalIn: money(0, "USDC"),
+    inAsset: "USDC",
+    inOtherAssets: "",
+    sendCount: 0,
+    senders: [],
+    months: [],
+    people: [],
+    remembered: 0,
+    bought: 0,
+    paid: money(0, "USDC"),
+    price: money(priceUsdc(), "USDC"),
+    generatedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
+  };
+}
+
+export async function buildStatement(range: Range = "month"): Promise<Statement> {
   const s = session();
-  const [parties, months, stats] = await Promise.all([
+  const win = windowOf(range);
+  const [parties, months, stats, windowRead] = await Promise.all([
     counterparties(s.wallet, s.network),
     monthlyTotals(s.wallet, s.network),
     memoryStats(),
+    recentStatement(s.wallet, s.network, win.start, 5),
   ]);
 
   const totals = summarise(parties);
 
-  // One pass over the same parties the rest of the card reads, so the date on the
-  // statement and the date the agent speaks out loud come from one measurement. The
-  // paid index is left out because a per-question fee is not a bill.
-  const due = bills(dueRows(parties), [indexPayout()]);
-  const byAddress = new Map(due.map((d) => [d.address.toLowerCase(), d]));
-  const overdue = due.filter((d) => d.state === "late").length;
-  const dueNow = due.filter((d) => d.state === "due").length;
+  const netBase = windowRead.money.usdcIn - windowRead.money.usdcOut;
+  const netDirection: Statement["netDirection"] = netBase === 0n ? "even" : netBase > 0n ? "in" : "out";
+  const netAbs = netBase < 0n ? -netBase : netBase;
+  const otherBits = [
+    ...windowRead.money.otherIn.map((r) => `${r.amount} ${r.asset} in`),
+    ...windowRead.money.otherOut.map((r) => `${r.amount} ${r.asset} out`),
+  ];
 
   return {
     wallet: s.wallet,
     network: s.network,
     isDemo: s.source === "demo",
-    period: months[0]?.month ?? new Date().toISOString().slice(0, 7),
-    headline: s.source === "demo" ? "A made-up circle, real transactions" : "Your week, as the agent remembers it",
+    preview: false,
+    range,
+    period: win.label,
+    headline: s.source === "demo" ? "A made-up circle, real transactions" : headlineFor(range),
+    inPeriod: money(Number(windowRead.money.usdcIn) / USDC_UNIT, "USDC"),
+    outPeriod: money(Number(windowRead.money.usdcOut) / USDC_UNIT, "USDC"),
+    netPeriod: netDirection === "even" ? money(0, "USDC") : `${netDirection === "in" ? "+" : "−"}${money(Number(netAbs) / USDC_UNIT, "USDC")}`,
+    netDirection,
+    otherPeriod:
+      otherBits.slice(0, 4).join(" · ") + (otherBits.length > 4 ? ` · ${otherBits.length - 4} more` : ""),
+    moves: windowRead.moves,
+    movesComplete: windowRead.complete,
     direction: totals.direction,
     totalOut: totals.totalOut,
     otherAssets: totals.otherAssets,
@@ -217,23 +305,21 @@ export async function buildStatement(): Promise<Statement> {
         label: MONTH_NAMES[Number(m.month.slice(5, 7)) - 1] ?? m.month,
       })),
     people: totals.ranked.map((p) => {
-      const d = byAddress.get(p.address.toLowerCase());
       const paid = biggestOut(p);
       return {
         name: p.name ?? short(p.address),
         amount: paid ? money(Number(paid.out) || 0, paid.asset) : money(0, totals.asset),
         flows: p.flows,
-        cadence: d ? duePhrase(d) : p.gapDays ? `every ${p.gapDays}d` : null,
-        state: d?.state ?? null,
+        // Only what the transfers show. A repeated gap is an observed pattern,
+        // never a promise about the next payment.
+        cadence: p.gapDays ? (p.gapDays === 1 ? "about every day" : `about every ${p.gapDays}d`) : null,
         lastSeen: p.lastSeen,
         memorised: p.memorised,
       };
     }),
-    overdue,
-    dueNow,
     remembered: stats.total,
-    bought: purchases(s.wallet).length,
-    paid: money(totalSpent(s.wallet), "USDC"),
+    bought: purchases(s.wallet, s.network).length,
+    paid: money(totalSpent(s.wallet, s.network), "USDC"),
     price: money(priceUsdc(), "USDC"),
     generatedAt: new Date().toISOString().slice(0, 16).replace("T", " "),
   };
@@ -268,14 +354,38 @@ function fit(s: string, max: number) {
  * image model we can reach draws convincing paper and unreliable digits, and a
  * statement with a total that is wrong by forty cents destroys the one claim this
  * product makes. Same numbers whether it is printed, shared or posted.
+ *
+ * Credits and debits are drawn as two sides of one figure rather than one headline,
+ * because a wallet whose whole history is money arriving must not print a zero as if
+ * nothing happened. The plus and minus are real vector strokes, so they survive a PNG
+ * export and never depend on a font having the glyph.
  */
+function arrow(cx: number, cy: number, r: number, kind: "in" | "out") {
+  const fill = kind === "in" ? C.moss : C.clay;
+  const arm = Math.round(r * 0.48);
+  const cross =
+    kind === "in"
+      ? `M${cx - arm} ${cy}H${cx + arm}M${cx} ${cy - arm}V${cy + arm}`
+      : `M${cx - arm} ${cy}H${cx + arm}`;
+  return `<g data-icon="${kind}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/><path d="${cross}" stroke="${C.paper}" stroke-width="${r > 16 ? 3 : 2.5}" stroke-linecap="round"/></g>`;
+}
+
+function shortDate(at: string | null) {
+  if (!at) return "no date";
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return "no date";
+  return `${d.getUTCDate()} ${MONTH_NAMES[d.getUTCMonth()]}`;
+}
+
 export function cardSvg(d: Statement, w = 1080, h = 1350) {
   const pad = 82;
   const right = w - pad;
   const inner = w - pad * 2;
   const out: string[] = [];
-  const colAmount = right;
-  const colCadence = pad + 400;
+  const split = pad + 440;
+  const col2 = split + 30;
+  const fig = (s: string) => s.split(" ")[0];
+  const rangeWord = d.range === "week" ? "this week" : "this month";
 
   out.push(`<rect width="${w}" height="${h}" fill="${C.paper}"/>`);
   out.push(`<rect x="0" y="0" width="${w}" height="10" fill="${C.clay}"/>`);
@@ -283,110 +393,85 @@ export function cardSvg(d: Statement, w = 1080, h = 1350) {
     `<text x="${pad}" y="126" font-family="${SANS}" font-size="21" letter-spacing="6" fill="${C.ink2}">KEN</text>`,
     `<text x="${right}" y="126" text-anchor="end" font-family="${SANS}" font-size="21" letter-spacing="2" fill="${C.ink3}">STATEMENT</text>`,
     `<line x1="${pad}" y1="158" x2="${right}" y2="158" stroke="${C.rule}" stroke-width="1.5"/>`,
-    `<text x="${pad}" y="238" font-family="${SERIF}" font-size="56" fill="${C.ink}">${esc(d.headline)}</text>`,
-    `<text x="${pad}" y="284" font-family="${MONO}" font-size="23" fill="${C.ink3}">${esc(short(d.wallet))} · ${esc(d.network)} · ${esc(d.period)}</text>`,
+    `<text x="${pad}" y="238" font-family="${SERIF}" font-size="52" fill="${C.ink}">${esc(d.headline)}</text>`,
+    `<text x="${pad}" y="284" font-family="${MONO}" font-size="23" fill="${C.ink3}">${esc(short(d.wallet))} · ${esc(d.network)} · ${esc(d.period)} UTC</text>`,
   );
 
-  // The one number on a statement a person can still act on. It only appears when the
-  // rhythm actually says something, so a card with no dates on it does not shout.
-  const dueWords = [d.overdue ? `${d.overdue} overdue` : "", d.dueNow ? `${d.dueNow} coming due` : ""].filter(Boolean).join(" · ");
-  if (dueWords) {
-    out.push(
-      `<text x="${pad}" y="330" font-family="${SANS}" font-size="25" fill="${d.overdue ? C.clay : C.moss}">${esc(dueWords)}</text>`,
-    );
-  }
-
-  // One cursor down the page instead of hand-placed rows, and the cost panel plus
-  // the footer are reserved from the bottom first. Content length varies with the
-  // wallet, and fixed offsets are how the cost panel used to land on the footer.
+  // The cost panel and the footer are reserved from the bottom first. Five moves are
+  // a known height, and the notes above them vary, so the whole block is placed from
+  // the rule down rather than from hand-measured row offsets.
   const boxH = 176;
   const footerTop = h - 118;
   const boxTop = footerTop - boxH - 26;
-  const rowH = 56;
 
-  let y = 392;
-  // A wallet whose history is all money arriving gets an honest inbound statement. The
-  // spend total is still printed, quietly, because "nothing left this wallet" is the
-  // answer to the zero a reader would otherwise think was a failure.
-  const inbound = d.direction === "in";
-  const primary = inbound ? d.totalIn : d.totalOut;
-  const primaryAsset = inbound ? d.inAsset : d.asset;
+  let y = 372;
+  out.push(`<line x1="${pad}" y1="${y}" x2="${right}" y2="${y}" stroke="${C.rule}" stroke-width="1.5"/>`);
+
+  y = 416;
   out.push(
-    `<text x="${pad}" y="${y}" font-family="${SERIF}" font-size="96" fill="${C.ink}">${esc(primary.split(" ")[0])}</text>`,
-    `<text x="${pad}" y="${y + 40}" font-family="${SANS}" font-size="25" fill="${C.clay}">${esc(primaryAsset)} ${inbound ? "in, from the people below" : "out, across the people below"}</text>`,
+    `<text x="${pad}" y="${y}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">MONEY IN</text>`,
+    `<text x="${col2}" y="${y}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">MONEY OUT</text>`,
   );
 
-  const notes: string[] = [];
-  if (inbound) {
-    notes.push(Number(d.totalOut.split(" ")[0]) > 0 ? `${d.totalOut} out` : "nothing left this wallet in this period");
-    if (d.inOtherAssets) notes.push(d.inOtherAssets);
-  } else {
-    if (d.otherAssets) notes.push(d.otherAssets);
-    if (Number(d.totalIn.split(" ")[0]) > 0) {
-      notes.push(`${d.totalIn} in from ${d.sendCount} ${d.sendCount === 1 ? "address" : "addresses"}`);
-    }
+  const iconY = y + 68;
+  out.push(
+    arrow(pad + 24, iconY, 22, "in"),
+    arrow(col2 + 24, iconY, 22, "out"),
+    `<text x="${pad + 62}" y="${iconY + 24}" font-family="${SERIF}" font-size="60" fill="${C.ink}">${esc(fig(d.inPeriod))}</text>`,
+    `<text x="${col2 + 62}" y="${iconY + 24}" font-family="${SERIF}" font-size="60" fill="${C.ink}">${esc(fig(d.outPeriod))}</text>`,
+    `<text x="${pad + 62}" y="${iconY + 56}" font-family="${SANS}" font-size="22" fill="${C.ink2}">USDC in</text>`,
+    `<text x="${col2 + 62}" y="${iconY + 56}" font-family="${SANS}" font-size="22" fill="${C.ink2}">USDC out</text>`,
+    `<line x1="${split}" y1="${y - 4}" x2="${split}" y2="${iconY + 44}" stroke="${C.rule}" stroke-width="1.5"/>`,
+  );
+
+  let lineY = iconY + 100;
+  const noUsdc = Number(fig(d.inPeriod)) === 0 && Number(fig(d.outPeriod)) === 0;
+  const netLine = noUsdc
+    ? d.otherPeriod
+      ? `no USDC moved ${rangeWord}`
+      : `no money moved ${rangeWord}`
+    : d.netDirection === "even"
+      ? `net ${d.netPeriod} ${rangeWord}, money in and out match`
+      : `net ${d.netPeriod} ${rangeWord}`;
+  out.push(`<text x="${pad}" y="${lineY}" font-family="${SANS}" font-size="26" fill="${C.ink2}">${esc(netLine)}</text>`);
+  lineY += 34;
+
+  if (d.otherPeriod) {
+    out.push(`<text x="${pad}" y="${lineY}" font-family="${SANS}" font-size="21" fill="${C.ink3}">${esc(d.otherPeriod)}</text>`);
+    lineY += 28;
   }
-  notes.slice(0, 3).forEach((line, i) => {
+  if (!d.movesComplete) {
     out.push(
-      `<text x="${pad}" y="${y + 74 + i * 34}" font-family="${SANS}" font-size="22" fill="${C.ink2}">${esc(line)}</text>`,
+      `<text x="${pad}" y="${lineY}" font-family="${SANS}" font-size="19" fill="${C.ink3}">only the newest 50 transactions were read, so older money may be missing from this window</text>`,
+    );
+    lineY += 26;
+  }
+
+  const rulesY = lineY + 8;
+  const headY = rulesY + 44;
+  const firstRow = headY + 52;
+  out.push(`<line x1="${pad}" y1="${rulesY}" x2="${right}" y2="${rulesY}" stroke="${C.rule}" stroke-width="1.5"/>`);
+  out.push(
+    `<text x="${pad}" y="${headY}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">LAST 5 MOVES</text>`,
+    `<text x="${right}" y="${headY}" text-anchor="end" font-family="${SANS}" font-size="17" letter-spacing="2" fill="${C.ink3}">newest first</text>`,
+  );
+
+  if (!d.moves.length) {
+    out.push(
+      `<text x="${pad}" y="${firstRow}" font-family="${SANS}" font-size="23" fill="${C.ink3}">no transfers ${rangeWord}</text>`,
+    );
+  }
+
+  d.moves.slice(0, 5).forEach((m, i) => {
+    const rowY = firstRow + i * 56;
+    out.push(
+      arrow(pad + 13, rowY - 9, 13, m.dir),
+      `<text x="${pad + 38}" y="${rowY}" font-family="${SERIF}" font-size="28" fill="${C.ink}">${esc(fit(m.who, 26))}</text>`,
+      `<text x="${right - 380}" y="${rowY}" font-family="${MONO}" font-size="20" fill="${C.ink3}">${esc(shortDate(m.at))}</text>`,
+      `<text x="${right}" y="${rowY}" text-anchor="end" font-family="${MONO}" font-size="25" fill="${C.ink}">${esc(`${m.dir === "in" ? "+" : "−"}${m.amount} ${m.asset}`)}</text>`,
+      `<line x1="${pad}" y1="${rowY + 13}" x2="${right}" y2="${rowY + 13}" stroke="${C.wash}" stroke-width="1"/>`,
     );
   });
-  if (notes.length) y += 40 + (notes.length - 1) * 34;
-
-  y += 68;
-  const bars = d.months.slice(-3);
-  if (bars.length) {
-    const peak = Math.max(...bars.map((b) => b.amount), 1);
-    out.push(`<text x="${pad}" y="${y}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">MONTH BY MONTH</text>`);
-    for (const b of bars) {
-      y += 42;
-      const bw = Math.max(4, Math.round((b.amount / peak) * (inner - 250)));
-      out.push(
-        `<text x="${pad}" y="${y}" font-family="${SANS}" font-size="22" fill="${C.ink2}">${esc(b.label)}</text>`,
-        `<rect x="${pad + 74}" y="${y - 16}" width="${inner - 250}" height="21" fill="${C.sunk}"/>`,
-        `<rect x="${pad + 74}" y="${y - 16}" width="${bw}" height="21" fill="${C.clay}"/>`,
-        `<text x="${right}" y="${y}" text-anchor="end" font-family="${MONO}" font-size="22" fill="${C.ink}">${esc(money(b.amount, d.asset))}</text>`,
-      );
-    }
-  }
-
-  type CardRow = {
-    name: string;
-    amount: string;
-    lastSeen: string | null;
-    memorised: boolean;
-    cadence?: string | null;
-    state?: Due["state"] | null;
-  };
-  const rows: CardRow[] = inbound ? d.senders : d.people;
-  y += 58;
-  const shown = Math.max(0, Math.min(rows.length, Math.floor((boxTop - 30 - y) / rowH)));
-  out.push(`<line x1="${pad}" y1="${y - 34}" x2="${right}" y2="${y - 34}" stroke="${C.rule}" stroke-width="1.5"/>`);
-  out.push(
-    `<text x="${pad}" y="${y}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">${inbound ? "WHO SENT IT" : "WHO GOT WHAT"}</text>`,
-    `<text x="${colCadence}" y="${y}" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">${inbound ? "LAST SEEN" : "NEXT PAYMENT"}</text>`,
-    `<text x="${colAmount}" y="${y}" text-anchor="end" font-family="${SANS}" font-size="19" letter-spacing="3" fill="${C.ink3}">${inbound ? "RECEIVED" : "AMOUNT"}</text>`,
-  );
-
-  for (const p of rows.slice(0, shown)) {
-    y += rowH;
-    // Late is the one colour a person needs to find fast on a printed sheet, so it
-    // takes the accent and everything quieter stays in ink.
-    const dueInk = p.state === "late" ? C.clay : p.state === "due" ? C.moss : p.state ? C.ink2 : C.ink3;
-    const second = inbound ? (p.lastSeen ?? "no date") : (p.cadence ?? "no rhythm yet");
-    out.push(
-      `<circle cx="${pad + 7}" cy="${y - 10}" r="6" fill="${p.memorised ? C.moss : "none"}" stroke="${p.memorised ? "none" : C.ink3}" stroke-width="2"/>`,
-      `<text x="${pad + 26}" y="${y}" font-family="${SERIF}" font-size="31" fill="${C.ink}">${esc(fit(p.name, 22))}</text>`,
-      `<text x="${colCadence}" y="${y}" font-family="${SANS}" font-size="24" fill="${inbound ? C.ink3 : dueInk}">${esc(second)}</text>`,
-      `<text x="${colAmount}" y="${y}" text-anchor="end" font-family="${MONO}" font-size="27" fill="${C.ink}">${esc(p.amount)}</text>`,
-      `<line x1="${pad}" y1="${y + 15}" x2="${right}" y2="${y + 15}" stroke="${C.wash}" stroke-width="1"/>`,
-    );
-  }
-  if (rows.length > shown) {
-    out.push(
-      `<text x="${pad}" y="${y + 34}" font-family="${SANS}" font-size="21" fill="${C.ink3}">${inbound ? `${rows.length - shown} more addresses sent money, with no room on this card` : `${rows.length - shown} more people the agent knows that this card has no room for`}</text>`,
-    );
-  }
 
   out.push(
     `<rect x="${pad}" y="${boxTop}" width="${inner}" height="${boxH}" fill="${C.sunk}"/>`,
@@ -400,7 +485,11 @@ export function cardSvg(d: Statement, w = 1080, h = 1350) {
   out.push(
     `<text x="${pad}" y="${h - 62}" font-family="${SANS}" font-size="20" fill="${C.ink3}">amounts read from the chain · names and notes read from memory · ${esc(d.generatedAt)} UTC</text>`,
   );
-  if (d.isDemo) {
+  if (d.preview) {
+    out.push(
+      `<text x="${pad}" y="${h - 30}" font-family="${SANS}" font-size="20" fill="${C.clay}">connect a wallet on the statement page to read your own</text>`,
+    );
+  } else if (d.isDemo) {
     out.push(
       `<text x="${pad}" y="${h - 30}" font-family="${SANS}" font-size="20" fill="${C.clay}">the people named here are invented for the demo, every transaction is real</text>`,
     );

@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import type { Net } from "./chain.js";
 
 /**
  * A request is an ask, never a payment. It holds a recipient, an amount and a line of
@@ -31,6 +32,17 @@ export type StoredRequest = {
   paid_tx: string | null;
   paid_by: string | null;
   paid_at: number | null;
+  /**
+   * The ledger the link asks to be paid on. The same address exists on testnet and
+   * mainnet, so a link with no network could ask for testnet dust and be paid in real
+   * money by whoever opened it while reading mainnet.
+   *
+   * Links made before this field existed are read as testnet, because every link in
+   * this store was made while the app read testnet. Testnet is also the only guess
+   * that cannot turn an old link into a mainnet ask. A genuine old mainnet link would
+   * ask for testnet instead, which the payer would notice before signing.
+   */
+  network: Net;
 };
 
 /**
@@ -56,6 +68,7 @@ export function publicRequest(r: StoredRequest, viewer?: { wallet?: string }) {
     mine: Boolean(viewer?.wallet && viewer.wallet.toLowerCase() === r.to.toLowerCase()),
     link: `/request/${r.id}`,
     paid: r.paid_tx ? { tx: r.paid_tx, at: r.paid_at } : null,
+    network: r.network,
   };
 }
 
@@ -114,6 +127,7 @@ function row(r: any): StoredRequest {
     paid_tx: r.paid_tx ? String(r.paid_tx) : null,
     paid_by: r.paid_by ? String(r.paid_by) : null,
     paid_at: r.paid_at === null || r.paid_at === undefined ? null : Number(r.paid_at),
+    network: r.network === "mainnet" || r.network === "testnet" ? r.network : "testnet",
   };
 }
 
@@ -144,6 +158,9 @@ function open(): DatabaseSync | null {
       made.exec("alter table requests add column expires_at integer");
       made.exec(`update requests set expires_at = created + ${DEFAULT_MINUTES * 60_000} where expires_at is null`);
     }
+    if (!cols.some((c) => c.name === "network")) {
+      made.exec("alter table requests add column network text");
+    }
     db = made;
   } catch (err) {
     console.warn(`request store unavailable (${(err as Error).message}), so links last for this process only`);
@@ -162,6 +179,7 @@ export function makeRequest(input: {
   usdc: number;
   owner: string;
   minutes?: number;
+  network?: Net;
 }): StoredRequest {
   const to = String(input.to ?? "").trim();
   if (!ADDRESS.test(to)) throw new Error("a request needs a full Sui address to land in");
@@ -192,6 +210,7 @@ export function makeRequest(input: {
     paid_tx: null,
     paid_by: null,
     paid_at: null,
+    network: input.network === "mainnet" || input.network === "testnet" ? input.network : "testnet",
   };
   memory.set(id, made);
   const store = open();
@@ -199,9 +218,9 @@ export function makeRequest(input: {
     try {
       store
         .prepare(
-          "insert into requests (id, to_addr, note, usdc_base, by_owner, created, expires_at, paid_tx, paid_by, paid_at) values (?, ?, ?, ?, ?, ?, ?, null, null, null)",
+          "insert into requests (id, to_addr, note, usdc_base, by_owner, created, expires_at, paid_tx, paid_by, paid_at, network) values (?, ?, ?, ?, ?, ?, ?, null, null, null, ?)",
         )
-        .run(id, to, note, base, owner, made.created, made.expires_at);
+        .run(id, to, note, base, owner, made.created, made.expires_at, made.network);
     } catch {
       // The map above still answers this link for the life of the process.
     }
@@ -221,19 +240,25 @@ export function findRequest(id: string): StoredRequest | null {
   }
 }
 
-export function requestsBy(owner: string, limit = 12): StoredRequest[] {
+/** The links one owner made, on one ledger when asked, so a testnet link never lists on mainnet. */
+export function requestsBy(owner: string, limit = 12, net?: Net): StoredRequest[] {
   const store = open();
   if (!store) {
     return [...memory.values()]
       .reverse()
       .sort((a, b) => b.created - a.created)
-      .filter((r) => r.owner === owner)
+      .filter((r) => r.owner === owner && (!net || r.network === net))
       .slice(0, limit);
   }
   try {
-    const rows = store
-      .prepare("select * from requests where by_owner = ? order by created desc, rowid desc limit ?")
-      .all(owner, limit);
+    // Legacy rows have no ledger and are read as testnet here for the same reason row()
+    // does it, so the list and the link itself can never disagree about the ledger.
+    const sql = net
+      ? net === "testnet"
+        ? "select * from requests where by_owner = ? and (network = 'testnet' or network is null) order by created desc, rowid desc limit ?"
+        : "select * from requests where by_owner = ? and network = 'mainnet' order by created desc, rowid desc limit ?"
+      : "select * from requests where by_owner = ? order by created desc, rowid desc limit ?";
+    const rows = store.prepare(sql).all(owner, limit);
     return rows.map(row);
   } catch {
     return [];

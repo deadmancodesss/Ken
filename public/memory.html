@@ -310,52 +310,66 @@
       }
 
       async function load() {
+        const go = $("form").querySelector('button[type="submit"]');
+        if (go.disabled) return;
         const q = $("q").value.trim();
+        go.disabled = true;
+        go.textContent = "Searching…";
+        $("took").textContent = "searching…";
+        $("roster").setAttribute("aria-busy", "true");
         const t0 = performance.now();
-        const res = await fetch("/memories?q=" + encodeURIComponent(q)).catch(() => null);
-        const secs = ((performance.now() - t0) / 1000).toFixed(1);
-        $("took").textContent = secs + " s";
-        if (!res || !res.ok) {
+        try {
+          const res = await fetch("/memories?q=" + encodeURIComponent(q)).catch(() => null);
+          const secs = ((performance.now() - t0) / 1000).toFixed(1);
+          $("took").textContent = secs + " s";
+          if (!res || !res.ok) {
+            $("roster").innerHTML = '<div class="empty">could not reach the server</div>';
+            return;
+          }
+          const body = await res.json();
+
+          const roster = body.roster ?? [];
+          $("roster").innerHTML = roster.length
+            ? roster
+                .map((p) => {
+                  const n = splitNote(p.note);
+                  const drawn = faceUrl(p.alias);
+                  return (
+                    `<div class="row">` +
+                    (drawn ? `<span class="av"><img src="${drawn}" alt=""></span>` : "") +
+                    `<div><div class="who">${esc(p.alias)} <span>${esc(plain(n.note) || "no note")}</span></div>` +
+                    `<div class="addr">${esc(shortAddr(p.address))}</div>${n.from ? `<div class="from">${esc(n.from)}</div>` : ""}</div></div>`
+                  );
+                })
+                .join("")
+            : '<div class="empty">nothing yet. Say "that\'s Ravi, my plumber, 0x…" on the Chat page.</div>';
+
+          // Walrus has no update, so correcting a fact writes a second line. The page
+          // shows one row per distinct sentence and keeps the nearest copy of it.
+          const seen = new Map();
+          for (const h of body.hits ?? []) {
+            const text = plain(h.text);
+            const prev = seen.get(text);
+            if (!prev || h.distance < prev.distance) seen.set(text, { ...h, text });
+          }
+          const hits = [...seen.values()].sort((a, b) => a.distance - b.distance);
+          $("hitsLabel").textContent = q ? `Closest memories to “${q}”` : "What it remembers";
+          $("hits").innerHTML = hits.length
+            ? hits
+                .map(
+                  (h) =>
+                    `<div class="row"><div class="text">${esc(h.text)}</div>` +
+                    `<div class="meta">closer<b>${(1 - h.distance).toFixed(2)}</b>${ticks(h.distance)}</div></div>`,
+                )
+                .join("")
+            : '<div class="empty">no memory came back for that</div>';
+        } catch {
           $("roster").innerHTML = '<div class="empty">could not reach the server</div>';
-          return;
+        } finally {
+          go.disabled = false;
+          go.textContent = "Search";
+          $("roster").removeAttribute("aria-busy");
         }
-        const body = await res.json();
-
-        const roster = body.roster ?? [];
-        $("roster").innerHTML = roster.length
-          ? roster
-              .map((p) => {
-                const n = splitNote(p.note);
-                const drawn = faceUrl(p.alias);
-                return (
-                  `<div class="row">` +
-                  (drawn ? `<span class="av"><img src="${drawn}" alt=""></span>` : "") +
-                  `<div><div class="who">${esc(p.alias)} <span>${esc(plain(n.note) || "no note")}</span></div>` +
-                  `<div class="addr">${esc(shortAddr(p.address))}</div>${n.from ? `<div class="from">${esc(n.from)}</div>` : ""}</div></div>`
-                );
-              })
-              .join("")
-          : '<div class="empty">nothing yet. Say "that\'s Ravi, my plumber, 0x…" on the Chat page.</div>';
-
-        // Walrus has no update, so correcting a fact writes a second line. The page
-        // shows one row per distinct sentence and keeps the nearest copy of it.
-        const seen = new Map();
-        for (const h of body.hits ?? []) {
-          const text = plain(h.text);
-          const prev = seen.get(text);
-          if (!prev || h.distance < prev.distance) seen.set(text, { ...h, text });
-        }
-        const hits = [...seen.values()].sort((a, b) => a.distance - b.distance);
-        $("hitsLabel").textContent = q ? `Closest memories to “${q}”` : "What it remembers";
-        $("hits").innerHTML = hits.length
-          ? hits
-              .map(
-                (h) =>
-                  `<div class="row"><div class="text">${esc(h.text)}</div>` +
-                  `<div class="meta">closer<b>${(1 - h.distance).toFixed(2)}</b>${ticks(h.distance)}</div></div>`,
-              )
-              .join("")
-          : '<div class="empty">no memory came back for that</div>';
       }
 
       $("form").addEventListener("submit", (e) => {

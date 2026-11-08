@@ -29,12 +29,14 @@ export type AddressDeps = {
   byName: (name: string) => Promise<Named | null>;
   byAddress: (address: string) => Promise<Named | null>;
   label: (name: string, address: string) => Promise<Named>;
-  pay: (to: string, usdc: number) => Promise<unknown>;
+  pay: (to: string, amount: number, asset: "USDC" | "SUI") => Promise<unknown>;
 };
 
 export type Kept = {
   person: Named | null;
   address: string;
+  /** The coin the sentence asked to send, so a failure still names the right one. */
+  asset: "USDC" | "SUI";
   /** The tool result when a payment was asked for, otherwise null. */
   payment: unknown;
   /** A payment that failed does not undo the name, so its reason travels beside it. */
@@ -50,7 +52,7 @@ export type Kept = {
  * throwing that away would make the person type the same address again.
  */
 export async function keepAddress(
-  input: { name?: unknown; address?: unknown; usdc?: unknown },
+  input: { name?: unknown; address?: unknown; amount?: unknown; asset?: unknown },
   deps: AddressDeps,
 ): Promise<Kept> {
   const address = cleanAddress(input.address);
@@ -58,8 +60,9 @@ export async function keepAddress(
   // An address typed into the name slot is not a name. The field that was filled in is
   // the one that decides the recipient, so a partial 0x string is never written to memory.
   const name = typed && !/^0x/i.test(typed) ? typed : "";
-  const amount = Number(input.usdc);
-  const usdc = Number.isFinite(amount) && amount > 0 ? amount : null;
+  const asset: "USDC" | "SUI" = input.asset === "SUI" ? "SUI" : "USDC";
+  const amount = Number(input.amount);
+  const sending = Number.isFinite(amount) && amount > 0 ? amount : null;
 
   let person: Named | null = null;
   if (name) {
@@ -76,14 +79,14 @@ export async function keepAddress(
 
   let payment: unknown = null;
   let payment_error = "";
-  if (usdc !== null) {
+  if (sending !== null) {
     try {
-      payment = await deps.pay(person?.alias ?? address, usdc);
+      payment = await deps.pay(person?.alias ?? address, sending, asset);
     } catch (err) {
       payment_error = (err as Error).message;
     }
   }
-  return { person, address, payment, payment_error };
+  return { person, address, asset, payment, payment_error };
 }
 
 export type KeptTurn = {
@@ -103,20 +106,21 @@ export function keptTurn(kept: Kept): KeptTurn {
   const person = kept.person;
   const label = person?.alias ?? masked;
   const payment = kept.payment as any;
+  const tool = kept.asset === "SUI" ? "pay_sui" : "pay_usdc";
   const steps: KeptTurn["steps"] = [];
   if (person) steps.push({ name: "name_a_person", ok: true, result: person });
 
   let note = "";
   if (payment?.awaiting_signature) {
-    note = `${payment.usdc} USDC is waiting for your signature in the ticket under this reply.`;
-    steps.push({ name: "pay_usdc", ok: true, result: payment });
+    note = `${payment.amount} ${payment.asset} is waiting for your signature in the ticket under this reply.`;
+    steps.push({ name: tool, ok: true, result: payment });
   } else if (payment) {
     const duplicate = payment.duplicate ? " It is the same payment as before, not a second one." : "";
-    note = `${payment.usdc} USDC was sent and settled on chain.${duplicate}`;
-    steps.push({ name: "pay_usdc", ok: true, result: payment });
+    note = `${payment.amount} ${payment.asset} was sent and settled on chain.${duplicate}`;
+    steps.push({ name: tool, ok: true, result: payment });
   } else if (kept.payment_error) {
     note = `The payment could not be prepared. ${kept.payment_error}`;
-    steps.push({ name: "pay_usdc", ok: false, error: kept.payment_error });
+    steps.push({ name: tool, ok: false, error: kept.payment_error });
   }
 
   const lead = person ? `Kept ${label} at ${masked}.` : `Read the address ${masked}.`;

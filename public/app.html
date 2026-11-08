@@ -201,6 +201,7 @@
 
       .log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
       .thread { min-height: 100%; display: flex; flex-direction: column; gap: 26px; width: 100%; max-width: var(--read); margin: 0 auto; padding: 28px 24px 34px; }
+      .threadLoading { margin: 36px auto; font: var(--step--1)/1.6 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
 
       /* ---------- messages ----------
          A question is a sheet on the right, an answer is a column of reading on the
@@ -378,6 +379,17 @@
       .amount b { font: 10px/1 var(--mono); font-weight: 400; color: var(--ink-2); }
       .samount { font: 400 var(--step-4)/1 var(--serif); letter-spacing: -0.02em; color: var(--ink); }
       .samount small { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; color: var(--ink-3); margin-left: 6px; }
+      /* A coin can be changed on a ticket that has not been signed yet. The two names
+         sit in one drawn capsule with the chosen half dark, the same control the Pay
+         page uses, so the ticket and the form never disagree about what a coin is. */
+      .coinPickRow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 0; }
+      .coinPickRow > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .panel .coinPick { display: inline-flex; border: var(--edge) solid var(--rule-strong); border-radius: 8px; overflow: hidden; background: var(--rule); gap: 1px; flex: 0 0 auto; }
+      .panel .coinPick button { border: 0; border-radius: 0; box-shadow: none; background: var(--paper); color: var(--ink-3); font: 11px/1 var(--mono); letter-spacing: 0.06em; padding: 6px 10px; min-width: 46px; text-align: center; }
+      .panel .coinPick button:hover { background: var(--paper-sunk); color: var(--ink); transform: none; box-shadow: none; }
+      .panel .coinPick button.on { background: var(--ink); color: var(--paper); }
+      .panel .coinPick button:active { transform: none; box-shadow: none; }
+      .coinNote { flex: 1 1 100%; margin: 0; font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); max-width: 48ch; }
       .sline { display: flex; gap: 10px; align-items: baseline; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); min-width: 0; }
       .sline b { font-weight: 400; color: var(--ink); overflow-wrap: anywhere; }
       .receipt { display: grid; gap: 6px; padding-top: 2px; }
@@ -1046,7 +1058,7 @@
         <p class="lede">Your voice-first wallet superpower: inspect any wallet's transactions &amp; links, plan monthly budgets, set timed reminders, block scammers, or pay by name.</p>
         <div class="asks">
           <button type="button" data-q="where did my money come from and show my recent transactions?">Inspect my wallet &amp; transactions<span>Full funding trail, amounts &amp; Suiscan links</span></button>
-          <button type="button" data-q="what is my monthly summary and what is due soon?">Plan my month &amp; upcoming bills<span>Monthly spend, recurring rhythm &amp; budget cap</span></button>
+          <button type="button" data-q="what is my monthly summary and who have I paid most this month?">Plan my month<span>Monthly spend, people paid &amp; budget cap</span></button>
           <button type="button" data-q="remind me in 1 minute to review my monthly statement">Set a live reminder<span>Server clock nudges you right inside this chat</span></button>
           <button type="button" data-q="make my monthly statement">Build my vector statement<span>Typeset SVG, printable PDF &amp; CSV ledger</span></button>
         </div>
@@ -1271,7 +1283,6 @@
         who_is_this: "looking up an address",
         money_history: "reading the chain",
         monthly_summary: "month by month",
-        what_is_due: "reading the rhythm",
         name_a_person: "writing a name to Walrus",
         find_person: "finding a name",
         remember_this: "writing to Walrus",
@@ -1284,6 +1295,7 @@
         set_monthly_limit: "the monthly limit",
         request_money: "opening the request form",
         pay_usdc: "holding it for your sign",
+        pay_sui: "holding it for your sign",
         paid_lookup: "buying a profile",
         verify_payment: "checking a claim",
         mark_spam: "marking address as spam",
@@ -1321,7 +1333,7 @@
         seal.textContent = "✓";
         const mid = document.createElement("span");
         const amt = document.createElement("b");
-        amt.textContent = `${step.result?.usdc ?? ""} USDC`;
+        amt.textContent = `${step.result?.amount ?? ""} ${step.result?.asset ?? "USDC"}`;
         const to = document.createElement("span");
         to.className = "to";
         to.textContent = step.result?.named_as ? ` to ${step.result.named_as}` : step.result?.to ? ` to ${shortAddr(step.result.to)}` : "";
@@ -1351,7 +1363,7 @@
         details.append(summary, box);
         host.appendChild(details);
         for (const s of list) {
-          if (!s.ok || s.name !== "pay_usdc") continue;
+          if (!s.ok || !["pay_usdc", "pay_sui"].includes(s.name)) continue;
           const receipt = receiptLink(s);
           if (receipt) host.appendChild(receipt);
         }
@@ -1387,13 +1399,26 @@
 
       async function saveStatementCsv() {
         const d = await (await fetch("/report.json", { cache: "no-store" })).json();
-        const rows = [["person", "amount", "flows", "next payment", "last seen", "named from memory"]];
+        const rows = [
+          ["period", d.period],
+          ["money in", d.inPeriod],
+          ["money out", d.outPeriod],
+          ["net", d.netPeriod],
+          ["other coins", d.otherPeriod ?? ""],
+          ["whole window read", d.movesComplete ? "yes" : "no, newest 50 only"],
+          [],
+          ["last 5 moves"],
+          ["date", "direction", "amount", "asset", "who", "transaction"],
+        ];
+        for (const m of d.moves ?? []) rows.push([m.at ?? "", m.dir, m.amount, m.asset, m.who, m.tx]);
+        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]));
+        rows.push([], ["person", "amount", "flows", "observed rhythm", "last seen", "named from memory"]);
         if (d.direction === "in") {
           for (const p of d.senders) rows.push([p.name, p.amount, p.flows, "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
         } else {
           for (const p of d.people) rows.push([p.name, p.amount, p.flows, p.cadence ?? "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
         }
-        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]), [], ["total in", d.totalIn], ["total out", d.totalOut], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
+        rows.push([], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
         const cell = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(",")).join("\n")], { type: "text/csv" }));
@@ -1421,9 +1446,28 @@
         el.innerHTML = `<a class="shot" href="/report" target="_blank" rel="noopener"><img src="/report.svg" alt="the statement this wallet can keep" loading="lazy"></a>
           <div><p>Every figure is typeset from the same chain read behind the sentence above. It is a real page, not a picture drawn by a model.</p>
           <div class="acts"><a href="/report" target="_blank" rel="noopener">open</a><button type="button" data-rc="png">save image</button><button type="button" data-rc="csv">csv</button><button type="button" data-rc="pdf">print or PDF</button></div></div>`;
-        el.querySelector('[data-rc="png"]').onclick = () => saveStatementPng().catch((err) => noteError(err.message));
-        el.querySelector('[data-rc="csv"]').onclick = () => saveStatementCsv().catch((err) => noteError(err.message));
-        el.querySelector('[data-rc="pdf"]').onclick = () => printStatement().catch((err) => noteError(err.message));
+        // A statement download reads the chain again, so each button says what it is
+        // doing and comes back even when the read fails.
+        const act = (which, label, run) => {
+          const b = el.querySelector(`[data-rc="${which}"]`);
+          b.onclick = async () => {
+            if (b.disabled) return;
+            const was = b.textContent;
+            b.disabled = true;
+            b.textContent = label;
+            try {
+              await run();
+            } catch (err) {
+              noteError(err.message);
+            } finally {
+              b.disabled = false;
+              b.textContent = was;
+            }
+          };
+        };
+        act("png", "drawing…", saveStatementPng);
+        act("csv", "writing…", saveStatementCsv);
+        act("pdf", "opening…", printStatement);
         return el;
       }
 
@@ -1664,7 +1708,8 @@
         // form and a later typed question can close the box against the saved row.
         form._needTurn = turn;
         armExpiry(form, turn?.at ?? Date.now(), "this address box expired after 30 minutes. Ask Ken again if you still need it.");
-        const amount = need.amount ? spoken(`${need.amount} USDC`) : "";
+        const coin = need.asset === "SUI" ? "SUI" : "USDC";
+        const amount = need.amount ? spoken(`${need.amount} ${coin}`) : "";
         form.innerHTML = `<h4></h4>
           <div class="row"><input type="text" autocomplete="off" spellcheck="false" maxlength="80" placeholder="0x then 64 hex characters" aria-label="full Sui address"><button class="primary" type="submit"></button></div>
           <p class="hint">The address is the one thing a microphone cannot carry. Type or paste it here. The agent will not guess one.</p>
@@ -1732,7 +1777,8 @@
               body: JSON.stringify({
                 name: need.looksLikeAddress ? "" : need.who,
                 address,
-                usdc: need.amount ?? undefined,
+                amount: need.amount ?? undefined,
+                asset: need.amount ? coin : undefined,
                 session: active,
               }),
             });
@@ -1746,8 +1792,9 @@
             form.closest(".msg")?.remove();
             const msg = kenMessage(body.note || "the address is kept.");
             const steps = [{ name: "name_a_person", ok: true }];
-            if (body.payment) steps.push({ name: "pay_usdc", ok: true, result: body.payment });
-            else if (body.payment_error) steps.push({ name: "pay_usdc", ok: false, error: body.payment_error });
+            const paidTool = body.payment?.asset === "SUI" ? "pay_sui" : "pay_usdc";
+            if (body.payment) steps.push({ name: paidTool, ok: true, result: body.payment });
+            else if (body.payment_error) steps.push({ name: paidTool, ok: false, error: body.payment_error });
             traceInto(msg, steps);
             opening();
             thread.appendChild(msg);
@@ -1759,7 +1806,7 @@
             const who = need.looksLikeAddress ? "that address" : need.who;
             call?.say(
               body.payment?.awaiting_signature
-                ? `${who}'s address is saved and a ${body.payment.usdc} USDC payment ticket is open on the page waiting for the wallet signature. Do not call name_a_person or pay_usdc again. Tell the person in one short sentence to sign it in their wallet.`
+                ? `${who}'s address is saved and a ${body.payment.amount} ${body.payment.asset ?? "USDC"} payment ticket is open on the page waiting for the wallet signature. Do not call name_a_person, pay_usdc or pay_sui again. Tell the person in one short sentence to sign it in their wallet.`
                 : body.payment_error
                   ? `${who}'s address is saved, but the payment did not go through: ${body.payment_error}. Explain that in one short sentence.`
                   : `${who}'s address is now saved in the address book. Confirm that in one short sentence.`,
@@ -1933,11 +1980,12 @@
             form.className = "panel signPanel moss";
             form.dataset.kind = "sign";
             form.dataset.turn = String(Number(turn?.id) || "");
+            const asset = pending.asset === "SUI" ? "SUI" : "USDC";
             const amount = document.createElement("div");
             amount.className = "samount";
-            amount.textContent = spoken(String(pending.usdc));
+            amount.textContent = spoken(String(pending.amount));
             const unit = document.createElement("small");
-            unit.textContent = "USDC";
+            unit.textContent = asset;
             amount.append(unit);
             form.appendChild(amount);
 
@@ -2010,7 +2058,50 @@
             hint.className = "hint";
             hint.textContent = "your own wallet signs this. Nothing has moved yet, and cancelling in the wallet leaves the money where it is.";
 
-            form.append(to, from, acts, hint);
+            // A plain payment may be paid in either coin. A request link and an x402
+            // price both carry a coin in their terms, so no switch is offered where the
+            // server would refuse it.
+            const pick = document.createElement("div");
+            if (!pending.resource && !pending.request) {
+              pick.className = "coinPickRow";
+              const pickLabel = document.createElement("span");
+              pickLabel.textContent = "pay in";
+              const group = document.createElement("div");
+              group.className = "coinPick";
+              for (const c of ["USDC", "SUI"]) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.textContent = c;
+                b.classList.toggle("on", c === asset);
+                b.onclick = async () => {
+                  if (c === asset) return;
+                  group.querySelectorAll("button").forEach((x) => (x.disabled = true));
+                  hint.className = "hint";
+                  hint.textContent = `building the same ticket in ${c}…`;
+                  try {
+                    const res = await fetch("/pending/switch", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ asset: c }),
+                    });
+                    const back = await res.json();
+                    if (!res.ok) throw new Error(back.error || `the server answered ${res.status}`);
+                    signCard(turn);
+                  } catch (err) {
+                    hint.className = "hint bad";
+                    hint.textContent = err.message;
+                    group.querySelectorAll("button").forEach((x) => (x.disabled = false));
+                  }
+                };
+                group.append(b);
+              }
+              const note = document.createElement("p");
+              note.className = "coinNote";
+              note.textContent = "switching keeps the number and changes the coin. One USDC and one SUI are not worth the same.";
+              pick.append(pickLabel, group, note);
+            }
+
+            form.append(to, from, pick, acts, hint);
             const createdAt = Number(pending.createdAt) || Number(turn?.at) || Date.now();
             const left = createdAt + FORM_TTL_MS - Date.now();
             formTimers.set(
@@ -2043,7 +2134,7 @@
               // saying the payment is still waiting for a signature while the person is
               // already looking at the chain wait.
               call?.say(
-                `The person has opened their wallet to sign the ${pending.usdc} USDC payment to ${who}. Do not ask them to sign again. Say in one short sentence that you are watching for it on chain and will confirm when it lands.`,
+                `The person has opened their wallet to sign the ${pending.amount} ${asset} payment to ${who}. Do not ask them to sign again. Say in one short sentence that you are watching for it on chain and will confirm when it lands.`,
               );
               try {
                 const buysFact = !!pending.resource;
@@ -2065,7 +2156,7 @@
                 sign.textContent = "Confirming on chain…";
                 hint.textContent = buysFact
                   ? "the wallet signed it. The seller is checking and settling the exact signed payment"
-                  : "the wallet signed it. Reading the chain for the exact USDC movement. The index usually sees it in a few seconds, and this page waits rather than guessing";
+                  : `the wallet signed it. Reading the chain for the exact ${asset} movement. The index usually sees it in a few seconds, and this page waits rather than guessing`;
                 const settledRequest = await fetch("/pending/settle", {
                   method: "POST",
                   headers: { "content-type": "application/json" },
@@ -2102,9 +2193,10 @@
                 clearFormTimer(form);
                 acts.remove();
                 hint.className = "hint good";
+                const settledAsset = done.asset ?? asset;
                 hint.textContent = buysFact
-                  ? `${spoken(String(done.usdc))} USDC reached the index and it answered · ${took}s from click to chain read.`
-                  : `${spoken(String(done.usdc))} USDC reached ${toWho.textContent} · ${took}s from click to chain read.`;
+                  ? `${spoken(String(done.amount))} USDC reached the index and it answered · ${took}s from click to chain read.`
+                  : `${spoken(String(done.amount))} ${settledAsset} reached ${toWho.textContent} · ${took}s from click to chain read.`;
                 if (settled.turnId) drawnIds.add(Number(settled.turnId));
                 form.append(receipt);
                 loadState();
@@ -2112,8 +2204,8 @@
                 refreshSessions();
                 call?.say(
                   buysFact
-                    ? `The person signed the ${done.usdc} USDC x402 payment in their wallet, the seller settled it on Sui (digest ${done.digest}), and the paid answer was released: ${settled.learned?.note ?? "recorded in memory"}. Tell the person what the paid lookup returned in one or two short sentences.`
-                    : `The person signed the ${done.usdc} USDC payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.`,
+                    ? `The person signed the ${done.amount} USDC x402 payment in their wallet, the seller settled it on Sui (digest ${done.digest}), and the paid answer was released: ${settled.learned?.note ?? "recorded in memory"}. Tell the person what the paid lookup returned in one or two short sentences.`
+                    : `The person signed the ${done.amount} ${settledAsset} payment to ${toWho.textContent} in their wallet and it settled on Sui (digest ${done.digest}). Confirm that in one short sentence.`,
                 );
               } catch (err) {
                 clearInterval(clock);
@@ -2132,7 +2224,7 @@
                 call?.say(
                   signedAt
                     ? `The payment was signed in the wallet but the page could not confirm it: ${err.message}. Read the recipient's history and say honestly whether it landed. Do not ask for a second signature.`
-                    : `The wallet did not sign the ${pending.usdc} USDC payment: ${err.message}. Nothing moved. Say that in one short sentence.`,
+                    : `The wallet did not sign the ${pending.amount} ${asset} payment: ${err.message}. Nothing moved. Say that in one short sentence.`,
                 );
               }
             };
@@ -2224,7 +2316,7 @@
           const waiting = pendingInfo.pending;
           const settled = turns
             .slice(signIndex)
-            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
+            .some((x) => (x.steps || []).some((s) => s.result?.digest && ["pay_usdc", "pay_sui", "paid_lookup", "verify_payment", "open_paid_link"].includes(s.name)));
           if (waiting && !waiting.digest) {
             if (pendingInfo.expired || !at || Date.now() - at > FORM_TTL_MS) {
               add(signIndex, "the payment ticket expired unsigned. Nothing moved. Ask Ken again to make a new one.");
@@ -2239,9 +2331,14 @@
       }
 
       async function loadChats(id) {
+        // A session switch empties the pane before the read starts, and a blank sheet
+        // for a second reads as an empty chat. Only a pane that is already empty gets
+        // the line, so a live thread is never wiped by a poll or a change of wallet.
+        const blank = !thread.children.length;
+        if (blank) thread.innerHTML = '<div class="threadLoading">reading the chat…</div>';
         try {
           const res = await fetch("/chats" + (id ? `?session=${encodeURIComponent(id)}` : ""), { cache: "no-store" });
-          if (!res.ok) return;
+          if (!res.ok) throw new Error(`the server answered ${res.status}`);
           const body = await res.json();
           active = body.session || id || active;
           const turns = body.turns || [];
@@ -2267,6 +2364,7 @@
         } catch {
           /* A transcript that cannot be replayed is not worth an error over the
              conversation the person is about to have. The next turn still works. */
+          if (blank) thread.innerHTML = '<div class="threadLoading">the chat could not be read. the next message still works.</div>';
         }
       }
 
@@ -2344,12 +2442,17 @@
       }
 
       async function newChat() {
+        const btn = $("newChat");
+        if (btn.disabled) return;
         const current = sessions.find((s) => s.id === active);
         if (current && current.turns === 0) {
           closeRail();
           input.focus();
           return;
         }
+        const was = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i aria-hidden="true">+</i>Starting…';
         try {
           const res = await fetch("/sessions", {
             method: "POST",
@@ -2370,6 +2473,9 @@
           input.focus();
         } catch {
           noteError("a new chat could not be made, so this one is still open.");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = was;
         }
       }
 
@@ -2410,6 +2516,10 @@
         e.preventDefault();
         const title = $("renameInput").value.trim();
         if (!title) return;
+        const go = e.target.querySelector('button[type="submit"]');
+        if (go.disabled) return;
+        go.disabled = true;
+        go.textContent = "Saving…";
         try {
           const res = await fetch("/sessions/rename", {
             method: "POST",
@@ -2423,6 +2533,9 @@
           $("renameDlg").close();
         } catch (err) {
           noteError(err.message);
+        } finally {
+          go.disabled = false;
+          go.textContent = "Save";
         }
       };
 
@@ -2433,7 +2546,9 @@
       $("deleteForm").onsubmit = async (e) => {
         e.preventDefault();
         const go = $("deleteGo");
+        if (go.disabled) return;
         go.disabled = true;
+        go.textContent = "Deleting…";
         try {
           const res = await fetch("/sessions/delete", {
             method: "POST",
@@ -2454,6 +2569,7 @@
           noteError(err.message);
         } finally {
           go.disabled = false;
+          go.textContent = "Delete";
         }
       };
 
@@ -2514,7 +2630,7 @@
           if (asked) requestCard(asked, savedTurn);
           if ((turn.steps || []).some((s) => s.result?.awaiting_signature)) signCard(savedTurn);
           const names = (turn.steps || []).map((s) => s.name);
-          if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup", "pay_usdc", "open_paid_link", "verify_payment"].includes(n))) {
+          if (names.some((n) => ["name_a_person", "remember_this", "paid_lookup", "pay_usdc", "pay_sui", "open_paid_link", "verify_payment"].includes(n))) {
             loadState();
             loadBalance();
           }
@@ -2968,7 +3084,7 @@
           onActivity: () => {},
           onToolStart: (t) => {
             if (mine !== epoch || !calling) return;
-            setVoiceStatus(t.name === "pay_usdc" ? "preparing payment ticket…" : "reading the chain…");
+            setVoiceStatus(t.name === "pay_usdc" || t.name === "pay_sui" ? "preparing payment ticket…" : "reading the chain…");
           },
           onTool: (t) => {
             if (mine !== epoch || !calling) return;
@@ -2979,7 +3095,7 @@
               ...(t.result !== undefined ? { result: t.result } : {}),
             });
             const host = ensureKen();
-            if (t.name === "pay_usdc" && t.ok && t.result?.digest) {
+            if ((t.name === "pay_usdc" || t.name === "pay_sui") && t.ok && t.result?.digest) {
               const receipt = receiptLink({ result: t.result });
               if (receipt) host.appendChild(receipt);
               scroll();
@@ -3155,6 +3271,29 @@
         await loadChats(active);
         loadState();
         loadBalance();
+      });
+
+      /*
+       * The chats are stored per wallet and per ledger, so moving the switch moves the
+       * page into a different set of conversations. Without this the testnet thread and
+       * sidebar stayed on screen under a mainnet balance until a manual reload, and the
+       * poll kept asking for a testnet session id under the mainnet key.
+       *
+       * Open forms are deliberately left alone. Closing them here sends the old session
+       * id after the server has already moved to the new ledger, so that id would resolve
+       * to a fresh thread on the other side and leave an empty chat behind. The panels
+       * disappear with the thread, and switching back still finds the form it left open.
+       */
+      document.addEventListener("network:changed", async () => {
+        if (calling || starting) await closeVoice();
+        showEmpty();
+        sessions = [];
+        active = "";
+        drawnIds = new Set();
+        renderSessions();
+        await loadSessions();
+        await loadChats(active);
+        if (!active && sessions.length) await loadChats(sessions[0].id);
       });
 
       window.addEventListener("pageshow", (e) => {

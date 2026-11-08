@@ -40,6 +40,40 @@ export function isUsdcCoin(coinType: string): boolean {
   return Object.values(USDC_COIN).some((pkg) => t.includes(pkg.split("::")[0].toLowerCase()) && t.includes("usdc"));
 }
 
+/**
+ * The index answers a coin type with the full 32 byte package address, so the short
+ * 0x2::sui::SUI the SDK builds a transfer with is not the string that comes back.
+ */
+export function isSuiCoin(coinType: string): boolean {
+  return /^0x0{0,63}2::sui::sui$/i.test(String(coinType));
+}
+
+/**
+ * The chain's own answer to "did this ticket's payment happen". The sender's line
+ * is the exact amount for USDC, but a SUI transfer pays its network fee from the
+ * same SUI, so that line is the amount plus gas and comparing it to the amount
+ * exactly rejects a real payment.
+ */
+export function provedPayment(
+  changes: { address: string; coinType: string; amount: bigint }[],
+  sender: string,
+  to: string,
+  baseUnits: bigint,
+  asset: "USDC" | "SUI",
+): boolean {
+  const coin = asset === "SUI" ? isSuiCoin : isUsdcCoin;
+  const arrived = changes.some(
+    (c) => coin(c.coinType) && c.address.toLowerCase() === to.toLowerCase() && c.amount === baseUnits,
+  );
+  const left = changes.some(
+    (c) =>
+      coin(c.coinType) &&
+      c.address.toLowerCase() === sender.toLowerCase() &&
+      (asset === "SUI" ? c.amount <= -baseUnits : c.amount === -baseUnits),
+  );
+  return arrived && left;
+}
+
 /** The gateway the payment path talks through, with a PAY_ override for a relay. */
 export function payGateway(net: Net = PAY_NET): { url: string; key: string } {
   const { url, key } = endpoint(net);
@@ -87,6 +121,12 @@ async function gql<T>(query: string, net: Net = "mainnet"): Promise<T> {
     // reports "you have no money history" instead of failing.
     if (res.status === 429 && attempt < 4) {
       await new Promise((r) => setTimeout(r, (Number(res.headers.get("retry-after")) || 1) * 1000));
+      continue;
+    }
+    // A gateway 502 is the upstream failing through no fault of the query, and the
+    // read has no side effect, so a short second and third attempt is safe.
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 700 * attempt));
       continue;
     }
     if (!res.ok) throw new Error(`Tatum HTTP ${res.status} on ${net}`);

@@ -1,5 +1,6 @@
 import { chatKey } from "./chats.js";
 import { currentSeat } from "./seat.js";
+import type { PayAsset } from "./wallet.js";
 import type { PaymentRequirements } from "./x402wire.js";
 
 export type Pending = {
@@ -7,7 +8,8 @@ export type Pending = {
   sender: string;
   to: string;
   name: string | null;
-  usdc: number;
+  amount: number;
+  asset: PayAsset;
   bytes: string;
   chain: string;
   /**

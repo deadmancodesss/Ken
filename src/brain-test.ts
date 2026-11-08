@@ -111,9 +111,9 @@ expect("second turn answered", turn.text === "Both read fine");
 /* A model that decorates its sentence is repaired on the way out. The prompt asks for
  * plain words, and the answer is checked because a rule that is only requested is not
  * a rule. */
-script = [{ content: "**Sana** is due today — 0.52 USDC; she buys groceries." }];
+script = [{ content: "**Sana** was paid today — 0.52 USDC; she buys groceries." }];
 asked = [];
-turn = await runTurn("what is due", []);
+turn = await runTurn("when did I last pay Sana", []);
 expect("bold markers are stripped from the answer", !turn.text.includes("*") && turn.text.includes("Sana"));
 expect("no em dash and no semicolon reach the screen", !/[—;]/.test(turn.text));
 
@@ -130,9 +130,9 @@ const worded = groundAnswer("You pay Sana five times and she usually gets 0.52 U
 expect("a count said as a word is not repeated", !/Sana has 5 payments/.test(worded));
 const cadence = groundAnswer("You pay Sana every day, usually 0.52 USDC.", "how often do I pay Sana, and what does she usually get?", [sanaRow]);
 expect("a stated cadence answers how often without repeating the count", !/Sana has 5 payments/.test(cadence));
-const flipped = groundAnswer("Sana owes you 0.52 USDC.", "what is due", [sanaRow]);
+const flipped = groundAnswer("Sana owes you 0.52 USDC.", "how often do I pay Sana", [sanaRow]);
 expect("a flipped direction is repaired", /you pay sana/i.test(flipped) && !/sana owes/i.test(flipped));
-const invented = groundAnswer("You pay Sana 0.93 USDC.", "what is due", [sanaRow]);
+const invented = groundAnswer("You pay Sana 0.93 USDC.", "how often do I pay Sana", [sanaRow]);
 expect("a figure no tool returned is not spoken", !invented.includes("0.93"));
 const remembered = groundAnswer("Your rent is 1200 USDC.", "remember my rent is 1200 USDC", [
   { name: "remember_this", args: {}, ok: true, result: { stored: "abc123" } },

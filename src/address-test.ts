@@ -41,6 +41,8 @@ const needOfName = { needs_address: true, who: "Ravi", looks_like_address: false
 const needOfPay = { needs_address: true, who: "Ravi", looks_like_address: false, amount: 2.5 };
 expect("a name miss alone opens the field without an amount", addressNeed([{ result: needOfName }])?.amount === null);
 expect("a payment miss carries the amount into the field", addressNeed([{ result: needOfPay }])?.amount === 2.5);
+expect("a USDC need is marked as USDC", addressNeed([{ result: needOfPay }])?.asset === "USDC");
+expect("a SUI need carries its coin so the form cannot finish it as USDC", addressNeed([{ result: { ...needOfPay, asset: "SUI" } }])?.asset === "SUI");
 expect("the amount bearing need wins over the bare name", addressNeed([{ result: needOfName }, { result: needOfPay }])?.amount === 2.5);
 expect("the same choice holds in the other order", addressNeed([{ result: needOfPay }, { result: needOfName }])?.amount === 2.5);
 expect("a partial address is flagged so it is never written as a name", addressNeed([{ result: { ...needOfPay, who: "0xabc", looks_like_address: true } }])?.looksLikeAddress === true);
@@ -50,7 +52,7 @@ expect("a need with no person is ignored rather than drawn as an empty heading",
 expect("a failed step carries no need", addressNeed([{ result: undefined, error: "boom" }]) === null);
 
 function deps(over: Partial<AddressDeps> = {}) {
-  const calls = { label: [] as [string, string][], pay: [] as [string, number][] };
+  const calls = { label: [] as [string, string][], pay: [] as [string, number, "USDC" | "SUI"][] };
   const base: AddressDeps = {
     byName: async () => null,
     byAddress: async () => null,
@@ -58,9 +60,9 @@ function deps(over: Partial<AddressDeps> = {}) {
       calls.label.push([name, address]);
       return { alias: name, address };
     },
-    pay: async (to, usdc) => {
-      calls.pay.push([to, usdc]);
-      return { awaiting_signature: true, usdc, to };
+    pay: async (to, amount, asset) => {
+      calls.pay.push([to, amount, asset]);
+      return { awaiting_signature: true, amount, asset, to };
     },
   };
   return { deps: { ...base, ...over }, calls };
@@ -78,11 +80,20 @@ expect("naming alone reports no payment error", keptNew.kept.payment_error === "
 
 const paidNew = await (async () => {
   const d = deps();
-  const kept = await keepAddress({ name: "Ravi", address: A, usdc: "2.5" }, d.deps);
+  const kept = await keepAddress({ name: "Ravi", address: A, amount: "2.5" }, d.deps);
   return { kept, calls: d.calls };
 })();
 expect("an amount on the same form prepares the payment after the name", paidNew.calls.pay.length === 1 && paidNew.calls.pay[0][0] === "Ravi" && paidNew.calls.pay[0][1] === 2.5);
 expect("the prepared payment travels back with the kept name", (paidNew.kept.payment as { awaiting_signature?: boolean })?.awaiting_signature === true);
+expect("a USDC amount stays USDC through the typed address form", paidNew.calls.pay[0][2] === "USDC" && paidNew.kept.asset === "USDC");
+
+const paidSui = await (async () => {
+  const d = deps();
+  const kept = await keepAddress({ name: "Ravi", address: A, amount: 0.4, asset: "SUI" }, d.deps);
+  return { kept, calls: d.calls };
+})();
+expect("a SUI amount reaches the SUI payment with the same address", paidSui.calls.pay.length === 1 && paidSui.calls.pay[0][1] === 0.4 && paidSui.calls.pay[0][2] === "SUI");
+expect("the coin is kept on the row that names the person", paidSui.kept.asset === "SUI");
 
 const same = await (async () => {
   const d = deps({
@@ -129,7 +140,7 @@ expect("the same name in different case is the same name", caseSame.calls.label.
 
 const addressOnly = await (async () => {
   const d = deps();
-  const kept = await keepAddress({ address: A, usdc: 1 }, d.deps);
+  const kept = await keepAddress({ address: A, amount: 1 }, d.deps);
   return { kept, calls: d.calls };
 })();
 expect("an address with no name is not labelled", addressOnly.calls.label.length === 0 && addressOnly.kept.person === null);
@@ -148,7 +159,7 @@ const failedPay = await (async () => {
       throw new Error("the transfer builder found less than 0.02 testnet USDC");
     },
   });
-  const kept = await keepAddress({ name: "Ravi", address: A, usdc: 0.02 }, d.deps);
+  const kept = await keepAddress({ name: "Ravi", address: A, amount: 0.02 }, d.deps);
   return kept;
 })();
 expect("a failed payment keeps the name that already succeeded", failedPay.person?.alias === "Ravi");
@@ -157,35 +168,45 @@ expect("a failed payment returns no payment object", failedPay.payment === null)
 
 const noAmount = await (async () => {
   const d = deps();
-  const kept = await keepAddress({ name: "Ravi", address: A, usdc: "not money" }, d.deps);
+  const kept = await keepAddress({ name: "Ravi", address: A, amount: "not money" }, d.deps);
   return { kept, calls: d.calls };
 })();
 expect("an unreadable amount names the person and does not pay", noAmount.kept.person?.alias === "Ravi" && noAmount.calls.pay.length === 0);
 const negative = await (async () => {
   const d = deps();
-  await keepAddress({ name: "Ravi", address: A, usdc: -3 }, d.deps);
+  await keepAddress({ name: "Ravi", address: A, amount: -3 }, d.deps);
   return d.calls;
 })();
 expect("a negative amount is not a payment", negative.pay.length === 0);
 
-const waitingRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, payment: { awaiting_signature: true, usdc: 2.5 }, payment_error: "" });
+const waitingRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, asset: "USDC", payment: { awaiting_signature: true, amount: 2.5 }, payment_error: "" });
 expect("the row says the transfer is waiting for a signature", /waiting for your signature/.test(waitingRow.said));
 expect("the row never prints the full address", !waitingRow.said.includes(A) && !waitingRow.asked.includes(A));
 expect("the row shows the masked address instead", waitingRow.said.includes("0xaaaaaa…aaaaaa"));
 expect("the model history carries the full address, because the next turn needs it", String((waitingRow.delta[0] as { content?: string }).content).includes(A));
 expect("the trace holds the name and the payment", waitingRow.steps.map((s) => s.name).join(",") === "name_a_person,pay_usdc" && waitingRow.steps.every((s) => s.ok));
 
-const settledRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, payment: { usdc: 1.5, digest: "x" }, payment_error: "" });
+const suiRow = keptTurn({
+  person: { alias: "Ravi", address: A },
+  address: A,
+  asset: "SUI",
+  payment: { awaiting_signature: true, amount: 0.4, asset: "SUI" },
+  payment_error: "",
+});
+expect("a SUI ticket is traced as pay_sui, not as a USDC payment", suiRow.steps.some((s) => s.name === "pay_sui") && !suiRow.steps.some((s) => s.name === "pay_usdc"));
+expect("the SUI waiting row names the amount and the coin", /0\.4 SUI/.test(suiRow.said) && !/USDC/.test(suiRow.said));
+
+const settledRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, asset: "USDC", payment: { amount: 1.5, digest: "x" }, payment_error: "" });
 expect("a settled payment says sent and settled", /sent and settled on chain/.test(settledRow.said));
-const duplicateRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, payment: { usdc: 1.5, digest: "x", duplicate: true }, payment_error: "" });
+const duplicateRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, asset: "USDC", payment: { amount: 1.5, digest: "x", duplicate: true }, payment_error: "" });
 expect("a duplicate is called the same payment, not a second one", /same payment as before, not a second one/.test(duplicateRow.said));
 
-const brokenRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, payment: null, payment_error: "no USDC at this address" });
+const brokenRow = keptTurn({ person: { alias: "Ravi", address: A }, address: A, asset: "USDC", payment: null, payment_error: "no USDC at this address" });
 expect("a payment failure is spoken plainly", /could not be prepared\. no USDC at this address/.test(brokenRow.said));
 expect("a payment failure is a failed step in the trace", brokenRow.steps.find((s) => s.name === "pay_usdc")?.ok === false);
 expect("the kept name still reads as kept after a payment failure", /Kept Ravi at/.test(brokenRow.said));
 
-const plainRow = keptTurn({ person: null, address: A, payment: null, payment_error: "" });
+const plainRow = keptTurn({ person: null, address: A, asset: "USDC", payment: null, payment_error: "" });
 expect("an address with no name is read back masked", /Read the address 0xaaaaaa…aaaaaa/.test(plainRow.said) && !plainRow.said.includes(A));
 expect("an address with no name has no naming step", plainRow.steps.length === 0);
 

@@ -429,9 +429,12 @@
         }
       }
 
-      /* A request link is only ever paid on the network this build settles, and the
-         server names it in /state. Nothing on this page gets to guess. */
+      /* payNet is only the fallback for a server that predates the network field. A
+         link made now always carries its own ledger in /request/:id. */
       const payNet = () => (st?.pay_network === "testnet" ? "testnet" : "mainnet");
+      /* A link carries the ledger it was made on, and only that ledger can pay it or
+         prove it was paid. The page switch is not allowed to answer for the link. */
+      const netOf = (r) => (r?.network === "testnet" || r?.network === "mainnet" ? r.network : payNet());
 
       function receipt(r) {
         return `<div class="rcp">
@@ -443,7 +446,7 @@
             <code>${esc(r.paid.tx)}</code>
             <div class="row">
               <button class="chip" id="copyDigest" type="button">copy digest</button>
-              <a class="chip" href="${explorerTx(payNet(), r.paid.tx)}" target="_blank" rel="noopener">open on Suiscan ↗</a>
+              <a class="chip" href="${explorerTx(netOf(r), r.paid.tx)}" target="_blank" rel="noopener">open on Suiscan ↗</a>
             </div>
           </div>
         </div>`;
@@ -480,7 +483,7 @@
           ${r.note ? `<p class="note">“${esc(plain(r.note))}”</p>` : ""}
           ${
             paid
-              ? `<div class="closedTx"><span class="quiet">settled on ${payNet()}</span><a href="${explorerTx(payNet(), r.paid.tx)}" target="_blank" rel="noopener">read the transaction ↗</a></div>`
+              ? `<div class="closedTx"><span class="quiet">settled on ${netOf(r)}</span><a href="${explorerTx(netOf(r), r.paid.tx)}" target="_blank" rel="noopener">read the transaction ↗</a></div>`
               : `<p class="hint">${mine ? "Nothing was charged. Make a fresh link with a new clock." : "Nothing was charged. Ask the person who sent it for a fresh link."}</p>`
           }
           ${
@@ -510,7 +513,7 @@
       }
 
       function payerView(r) {
-        const onPayNet = st?.session?.network === payNet();
+        const onPayNet = st?.session?.network === netOf(r);
         return `<div class="ticket">
           <span class="seal">request</span>
           <div class="label">someone is asking for</div>
@@ -522,12 +525,12 @@
             <div><dt>closes</dt><dd>${dieLine(r)}</dd></div>
           </dl>
           <div class="actions">
-            <button id="pay" class="primary" ${onPayNet ? "" : "disabled"}>${onPayNet ? "Pay with my wallet" : `Move the switch to ${payNet()}`}</button>
+            <button id="pay" class="primary" ${onPayNet ? "" : "disabled"}>${onPayNet ? "Pay with my wallet" : `Move the switch to ${netOf(r)}`}</button>
           </div>
           <p class="hint" id="payHint">${
             onPayNet
-              ? `Your wallet decides. Nothing moves until you approve it there${payNet() === "mainnet" ? ", and on mainnet that is real money" : ""}.`
-              : `Request links are paid on ${payNet()} only, and this page is reading ${st?.session?.network ?? "the other ledger"}.`
+              ? `Your wallet decides. Nothing moves until you approve it there${netOf(r) === "mainnet" ? ", and on mainnet that is real money" : ""}.`
+              : `Request links are paid on ${netOf(r)} only, and this page is reading ${st?.session?.network ?? "the other ledger"}.`
           }</p>
         </div>`;
       }

@@ -268,7 +268,7 @@
         const res = await fetch("/x402/settle", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ resource: `note:${id}`, payer, bytes: signed.bytes, signature: signed.signature }),
+          body: JSON.stringify({ resource: `note:${id}`, payer, bytes: signed.bytes, signature: signed.signature, chain: asked.prepared.chain }),
         });
         const back = await res.json();
         if (!res.ok) {

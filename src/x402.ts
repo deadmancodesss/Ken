@@ -4,6 +4,8 @@ import { USDC_DECIMALS, signUsdc } from "./wallet.js";
 import { PAY_CHAIN, PAY_NET, USDC_ASSET, USDC_COIN, type Net } from "./chain.js";
 import { recallAbout, remember } from "./memory.js";
 import { labelPerson, personForAddress } from "./people.js";
+import { scope } from "./scope.js";
+import { session } from "./session.js";
 import { canonical, parseResource, type Fact } from "./resources.js";
 import {
   HEADER_REQUIRED,
@@ -36,8 +38,8 @@ const LEDGER_FILE = new URL("../.paid.json", import.meta.url).pathname;
 const NETWORK = PAY_CHAIN;
 const ADDRESS = /^0x[0-9a-fA-F]{64}$/;
 
-export type Sale = { resource: string; payer: string; digest: string; usdc: number; at: string };
-type Stuck = { resource: string; payer: string; envelope: string; at: string };
+export type Sale = { resource: string; payer: string; digest: string; usdc: number; at: string; network?: Net };
+type Stuck = { resource: string; payer: string; envelope: string; at: string; network?: Net };
 type Ledger = { sold: Record<string, Sale>; receipts: Record<string, Sale>; stuck: Record<string, Stuck> };
 
 function ledger(): Ledger {
@@ -55,6 +57,30 @@ function save(l: Ledger): void {
 }
 
 const saleKey = (payer: string, resource: string) => `${payer.toLowerCase()}|${canonical(resource)}`;
+
+/*
+ * A purchase and a signed envelope both belong to the ledger they were made on. Keyed
+ * without the network, a testnet envelope left stuck was replayed against the mainnet
+ * index on every later ask and refused there forever, and testnet spend was counted in
+ * the mainnet totals.
+ *
+ * A row written before the network was recorded is read as testnet, which is where the
+ * rows in this ledger were made and the only guess that cannot count testnet dust as
+ * mainnet spend. A genuine mainnet purchase from the old format would look unproven on
+ * mainnet and could be charged once more. That is the safe direction: a second charge
+ * is recoverable, while a mainnet fact released for testnet dust is not.
+ */
+const LEGACY_NET: Net = "testnet";
+const netKey = (net: Net, payer: string, resource: string) => `${net}|${saleKey(payer, resource)}`;
+const rowNet = (r: { network?: Net }): Net => r.network ?? LEGACY_NET;
+
+function stuckOn(l: Ledger, net: Net, payer: string, resource: string): { key: string; row: Stuck } | null {
+  const fresh = netKey(net, payer, resource);
+  if (l.stuck[fresh]) return { key: fresh, row: l.stuck[fresh] };
+  const legacy = saleKey(payer, resource);
+  const old = l.stuck[legacy];
+  return old && rowNet(old) === net ? { key: legacy, row: old } : null;
+}
 
 /** The headline price the pages quote. A busy wallet can be priced above this. */
 export function priceUsdc(): number {
@@ -75,7 +101,7 @@ export function overCeiling(usdc: number): string | null {
 export function sellerWallet(): string {
   const w = process.env.SELLER_WALLET ?? "";
   if (!ADDRESS.test(w)) {
-    throw new Error("the paid index has no payout address. Set SELLER_WALLET to a full 0x Sui address on the network this build pays on");
+    throw new Error("the paid index has no payout address. Set SELLER_WALLET to a full 0x Sui address");
   }
   return w;
 }
@@ -179,6 +205,11 @@ export async function settleEnvelope(resource: string, payer: string, envelope: 
   if (settled && !settled.success) {
     return { error: settled.errorReason ?? "the facilitator refused that payment" };
   }
+  // A receipt that names another ledger is not a receipt for this payment. Without
+  // this, an index could answer a mainnet signature with a testnet settlement.
+  if (settled?.network && settled.network !== `sui:${net}`) {
+    return { error: `the index says that payment settled on ${settled.network}, not sui:${net}, so it did not settle the transfer this wallet signed` };
+  }
   if (res.status !== 200) {
     return { error: String(body?.error ?? `the index answered ${res.status}`) };
   }
@@ -197,19 +228,21 @@ export type Purchase =
   | { usdc: number; fact: Fact; resource: string; reason: string; tx: string; on: string }
   | { error: string; resource: string; refusal?: true };
 
-function recordSale(resource: string, payer: string, released: Exclude<Release, { error: string }>): void {
+function recordSale(resource: string, payer: string, released: Exclude<Release, { error: string }>, net: Net = PAY_NET): void {
   const l = ledger();
-  const key = saleKey(payer, resource);
   const sale: Sale = {
     resource,
     payer,
     digest: released.tx,
     usdc: released.usdc,
     at: new Date().toISOString().slice(0, 10),
+    network: net,
   };
-  l.sold[key] = sale;
+  l.sold[netKey(net, payer, resource)] = sale;
   if (released.tx) l.receipts[released.tx] = sale;
-  delete l.stuck[key];
+  delete l.stuck[netKey(net, payer, resource)];
+  const legacy = l.stuck[saleKey(payer, resource)];
+  if (legacy && rowNet(legacy) === net) delete l.stuck[saleKey(payer, resource)];
   save(l);
 }
 
@@ -231,13 +264,12 @@ export async function settleSigned(resource: string, payer: string, bytes: strin
   if (sender.toLowerCase() !== payer.toLowerCase()) {
     return { error: "the signed transfer came from a different wallet than the one this payment was prepared for" };
   }
-  const key = saleKey(payer, resource);
   const l = ledger();
-  l.stuck[key] = { resource, payer, envelope, at: new Date().toISOString() };
+  l.stuck[netKey(net, payer, resource)] = { resource, payer, envelope, at: new Date().toISOString(), network: net };
   save(l);
   const released = await settleEnvelope(resource, payer, envelope, net);
   if ("error" in released) return released;
-  recordSale(resource, payer, released);
+  recordSale(resource, payer, released, net);
   return released;
 }
 
@@ -246,12 +278,11 @@ export async function settleSigned(resource: string, payer: string, bytes: strin
  * new is prepared, so a lost response cannot cost this wallet a second transfer.
  */
 export async function retryStuck(resource: string, payer: string, net: Net = PAY_NET): Promise<Release | null> {
-  const key = saleKey(payer, resource);
-  const stuck = ledger().stuck[key];
+  const stuck = stuckOn(ledger(), net, payer, resource);
   if (!stuck) return null;
-  const released = await settleEnvelope(resource, payer, stuck.envelope, net);
+  const released = await settleEnvelope(resource, payer, stuck.row.envelope, net);
   if ("error" in released) return released;
-  recordSale(resource, payer, released);
+  recordSale(resource, payer, released, net);
   return released;
 }
 
@@ -261,7 +292,16 @@ export async function retryStuck(resource: string, payer: string, net: Net = PAY
  * that they pay the published terms.
  */
 export async function buy(resource: string, payer: string): Promise<Purchase> {
-  const quoted = await price(resource, payer);
+  // The agent's own key can only sign on the ledger this build pays on, and a fact is
+  // about the ledger it was read from. Buying while the page reads the other one would
+  // charge on one chain and remember an answer about the other.
+  if (session().network !== PAY_NET) {
+    return {
+      error: `the agent's own key pays on ${PAY_CHAIN} and this page is reading sui:${session().network}, so it will not buy a fact that belongs to the other ledger. Move the switch to ${PAY_NET} first, or connect a wallet to pay from this page`,
+      resource,
+    };
+  }
+  const quoted = await price(resource, payer, PAY_NET);
   if ("error" in quoted) return { error: quoted.error, resource };
   if ("free" in quoted) {
     return { usdc: quoted.paid, fact: quoted.fact, resource, reason: quoted.reason, tx: quoted.tx, on: quoted.on };
@@ -270,9 +310,8 @@ export async function buy(resource: string, payer: string): Promise<Purchase> {
   const refused = overCeiling(quoted.usdc);
   if (refused) return { error: refused, resource, refusal: true };
 
-  const key = saleKey(payer, resource);
-  const stuck = ledger().stuck[key];
-  let envelope = stuck?.envelope ?? "";
+  const stuck = stuckOn(ledger(), PAY_NET, payer, resource);
+  let envelope = stuck?.row.envelope ?? "";
   if (!envelope) {
     try {
       const signed = await signUsdc(quoted.requirements.payTo, BigInt(quoted.requirements.amount));
@@ -283,11 +322,11 @@ export async function buy(resource: string, payer: string): Promise<Purchase> {
     // Written before the POST, because a process that dies after the money settles and
     // before it reads the fact must be able to retry the same signature, not sign again.
     const l = ledger();
-    l.stuck[key] = { resource, payer, envelope, at: new Date().toISOString() };
+    l.stuck[netKey(PAY_NET, payer, resource)] = { resource, payer, envelope, at: new Date().toISOString(), network: PAY_NET };
     save(l);
   }
 
-  const released = await settleEnvelope(resource, payer, envelope);
+  const released = await settleEnvelope(resource, payer, envelope, PAY_NET);
   if ("error" in released) {
     return {
       error: `${released.error}. The signed payment is kept, so asking again retries the same signature instead of paying twice`,
@@ -295,7 +334,7 @@ export async function buy(resource: string, payer: string): Promise<Purchase> {
     };
   }
 
-  recordSale(resource, payer, released);
+  recordSale(resource, payer, released, PAY_NET);
   return { usdc: released.usdc, fact: released.fact, resource, reason: released.reason, tx: released.tx, on: released.on };
 }
 
@@ -339,33 +378,36 @@ export async function knownProfile(address: string): Promise<string | null> {
   }
 }
 
-let indexNamed = false;
+const indexNamed = new Set<string>();
 
 /**
  * The payout address shows up in the history the moment anything is bought, so it gets
- * named first. An unexplained debit is the thing that makes people suspicious.
+ * named first. An unexplained debit is the thing that makes people suspicious. Memory is
+ * kept per wallet and per ledger, so the name is written once into each of those rather
+ * than once for the life of the process.
  */
 export async function nameTheIndex(): Promise<void> {
-  if (indexNamed) return;
+  const where = scope("people");
+  if (indexNamed.has(where)) return;
   const wallet = sellerWallet();
   if (await personForAddress(wallet)) {
-    indexNamed = true;
+    indexNamed.add(where);
     return;
   }
   await labelPerson(
     "Paid chain index",
     wallet,
-    `a service that sells arithmetic over public ${PAY_CHAIN} history, costs ${priceUsdc()} USDC for a profile and the same for a chain check, and the answer is kept so it is only paid for once`,
+    `a service that sells arithmetic over public sui:${session().network} history, costs ${priceUsdc()} USDC for a profile and the same for a chain check, and the answer is kept so it is only paid for once`,
   );
-  indexNamed = true;
+  indexNamed.add(where);
 }
 
-/** What the buyer has spent, so the interface can show a running figure. */
-export function purchases(payer: string): Sale[] {
+/** What the buyer has spent, so the interface can show a running figure. One ledger when asked. */
+export function purchases(payer: string, net?: Net): Sale[] {
   const key = payer.toLowerCase();
-  return Object.values(ledger().sold).filter((s) => s.payer.toLowerCase() === key);
+  return Object.values(ledger().sold).filter((s) => s.payer.toLowerCase() === key && (!net || rowNet(s) === net));
 }
 
-export function totalSpent(payer: string): number {
-  return purchases(payer).reduce((s, x) => s + x.usdc, 0);
+export function totalSpent(payer: string, net?: Net): number {
+  return purchases(payer, net).reduce((s, x) => s + x.usdc, 0);
 }

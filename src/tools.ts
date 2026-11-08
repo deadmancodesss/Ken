@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { bills, commitments, counterparties, dueRows, forgetCounterparties, monthlyTotals } from "./knowledge.js";
+import { counterparties, forgetCounterparties, monthlyTotals } from "./knowledge.js";
 import { labelPerson, resolvePerson, matchPerson, canonicalNames, personForAddress, peopleRoster, memoryStats } from "./people.js";
 import { remember, recallAbout, searchMemory } from "./memory.js";
-import { payOnce, payUsdc, prepareUsdc, paymentsEnabled, paymentCap, USDC_DECIMALS } from "./wallet.js";
-import { buy, indexPayout, knownProfile, learn, nameTheIndex, overCeiling, price, priceCeiling } from "./x402.js";
+import { payOnce, preparePayment, prepareUsdc, paymentsEnabled, paymentCap, baseUnitsFor, type PayAsset } from "./wallet.js";
+import { buy, knownProfile, learn, nameTheIndex, overCeiling, price, priceCeiling } from "./x402.js";
 import { noteResourceId, receiptResourceId, resourceId } from "./resources.js";
 import { note } from "./notes.js";
 import { hold } from "./pending.js";
@@ -456,37 +456,6 @@ export const TOOLS: Tool[] = [
     },
   },
   {
-    name: "what_is_due",
-    description:
-      "The rhythms the agent has measured, which of them are past their date, and what they add up to in a month. Call this for anything about a bill, a subscription, who has not been paid, what is coming up, or what the person is committed to paying. It only states a rhythm after seeing it twice.",
-    positional: [],
-    parameters: {},
-    required: [],
-    run: async () => {
-      const parties = await counterparties(session().wallet, session().network);
-      // The paid index is excluded because it takes a fee per question, and a fee read
-      // back as a rhythm would be the agent inventing a bill it does not have.
-      const rows = bills(dueRows(parties), [indexPayout()]);
-      // Totalled here rather than left to the model, because a monthly figure it works
-      // out in its head is a figure nobody can trace back to a transaction.
-      const total = commitments(rows);
-      return {
-        today: new Date().toISOString().slice(0, 10),
-        late: rows.filter((r) => r.state === "late").length,
-        due: rows.filter((r) => r.state === "due").length,
-        committed: total,
-        people: rows,
-        said: [
-          ...total.map((c) => `${c.people.length} rhythm${c.people.length === 1 ? " adds" : "s add"} up to ${c.per_month} a month: ${c.people.join(", ")}`),
-          ...rows
-            .filter((r) => r.state === "late" || r.state === "due")
-            .map((r) => r.line)
-            .slice(0, 3),
-        ],
-      };
-    },
-  },
-  {
     name: "name_a_person",
     description: "Give a wallet address a name, permanently. Call this the moment the user tells you who an address belongs to. When no full 0x address is at hand, call it with an empty address and the page opens the one field a microphone cannot fill.",
     positional: ["name", "address", "note"],
@@ -606,15 +575,27 @@ export const TOOLS: Tool[] = [
   {
     name: "make_report",
     description:
-      "Turn what the agent already knows into a statement the person can keep, print or share. Call this when someone asks for a bill, a report, a receipt or a summary they can send to somebody.",
+      "Turn what the agent already knows into a statement the person can keep, print or share. Call this when someone asks for a bill, a report, a receipt or a summary they can send to somebody. A week is today plus the six days before it, in UTC. A month is the calendar month in UTC.",
     positional: [],
-    parameters: {},
+    parameters: {
+      period: {
+        type: "STRING",
+        description: "Which window to build: week for this week or the last seven days, month for the calendar month. Leave unset for month.",
+      },
+    },
     required: [],
-    run: async () => {
-      const d = await buildStatement();
+    run: async (a) => {
+      const d = await buildStatement(a.period === "week" ? "week" : "month");
       return {
         where: "/report",
         headline: d.headline,
+        period: d.period,
+        money_in: d.inPeriod,
+        money_out: d.outPeriod,
+        net: d.netPeriod,
+        other_coins: d.otherPeriod || null,
+        last_moves: d.moves.map((m) => `${m.dir === "in" ? "+" : "−"}${m.amount} ${m.asset} ${m.who} ${m.at?.slice(0, 10) ?? "no date"}`),
+        read_complete: d.movesComplete,
         direction: d.direction,
         total_out: d.totalOut,
         total_in: d.totalIn,
@@ -627,7 +608,7 @@ export const TOOLS: Tool[] = [
         paid_to_learn: d.paid,
         // The card is typeset from these same numbers, so the sentence and the paper
         // can never disagree, which is the whole reason the report is not generated.
-        note: "the card shows the same figures you were just given, and it is a real page they can save. If total_out is zero and total_in is not, say what came in rather than reading the zero as if nothing happened.",
+        note: "the card shows the same figures you were just given for the chosen period (period names the window), and it is a real page they can save. money_in and money_out are both true at once, so say both when both are non-zero. direction, total_in, total_out and people describe all history read, not the period, so do not read them as the period total. if read_complete is false, say the window only reached the newest 50 transactions.",
       };
     },
   },
@@ -735,78 +716,110 @@ export const TOOLS: Tool[] = [
 ];
 
 if (paymentsEnabled()) {
+  /**
+   * One payment body for both coins. The only differences that matter are the unit on
+   * the cap and the coin handed to the builder, so everything a person can get wrong
+   * (the name, the address, the spam mark, the signature) is decided in one place.
+   */
+  async function payPerson(a: Record<string, unknown>, asset: PayAsset) {
+    const tool = asset === "SUI" ? "pay_sui" : "pay_usdc";
+    const raw = String(a.to).trim();
+    const amount = Number(a.amount);
+    if (!raw) throw new Error("who should the money go to? Give a name or a full Sui address");
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("amount must be a positive number");
+
+    // Exact match only, on purpose. Reading memory can afford a guess about who a
+    // speaker meant, moving money to the wrong person cannot.
+    const full = /^0x[0-9a-fA-F]{64}$/.test(raw);
+    const person = full ? await personForAddress(raw) : await resolvePerson(raw);
+    if (!full && !person) {
+      // The page reads this and opens the address field with the amount already in
+      // hand, so the person types the one thing a microphone can never carry. The coin
+      // rides along, because a SUI amount typed into a USDC field would send a
+      // thousandth of what was asked for.
+      return {
+        needs_address: true,
+        who: raw,
+        looks_like_address: /^0x/i.test(raw),
+        amount,
+        asset,
+        note: `No address is kept for this name. Ask the user for the full 0x Sui address in one short sentence. The page is showing a field for it with the ${asset} amount in hand. Do not guess an address and do not say the money moved.`,
+      };
+    }
+    const address = full ? raw : person!.address;
+    const name = full ? (person?.alias ?? null) : raw;
+
+    // The mark the person set themselves outranks any amount on the line. Nothing is
+    // built on the first attempt, because a warning that arrives after the bytes are
+    // signed is a receipt, not a warning.
+    const mark = spamMarkFor(address);
+    if (mark && String(a.confirm_spam ?? "").toLowerCase() !== "yes") {
+      return {
+        marked_spam: true,
+        who: name ?? `${address.slice(0, 8)}…${address.slice(-6)}`,
+        amount,
+        asset,
+        reason: mark.reason,
+        marked_on: new Date(mark.at).toISOString().slice(0, 10),
+        note: `This address is marked spam by the user. Nothing was built and no money moved. Say plainly that it is marked spam, repeat the reason if there is one, and ask whether they still want to send. Only call ${tool} again with confirm_spam yes after they clearly say yes in this conversation.`,
+      };
+    }
+
+    // The user's own money never leaves on a sentence alone. Build the transfer,
+    // hold it, and let the signature in their wallet be the approval.
+    if (session().source === "wallet") {
+      const crossed = chainMismatch();
+      if (crossed) throw new Error(crossed);
+      const p = await preparePayment(session().wallet, address, amount, asset, session().network);
+      const held = hold({ sender: p.sender, to: p.to, name, amount: p.amount, asset: p.asset, bytes: p.bytes, chain: p.chain });
+      return {
+        awaiting_signature: true,
+        id: held.id,
+        to: name ?? p.to,
+        amount: p.amount,
+        asset: p.asset,
+        where: "the ticket under this reply",
+      };
+    }
+
+    const payment = await payOnce(session().wallet, address, baseUnitsFor(amount, asset), asset);
+    forgetCounterparties();
+    // A duplicate is the same settled transfer, so writing it to Walrus again would
+    // make one payment read as two in the very history that is meant to be trusted.
+    if (!payment.duplicate) {
+      await remember(`Paid ${payment.amount} ${payment.asset} to ${address}${name ? ` (${name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${payment.digest}`);
+    }
+    return {
+      ...payment,
+      named_as: name,
+      note: payment.duplicate ? "this exact payment was already sent moments ago. It is the same digest, not a second transfer" : undefined,
+    };
+  }
+
   TOOLS.push({
     name: "pay_usdc",
-    description: "Send USDC to a person already named, or to a full address. Never invent an address.",
+    description: `Send USDC to a person already named, or to a full address. Never invent an address. Use this when the person says USDC, or when they do not name a coin.`,
     positional: ["to", "amount"],
     parameters: {
       to: { type: "STRING", description: "A person's name, or a full 0x Sui address" },
-      amount: { type: "NUMBER", description: `USDC amount, maximum ${paymentCap()}` },
+      amount: { type: "NUMBER", description: `USDC amount, maximum ${paymentCap("USDC")}` },
       confirm_spam: { type: "STRING", description: "Pass yes only after the user clearly confirms sending to an address the agent warned is marked spam. Leave it out on every other payment." },
     },
     required: ["to", "amount"],
-    run: async (a) => {
-      const raw = String(a.to).trim();
-      const usdc = Number(a.amount);
-      if (!raw) throw new Error("who should the money go to? Give a name or a full Sui address");
-      if (!Number.isFinite(usdc) || usdc <= 0) throw new Error("amount must be a positive number");
+    run: (a) => payPerson(a, "USDC"),
+  });
 
-      // Exact match only, on purpose. Reading memory can afford a guess about who a
-      // speaker meant, moving money to the wrong person cannot.
-      const full = /^0x[0-9a-fA-F]{64}$/.test(raw);
-      const person = full ? await personForAddress(raw) : await resolvePerson(raw);
-      if (!full && !person) {
-        // The page reads this and opens the address field with the amount already in
-        // hand, so the person types the one thing a microphone can never carry.
-        return {
-          needs_address: true,
-          who: raw,
-          looks_like_address: /^0x/i.test(raw),
-          amount: usdc,
-          note: "No address is kept for this name. Ask the user for the full 0x Sui address in one short sentence. The page is showing a field for it. Do not guess an address and do not say the money moved.",
-        };
-      }
-      const address = full ? raw : person!.address;
-      const name = full ? (person?.alias ?? null) : raw;
-
-      // The mark the person set themselves outranks any amount on the line. Nothing is
-      // built on the first attempt, because a warning that arrives after the bytes are
-      // signed is a receipt, not a warning.
-      const mark = spamMarkFor(address);
-      if (mark && String(a.confirm_spam ?? "").toLowerCase() !== "yes") {
-        return {
-          marked_spam: true,
-          who: name ?? `${address.slice(0, 8)}…${address.slice(-6)}`,
-          amount: usdc,
-          reason: mark.reason,
-          marked_on: new Date(mark.at).toISOString().slice(0, 10),
-          note: "This address is marked spam by the user. Nothing was built and no money moved. Say plainly that it is marked spam, repeat the reason if there is one, and ask whether they still want to send. Only call pay_usdc again with confirm_spam yes after they clearly say yes in this conversation.",
-        };
-      }
-
-      // The user's own money never leaves on a sentence alone. Build the transfer,
-      // hold it, and let the signature in their wallet be the approval.
-      if (session().source === "wallet") {
-        const crossed = chainMismatch();
-        if (crossed) throw new Error(crossed);
-        const p = await prepareUsdc(session().wallet, address, usdc, session().network);
-        const held = hold({ sender: p.sender, to: p.to, name, usdc: p.usdc, bytes: p.bytes, chain: p.chain });
-        return { awaiting_signature: true, id: held.id, to: name ?? p.to, usdc: p.usdc, where: "the ticket under this reply" };
-      }
-
-      const payment = await payOnce(session().wallet, address, BigInt(Math.round(usdc * 10 ** USDC_DECIMALS)));
-      forgetCounterparties();
-      // A duplicate is the same settled transfer, so writing it to Walrus again would
-      // make one payment read as two in the very history that is meant to be trusted.
-      if (!payment.duplicate) {
-        await remember(`Paid ${payment.usdc} USDC to ${address}${name ? ` (${name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${payment.digest}`);
-      }
-      return {
-        ...payment,
-        named_as: name,
-        note: payment.duplicate ? "this exact payment was already sent moments ago. It is the same digest, not a second transfer" : undefined,
-      };
+  TOOLS.push({
+    name: "pay_sui",
+    description: `Send SUI, the native Sui coin, to a person already named or a full address. Use this only when the person says SUI. Never guess a coin, and never invent an address. The network fee is paid from the same balance, so the amount has to leave a little SUI unspent.`,
+    positional: ["to", "amount"],
+    parameters: {
+      to: { type: "STRING", description: "A person's name, or a full 0x Sui address" },
+      amount: { type: "NUMBER", description: `SUI amount, maximum ${paymentCap("SUI")}` },
+      confirm_spam: { type: "STRING", description: "Pass yes only after the user clearly confirms sending to an address the agent warned is marked spam. Leave it out on every other payment." },
     },
+    required: ["to", "amount"],
+    run: (a) => payPerson(a, "SUI"),
   });
 
   TOOLS.push({
@@ -861,7 +874,8 @@ if (paymentsEnabled()) {
           sender: prepared.sender,
           to: prepared.to,
           name: "Paid chain index",
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           bytes: prepared.bytes,
           chain: prepared.chain,
           resource,
@@ -871,7 +885,8 @@ if (paymentsEnabled()) {
           awaiting_signature: true,
           id: held.id,
           to: "Paid chain index",
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           what: `a chain profile of ${address.slice(0, 8)}… that I have not bought yet`,
           where: "the ticket under this reply",
         };
@@ -937,7 +952,8 @@ if (paymentsEnabled()) {
           sender: prepared.sender,
           to: prepared.to,
           name: "Paid receipt index",
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           bytes: prepared.bytes,
           chain: prepared.chain,
           resource,
@@ -947,7 +963,8 @@ if (paymentsEnabled()) {
           awaiting_signature: true,
           id: held.id,
           to: "Paid receipt index",
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           what: `a chain answer about whether ${digest.slice(0, 10)}… really moved money`,
           where: "the ticket under this reply",
         };
@@ -1009,7 +1026,8 @@ if (paymentsEnabled()) {
           sender: prepared.sender,
           to: prepared.to,
           name: seller,
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           bytes: prepared.bytes,
           chain: prepared.chain,
           resource,
@@ -1019,7 +1037,8 @@ if (paymentsEnabled()) {
           awaiting_signature: true,
           id: held.id,
           to: seller,
-          usdc: prepared.usdc,
+          amount: prepared.amount,
+          asset: prepared.asset,
           what: sold.blob ? `a line out of ${seller}'s memory, "${sold.title}"` : `the words behind "${sold.title}"`,
           where: "the ticket under this reply",
         };

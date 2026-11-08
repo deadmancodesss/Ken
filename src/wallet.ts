@@ -7,47 +7,105 @@ import { PAY_CHAIN, PAY_NET, USDC_ASSET, USDC_COIN, allHoldings, formatAmount, p
 export { USDC_ASSET } from "./chain.js";
 
 export const USDC_DECIMALS = 6;
-const cap = BigInt(process.env.PAY_MAX_BASE_UNITS ?? "5000000");
+export const SUI_DECIMALS = 9;
+export const SUI_COIN = "0x2::sui::SUI";
 
-export type Payment = { digest: string; to: string; usdc: number };
+/** The two coins this wallet can actually move. Prices and x402 stay USDC. */
+export type PayAsset = "USDC" | "SUI";
+
+/*
+ * Each coin gets its own ceiling because a base unit of SUI is a billionth of a coin
+ * and a base unit of USDC is a millionth. One shared number would either let a SUI
+ * payment spend a thousand times what the limit reads as, or block a normal USDC
+ * payment at five hundredths of a cent. The demo ceiling of one SUI is deliberately
+ * small: testnet SUI is free dust, and a mistyped zero should still be refused.
+ */
+const caps: Record<PayAsset, bigint> = {
+  USDC: BigInt(process.env.PAY_MAX_BASE_UNITS ?? "5000000"),
+  SUI: BigInt(process.env.PAY_MAX_SUI_MIST ?? "5000000000"),
+};
+
+export function decimalsFor(asset: PayAsset = "USDC"): number {
+  return asset === "SUI" ? SUI_DECIMALS : USDC_DECIMALS;
+}
+
+export function baseUnitsFor(amount: number, asset: PayAsset = "USDC"): bigint {
+  return BigInt(Math.round(amount * 10 ** decimalsFor(asset)));
+}
+
+// The chain travels with the payment so every receipt drawn from it can link to the
+// explorer that actually saw the transfer. A demo payment that omitted the chain used
+// to borrow whatever ledger the page happened to be reading at that moment.
+export type Payment = { digest: string; to: string; amount: number; asset: PayAsset; chain: string };
 export type Paid = Payment & { duplicate: boolean };
-export type Prepared = { bytes: string; to: string; usdc: number; chain: string; sender: string };
+export type Prepared = { bytes: string; to: string; amount: number; asset: PayAsset; chain: string; sender: string };
 
 function payClient(net: Net = PAY_NET) {
   const { url, key } = payGateway(net);
   return new SuiGraphQLClient({ url, network: net, headers: { "x-api-key": key } });
 }
 
-function checked(to: string, baseUnits: bigint): void {
+function checked(to: string, baseUnits: bigint, asset: PayAsset): void {
   if (!/^0x[0-9a-fA-F]{64}$/.test(to)) throw new Error("recipient must be a full 0x Sui address");
   if (baseUnits <= 0n) throw new Error("amount must be greater than zero");
-  if (baseUnits > cap) throw new Error(`above the per-payment cap of ${paymentCap()} USDC`);
+  if (baseUnits > caps[asset]) throw new Error(`above the per-payment cap of ${paymentCap(asset)} ${asset}`);
 }
 
 /**
  * Builds the transfer and stops before anyone signs it. The bytes go to a browser
  * wallet so the person who owns the money is the one who approves it.
+ *
+ * SUI is built differently in one way that matters: the network fee comes out of the
+ * same coin being sent. The builder does the arithmetic, and a send that leaves nothing
+ * for gas is refused here before the wallet is ever asked to sign.
  */
-export async function prepareUsdc(sender: string, to: string, usdc: number, net: Net = PAY_NET): Promise<Prepared> {
+export async function preparePayment(
+  sender: string,
+  to: string,
+  amount: number,
+  asset: PayAsset,
+  net: Net = PAY_NET,
+): Promise<Prepared> {
   if (!/^0x[0-9a-fA-F]{64}$/.test(sender)) throw new Error("sender must be a full 0x Sui address");
-  const baseUnits = BigInt(Math.round(usdc * 10 ** USDC_DECIMALS));
-  checked(to, baseUnits);
+  const baseUnits = baseUnitsFor(amount, asset);
+  checked(to, baseUnits, asset);
 
-  const tx = new Transaction();
-  tx.setSender(sender);
-  tx.transferObjects([coinWithBalance({ type: USDC_COIN[net], balance: baseUnits })], to);
+  // A transaction object is rebuilt per attempt because the builder resolves coins
+  // into it. A 502 from the gateway is transient and safe to retry: nothing has been
+  // signed, so a second build cannot move money twice.
+  const build = async () => {
+    const tx = new Transaction();
+    tx.setSender(sender);
+    const coin = asset === "SUI" ? SUI_COIN : USDC_COIN[net];
+    tx.transferObjects([coinWithBalance({ type: coin, balance: baseUnits })], to);
+    return tx.build({ client: payClient(net) });
+  };
 
   // build() hands back serialized TransactionData bytes, which is exactly what a
   // browser wallet wants to be shown. Nothing here signs anything.
   let built: Uint8Array;
   try {
-    built = await throughRateLimit(() => tx.build({ client: payClient(net) }));
+    built = await throughRateLimit(async () => {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return await build();
+        } catch (err) {
+          const said = String((err as Error)?.message ?? err);
+          const transient = /bad gateway|\b50[234]\b|fetch failed|econnreset|timed out|network/i.test(said);
+          if (!transient || attempt >= 3) throw err;
+          await new Promise((r) => setTimeout(r, 700 * attempt));
+        }
+      }
+    });
   } catch (err) {
     // The SDK answers this in coin type hashes and base units. What the person
     // needs to hear is that the wallet they connected cannot cover the amount.
     const msg = String((err as Error)?.message ?? err);
     if (/429|too many requests|rate limit/i.test(msg)) {
       throw new Error(`the ledger gateway is busy and refused to look up the coins for this payment, so nothing was built and nothing was signed. Try again in a few seconds`);
+    }
+    if (/bad gateway|\b50[234]\b/i.test(msg)) {
+      throw new Error(`the Tatum gateway returned a transient ${msg.match(/\b50[234]\b/)?.[0] ?? "502"} while building this payment, so nothing was built and nothing was signed. This is an upstream failure, not a problem with your wallet. Try again in a moment`);
     }
     if (/insufficient balance/i.test(msg)) {
       // The builder reads coins from the chain, so a locked wallet cannot cause this.
@@ -65,21 +123,30 @@ export async function prepareUsdc(sender: string, to: string, usdc: number, net:
       } catch {
         /* the message below is already true without the balance */
       }
+      const gas =
+        asset === "SUI"
+          ? " A SUI payment also pays the network fee from this same balance, so leave a little SUI unspent."
+          : "";
       throw new Error(
-        `the transfer builder found less than ${usdc} ${net} USDC at the connected account ${short}, so there is nothing to sign yet.${holds} A locked wallet cannot cause this. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`,
+        `the transfer builder found less than ${amount} ${asset} at the connected account ${short}, so there is nothing to sign yet.${holds}${gas} A locked wallet cannot cause this. If your wallet app shows ${asset}, check that the account and network are the same ones, then press Connect again`,
       );
     }
     throw new Error(msg.slice(0, 200));
   }
-  return { bytes: Buffer.from(built).toString("base64"), to, usdc, chain: `sui:${net}`, sender };
+  return { bytes: Buffer.from(built).toString("base64"), to, amount, asset, chain: `sui:${net}`, sender };
+}
+
+/** The USDC path x402 and request links depend on, kept as one name. */
+export function prepareUsdc(sender: string, to: string, usdc: number, net: Net = PAY_NET): Promise<Prepared> {
+  return preparePayment(sender, to, usdc, "USDC", net);
 }
 
 export function paymentsEnabled(): boolean {
   return process.env.PAY_ENABLED === "1";
 }
 
-export function paymentCap(): number {
-  return Number(cap) / 10 ** USDC_DECIMALS;
+export function paymentCap(asset: PayAsset = "USDC"): number {
+  return Number(caps[asset]) / 10 ** decimalsFor(asset);
 }
 
 export type SignedPayment = {
@@ -119,7 +186,7 @@ export async function signUsdc(to: string, baseUnits: bigint): Promise<SignedPay
     throw new Error("payments disabled. Set PAY_ENABLED=1 in the server environment");
   }
   keySpendAllowed();
-  checked(to, baseUnits);
+  checked(to, baseUnits, "USDC");
   const key = Ed25519Keypair.fromSecretKey(process.env.AGENT_SECRET_KEY!);
   const sender = key.toSuiAddress();
 
@@ -139,20 +206,20 @@ export async function signUsdc(to: string, baseUnits: bigint): Promise<SignedPay
   };
 }
 
-export async function payUsdc(to: string, baseUnits: bigint): Promise<Payment> {
+export async function payCoin(to: string, baseUnits: bigint, asset: PayAsset): Promise<Payment> {
   if (!paymentsEnabled()) {
     throw new Error("payments disabled. Set PAY_ENABLED=1 in the server environment");
   }
   if (!/^0x[0-9a-fA-F]{64}$/.test(to)) throw new Error("recipient must be a full 0x Sui address");
   if (baseUnits <= 0n) throw new Error("amount must be greater than zero");
-  if (baseUnits > cap) throw new Error(`above the per-payment cap of ${paymentCap()} USDC`);
+  if (baseUnits > caps[asset]) throw new Error(`above the per-payment cap of ${paymentCap(asset)} ${asset}`);
   keySpendAllowed();
 
   const client = payClient();
   const key = Ed25519Keypair.fromSecretKey(process.env.AGENT_SECRET_KEY!);
 
   const tx = new Transaction();
-  tx.transferObjects([coinWithBalance({ type: USDC_ASSET, balance: baseUnits })], to);
+  tx.transferObjects([coinWithBalance({ type: asset === "SUI" ? SUI_COIN : USDC_ASSET, balance: baseUnits })], to);
 
   const res: any = await client.signAndExecuteTransaction({
     transaction: tx,
@@ -175,7 +242,11 @@ export async function payUsdc(to: string, baseUnits: bigint): Promise<Payment> {
     throw new Error(`transaction failed on chain: ${status.error ?? "unknown error"}`);
   }
 
-  return { digest, to, usdc: Number(baseUnits) / 10 ** USDC_DECIMALS };
+  return { digest, to, amount: Number(baseUnits) / 10 ** decimalsFor(asset), asset, chain: PAY_CHAIN };
+}
+
+export function payUsdc(to: string, baseUnits: bigint): Promise<Payment> {
+  return payCoin(to, baseUnits, "USDC");
 }
 
 /**
@@ -186,12 +257,15 @@ export async function payUsdc(to: string, baseUnits: bigint): Promise<Payment> {
  * while the first is still in flight waits on the same promise, and one arriving shortly
  * after it settles gets the same digest back instead of a second transfer.
  */
-export function createPayOnce(send: (to: string, baseUnits: bigint) => Promise<Payment>, windowMs = Number(process.env.PAY_DEDUP_MS ?? 120_000)) {
+export function createPayOnce(send: (to: string, baseUnits: bigint, asset: PayAsset) => Promise<Payment>, windowMs = Number(process.env.PAY_DEDUP_MS ?? 120_000)) {
   const recent = new Map<string, { at: number; payment: Payment }>();
   const inFlight = new Map<string, Promise<Payment>>();
 
-  return async function payOnce(sender: string, to: string, baseUnits: bigint): Promise<Paid> {
-    const key = `${sender.toLowerCase()}:${to.toLowerCase()}:${baseUnits}`;
+  return async function payOnce(sender: string, to: string, baseUnits: bigint, asset: PayAsset = "USDC"): Promise<Paid> {
+    // The coin is part of the identity, not a decoration on it. One USDC and one SUI
+    // are both 1,000,000 base units, and a key that ignored the asset would answer a
+    // SUI payment with the digest of yesterday's USDC transfer.
+    const key = `${sender.toLowerCase()}:${asset}:${to.toLowerCase()}:${baseUnits}`;
     const now = Date.now();
     const kept = recent.get(key);
     if (kept && now - kept.at < windowMs) return { ...kept.payment, duplicate: true };
@@ -199,7 +273,7 @@ export function createPayOnce(send: (to: string, baseUnits: bigint) => Promise<P
     const running = inFlight.get(key);
     if (running) return { ...(await running), duplicate: true };
 
-    const work = send(to, baseUnits)
+    const work = send(to, baseUnits, asset)
       .then((payment) => {
         recent.set(key, { at: Date.now(), payment });
         for (const [k, v] of recent) if (Date.now() - v.at >= windowMs) recent.delete(k);
@@ -213,4 +287,4 @@ export function createPayOnce(send: (to: string, baseUnits: bigint) => Promise<P
   };
 }
 
-export const payOnce = createPayOnce(payUsdc);
+export const payOnce = createPayOnce(payCoin);

@@ -146,18 +146,18 @@ if (daysSince("Sana") >= 2) {
   const amount = jitter(0.4, 0.15);
   const pay = await send(state.people[0].address, amount);
   last.Sana = today;
-  log.push(`paid Sana ${pay.usdc} USDC (${pay.digest.slice(0, 8)}…)`);
+  log.push(`paid Sana ${pay.amount} USDC (${pay.digest.slice(0, 8)}…)`);
 } else {
-  log.push(`Sana not due again today`);
+  log.push(`Sana has no payment today`);
 }
 
-// Imran is the recurring bill: a larger, identical amount every third day.
+// Imran is the recurring payment: a larger, identical amount every third day.
 if (daysSince("Imran") >= 3) {
   const pay = await send(state.people[1].address, 1_500_000n);
   last.Imran = today;
-  log.push(`paid Imran ${pay.usdc} USDC exactly`);
+  log.push(`paid Imran ${pay.amount} USDC exactly`);
 } else {
-  log.push(`Imran not due again today`);
+  log.push(`Imran has no payment today`);
 }
 
 // Tara is a subscription. The 1st and the 15th are the story, and every fourth
@@ -167,7 +167,7 @@ const day = new Date().getUTCDate();
 if ((day === 1 || day === 15 || daysSince("Tara") >= 4) && daysSince("Tara") >= 1) {
   const pay = await send(state.people[2].address, 950_000n);
   last.Tara = today;
-  log.push(`paid Tara ${pay.usdc} USDC (subscription)`);
+  log.push(`paid Tara ${pay.amount} USDC (subscription)`);
 }
 
 // Dev pays back, so the agent learns a two-way relationship, not a donation.
@@ -187,8 +187,8 @@ console.log(
   `\nagent holds ${Number(agentBal.sui) / 1e9} SUI and ${Number(agentBal.usdc) / 1e6} USDC · ` +
     `run this once a day: npm run seed (a second run on the same day pays nobody)`,
 );
-// Cadence only exists once the same person has been paid on two different days,
-// so the dates worth coming back for are printed rather than left to guesswork.
+// A rhythm only exists once the same person has been paid on two different days,
+// so the next likely demo date is printed rather than left to guesswork.
 console.log(
-  `next due · Sana ${due("Sana", 2)} · Imran ${due("Imran", 3)} · Tara ${due("Tara", 4)} · Dev ${due("Dev", 1)}`,
+  `next likely demo payment · Sana ${due("Sana", 2)} · Imran ${due("Imran", 3)} · Tara ${due("Tara", 4)} · Dev ${due("Dev", 1)}`,
 );

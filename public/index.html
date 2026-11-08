@@ -465,7 +465,7 @@
                 </span>
                 <span class="txt">
                   <b>Pay by saying it</b>
-                  <span>Say who and how much. Code builds an unsigned USDC ticket for your wallet.</span>
+                  <span>Say who and how much. Code builds an unsigned USDC or SUI ticket for your wallet, and you pick the coin before signing.</span>
                 </span>
                 <span class="fgFoot"><em>you sign the bytes</em><span class="arr" aria-hidden="true">→</span></span>
               </a>
@@ -656,8 +656,10 @@
               <div class="kicker">Money</div>
               <h2>Nothing leaves until your own wallet signs</h2>
               <p class="lead">
-                The agent can prepare a payment and then it has to stop. This server holds the bytes and never
-                holds your key, so refusing is always available and always final.
+                The agent can prepare a payment and then it has to stop. Say the coin, USDC or SUI, and code builds
+                that exact transfer. The ticket keeps one coin slot you can switch before signing, and the number
+                stays the same. This server holds the bytes and never holds your key, so refusing is always
+                available and always final.
               </p>
               <div class="tk2-tabs" id="tkSeg" role="group" aria-label="Which ending of the same payment to show">
                 <button type="button" class="on" data-state="held" aria-pressed="true"><i>1</i><span><b>before you sign</b><em>bytes waiting, nothing moved</em></span></button>
@@ -672,6 +674,7 @@
                 <div class="tk2-rows">
                   <div><span>to</span><b id="tkTo">Tara</b></div>
                   <div><span>from</span><b>your wallet</b></div>
+                  <div><span>pay in</span><b>USDC or SUI, switchable</b></div>
                   <div><span>state</span><b id="tkState">held, unsigned</b></div>
                   <div><span>on chain</span><b id="tkChain">nothing to find yet</b></div>
                 </div>
@@ -736,7 +739,7 @@
               <figure class="docmat">
                 <span class="flag">live card</span>
                 <a class="doc" href="/report" aria-label="Open the Statement page and print this card">
-                  <img src="/report.svg" width="1080" height="1350" loading="lazy" decoding="async" alt="A paper statement card showing the total paid out, the month by month bars, the people paid with their amounts, and what it cost the agent to learn all of it" />
+                  <img src="/report.svg" width="1080" height="1350" loading="lazy" decoding="async" alt="A paper statement card showing money in and money out for the month with drawn plus and minus marks, the newest five moves, and what it cost the agent to learn all of it" />
                 </a>
                 <div class="docFacts">
                   <div><b>Tatum</b><span>amounts and dates</span></div>

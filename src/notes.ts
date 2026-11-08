@@ -1,6 +1,5 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { PAY_NET } from "./chain.js";
 import { USDC_DECIMALS, paymentCap } from "./wallet.js";
 
 /**
@@ -138,7 +137,7 @@ export function createNote(input: {
         : "there has to be something behind the wall. Write at least a couple of sentences",
     );
   }
-  if (!ADDRESS.test(payTo)) throw new Error(`the money needs a full 0x Sui ${PAY_NET} address to arrive at`);
+  if (!ADDRESS.test(payTo)) throw new Error("the money needs a full 0x Sui address to arrive at");
   if (!Number.isFinite(usdc) || !Number.isInteger(units) || units <= 0) {
     throw new Error(`the price has to be a whole number of USDC cents above zero, and ${input.usdc} is not`);
   }

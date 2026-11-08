@@ -33,8 +33,8 @@ const LEDGER_FILE = process.env.SELLER_LEDGER ?? new URL("../.seller.json", impo
 const NETWORK = PAY_CHAIN;
 const ADDRESS = /^0x[0-9a-fA-F]{64}$/;
 
-export type Sale = { resource: string; payer: string; digest: string; usdc: number; at: string };
-type SettledEnvelope = { resource: string; payer: string; digest: string; at: string };
+export type Sale = { resource: string; payer: string; digest: string; usdc: number; at: string; network?: Net };
+type SettledEnvelope = { resource: string; payer: string; digest: string; at: string; network?: Net };
 type Ledger = { sold: Record<string, Sale>; envelopes: Record<string, SettledEnvelope> };
 
 function read(): Ledger {
@@ -53,6 +53,37 @@ function write(l: Ledger): void {
 
 const saleKey = (payer: string, resource: string) => `${payer.toLowerCase()}|${canonical(resource)}`;
 
+/*
+ * A sale is money that settled on one ledger, so it can only ever answer for that
+ * ledger. The key used to be payer and resource alone, which meant a profile paid for
+ * in testnet dust was handed out for free on mainnet. New sales carry the network in
+ * the key.
+ *
+ * A row written before the network was recorded has no ledger to consult. It is read
+ * as testnet, which is the only guess that cannot hand a mainnet fact to somebody who
+ * paid testnet dust. A genuine mainnet sale from the old format would have to be paid
+ * once more, and charging twice is recoverable where giving the fact away is not.
+ */
+const LEGACY_NET: Net = "testnet";
+const netSaleKey = (net: Net, payer: string, resource: string) => `${net}|${saleKey(payer, resource)}`;
+const saleNet = (s: Sale): Net => s.network ?? LEGACY_NET;
+
+function soldOn(l: Ledger, net: Net, payer: string, resource: string): Sale | undefined {
+  const fresh = l.sold[netSaleKey(net, payer, resource)];
+  if (fresh) return fresh;
+  const legacy = l.sold[saleKey(payer, resource)];
+  return legacy && saleNet(legacy) === net ? legacy : undefined;
+}
+
+const envKey = (net: Net, fingerprint: string) => `${net}|${fingerprint}`;
+
+function envelopeOn(l: Ledger, net: Net, fingerprint: string): SettledEnvelope | undefined {
+  const fresh = l.envelopes[envKey(net, fingerprint)];
+  if (fresh) return fresh;
+  const legacy = l.envelopes[fingerprint];
+  return legacy && (legacy.network ?? LEGACY_NET) === net ? legacy : undefined;
+}
+
 export function sellerPrice(): number {
   return BASE_PRICE;
 }
@@ -64,7 +95,7 @@ export function busyPrice(): number {
 export function sellerWallet(): string {
   const w = process.env.SELLER_WALLET ?? "";
   if (!ADDRESS.test(w)) {
-    throw new Error("the paid index has no payout address. Set SELLER_WALLET to a full 0x Sui address on the network this build sells on");
+    throw new Error("the paid index has no payout address. Set SELLER_WALLET to a full 0x Sui address");
   }
   return w;
 }
@@ -273,9 +304,11 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
 
   // A response can be lost after the money moved. The same signed envelope is then the
   // buyer's only proof, so it is answered with the same fact and the same digest
-  // instead of being refused as a replay. The facilitator never sees it twice.
+  // instead of being refused as a replay. The facilitator never sees it twice. The
+  // envelope is only proof on the ledger it settled, so a testnet signature cannot
+  // unlock the same answer on mainnet by naming that ledger in the next request.
   if (fingerprint) {
-    const already = l.envelopes[fingerprint];
+    const already = envelopeOn(l, net, fingerprint);
     if (already) {
       if (already.resource !== resource) {
         return { http: 400, headers: {}, body: { error: "that signed payment was for a different resource" } };
@@ -296,7 +329,7 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
     }
   }
 
-  const sold = l.sold[saleKey(payer, resource)];
+  const sold = soldOn(l, net, payer, resource);
   if (sold) {
     const item = parsed.kind === "profile" ? await profileListing(parsed.address, net) : listing(parsed, net);
     if ("missing" in item) return { http: 404, headers: {}, body: { error: item.missing, resource } };
@@ -369,6 +402,20 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
     };
   }
 
+  // A settlement that happened on one ledger cannot pay for a fact released on the
+  // other. Trusting the success flag alone let a facilitator answer for the wrong chain.
+  if (settlement.network && settlement.network !== chain) {
+    return {
+      http: 402,
+      headers: { [HEADER_RESPONSE]: responseHeader },
+      body: {
+        error: `that settlement happened on ${settlement.network}, not ${chain}, so it cannot release this answer`,
+        resource,
+        accepts: [requirements],
+      },
+    };
+  }
+
   // Only a settled payment can release a fact. A thrown reveal after this point is
   // money that moved without an answer, so the sale is not written and the same
   // envelope can be retried for the fact without a second payment.
@@ -391,9 +438,10 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
     digest: settlement.transaction,
     usdc: item.usdc,
     at: new Date().toISOString().slice(0, 10),
+    network: net,
   };
-  l.sold[saleKey(payer, resource)] = sale;
-  l.envelopes[fingerprint] = { resource, payer, digest: settlement.transaction, at: new Date().toISOString() };
+  l.sold[netSaleKey(net, payer, resource)] = sale;
+  l.envelopes[envKey(net, fingerprint)] = { resource, payer, digest: settlement.transaction, at: new Date().toISOString(), network: net };
   write(l);
 
   return {
@@ -403,9 +451,10 @@ export async function sell(input: SellInput, deps: SellDeps = {}): Promise<SellA
   };
 }
 
-export function salesOf(resource: string): Sale[] {
+/** Every sale of one resource, or only the ones that settled on one ledger when asked. */
+export function salesOf(resource: string, net?: Net): Sale[] {
   const want = canonical(resource);
-  return Object.values(read().sold).filter((s) => s.resource === want);
+  return Object.values(read().sold).filter((s) => s.resource === want && (!net || saleNet(s) === net));
 }
 
 export function allSales(): Sale[] {
@@ -416,6 +465,6 @@ export function allSales(): Sale[] {
  * A settlement the seller has written down is one it must be able to answer for. Used
  * by the seller process to tell a facilitator replay from a lost response.
  */
-export function saleFor(payer: string, resource: string): Sale | undefined {
-  return read().sold[saleKey(payer, resource)];
+export function saleFor(payer: string, resource: string, net: Net = PAY_NET): Sale | undefined {
+  return soldOn(read(), net, payer, resource);
 }

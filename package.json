@@ -5,7 +5,7 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "tsx src/seller.ts & tsx src/server.ts",
-    "test": "export SEATS_DB=:memory:; npm run typecheck && for f in public/*.js; do node --check \"$f\" || exit 1; done && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/x402wire-test.ts && tsx src/due-test.ts && tsx src/history-test.ts && tsx src/cap-test.ts && tsx src/requests-test.ts && tsx src/pay-test.ts && tsx src/seat-test.ts && tsx src/chats-test.ts && tsx src/sessions-test.ts && tsx src/address-test.ts && tsx src/spam-test.ts && tsx src/reminder-test.ts && tsx src/brief-test.ts && tsx src/report-test.ts && tsx src/note-test.ts && tsx src/earn-test.ts && tsx src/receipt-test.ts && tsx src/route-test.ts && tsx src/chat-actions-test.ts && tsx src/live-test.ts && tsx src/brain-test.ts",
+    "test": "export SEATS_DB=:memory:; npm run typecheck && for f in public/*.js; do node --check \"$f\" || exit 1; done && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/x402wire-test.ts && tsx src/history-test.ts && tsx src/cap-test.ts && tsx src/requests-test.ts && tsx src/requests-network-test.ts && tsx src/pay-test.ts && tsx src/seat-test.ts && tsx src/chats-test.ts && tsx src/sessions-test.ts && tsx src/address-test.ts && tsx src/spam-test.ts && tsx src/reminder-test.ts && tsx src/brief-test.ts && tsx src/report-test.ts && tsx src/note-test.ts && tsx src/earn-test.ts && tsx src/receipt-test.ts && tsx src/route-test.ts && tsx src/chat-actions-test.ts && tsx src/live-test.ts && tsx src/brain-test.ts",
     "plumb": "tsx src/plumbing.ts",
     "plate": "node tools/plate.mjs",
     "agent": "tsx src/agent.ts",
@@ -29,7 +29,6 @@
     "textbenchfull": "tsx src/text-bench.ts --full --yes",
     "echotest": "tsx src/echo-test.ts",
     "x402test": "tsx src/x402-test.ts",
-    "duetest": "tsx src/due-test.ts",
     "notetest": "tsx src/note-test.ts",
     "receipttest": "tsx src/receipt-test.ts"
   },

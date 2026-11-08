@@ -3,6 +3,7 @@ import {
   coinDecimals,
   coinName,
   formatAmount,
+  isUsdcCoin,
   recentActivityPage,
   type Flow,
   type Net,
@@ -79,6 +80,7 @@ export function statementMoves(
   decimals: Map<string, number>,
   labels: Map<string, string>,
   limit = 12,
+  since = 0,
 ): StatementMove[] {
   const seen = new Set<string>();
   const rows: StatementMove[] = [];
@@ -87,6 +89,9 @@ export function statementMoves(
     if (seen.has(key)) continue;
     seen.add(key);
     if (f.amount === 0n) continue;
+    // A statement window starts at midnight, and a row with no timestamp cannot be
+    // proved to belong to it, so it stays out rather than being counted twice.
+    if (since && (!f.timestamp || Date.parse(f.timestamp) < since)) continue;
     const out = f.amount > 0n;
     rows.push({
       at: f.timestamp,
@@ -101,11 +106,95 @@ export function statementMoves(
   return rows.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? "")).slice(0, limit);
 }
 
+export type CoinMoved = { asset: string; amount: string };
+
+/**
+ * What moved in one window, split by direction and by coin. USDC is the money this
+ * product counts, so it is totalled separately and never added to SUI or anything
+ * else: two coins with different decimals cannot share one number. Other coins are
+ * measured beside it so a SUI-only week does not read as a week with no money in it.
+ */
+export type PeriodMoney = {
+  usdcIn: bigint;
+  usdcOut: bigint;
+  otherIn: CoinMoved[];
+  otherOut: CoinMoved[];
+};
+
+export function periodMoney(flows: Flow[], decimals: Map<string, number>, since: number): PeriodMoney {
+  let usdcIn = 0n;
+  let usdcOut = 0n;
+  const otherIn = new Map<string, bigint>();
+  const otherOut = new Map<string, bigint>();
+
+  for (const f of flows) {
+    if (f.amount === 0n) continue;
+    if (since && (!f.timestamp || Date.parse(f.timestamp) < since)) continue;
+    // `amount` is the counterparty's change, so what happened to this wallet is its negative.
+    const mine = -f.amount;
+    if (isUsdcCoin(f.coinType)) {
+      if (mine > 0n) usdcIn += mine;
+      else usdcOut -= mine;
+      continue;
+    }
+    const into = mine > 0n ? otherIn : otherOut;
+    into.set(f.coinType, (into.get(f.coinType) ?? 0n) + (mine > 0n ? mine : -mine));
+  }
+
+  const rows = (m: Map<string, bigint>): CoinMoved[] =>
+    [...m.entries()]
+      .map(([type, base]) => ({ asset: coinName(type), amount: formatAmount(base, decimals.get(type) ?? 0) }))
+      .sort((a, b) => a.asset.localeCompare(b.asset));
+
+  return { usdcIn, usdcOut, otherIn: rows(otherIn), otherOut: rows(otherOut) };
+}
+
+export type PeriodRead = {
+  moves: StatementMove[];
+  money: PeriodMoney;
+  complete: boolean;
+  read: number;
+};
+
+const periodCache = new Map<string, { at: number; body: PeriodRead }>();
+
+/**
+ * One page of history, read once for both the totals and the rows under them. Fifty
+ * is the same window the month cap reads, and `complete` is false when those rows do
+ * not reach back past the start of the window: a total that may be short says so
+ * instead of printing a partial month as the month.
+ */
+export async function recentStatement(wallet: string, net: Net, since: number, limit = 5): Promise<PeriodRead> {
+  const key = `${wallet.toLowerCase()}|${net}|${since}|${limit}`;
+  const hit = periodCache.get(key);
+  if (hit && hit.at + 15_000 > Date.now()) return hit.body;
+
+  const page = await recentActivityPage(wallet, 50, null, net);
+  const types = [...new Set(page.flows.map((f) => f.coinType))];
+  const decimals = new Map<string, number>();
+  await Promise.all(types.map(async (t) => decimals.set(t, await coinDecimals(t, net))));
+  const labels = await labelsFor([...new Set(page.flows.map((f) => f.counterparty))]);
+  const oldest = page.flows.reduce<string | null>(
+    (min, f) => (f.timestamp && (!min || f.timestamp < min) ? f.timestamp : min),
+    null,
+  );
+
+  const body: PeriodRead = {
+    moves: statementMoves(page.flows, decimals, labels, limit, since),
+    money: periodMoney(page.flows, decimals, since),
+    complete: !page.hasNext || (!!oldest && Date.parse(oldest) < since),
+    read: page.count,
+  };
+  periodCache.set(key, { at: Date.now(), body });
+  return body;
+}
+
 const moveCache = new Map<string, { at: number; body: { rows: StatementMove[]; complete: boolean; read: number } }>();
 
 /** Anything that moves the wallet's history makes the next statement read fresh. */
 export function forgetTransfers(): void {
   moveCache.clear();
+  periodCache.clear();
   spendCache.clear();
 }
 

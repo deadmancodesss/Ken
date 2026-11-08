@@ -5,7 +5,7 @@
     <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Statement · Ken</title>
-    <meta name="description" content="A shareable statement built from the same tool calls Ken makes. Numbers come from the chain, names come from memory, and nothing about the money is generated." />
+    <meta name="description" content="A shareable statement built from the same tool calls Ken makes. Pick a week or a month, see money in and money out with the newest five moves. Numbers come from the chain, names come from memory, and nothing about the money is generated." />
     <link rel="stylesheet" href="/theme.css" />
     <script>
       /* The Wallet Standard handshake, done by hand because this page has no bundler.
@@ -43,6 +43,16 @@
 
       .stage { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 24px; align-items: start; }
       @media (max-width: 820px) { .stage { grid-template-columns: 1fr; } }
+
+      /* The window is a choice between two named spans, not a date field. A day can
+         hold no rows or fifteen, and a picker that returns an empty page reads as a
+         broken statement rather than a quiet day. */
+      .periodBar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: -4px 0 18px; }
+      .periodSeg { display: inline-flex; border: 1.5px solid var(--rule-strong); border-radius: 999px; overflow: hidden; background: var(--rule); gap: 1px; }
+      .periodSeg button { border: 0; background: var(--paper); color: var(--ink-3); font: 12px/1 var(--mono); letter-spacing: 0.06em; padding: 9px 16px; cursor: pointer; transition: background var(--t-1) var(--ease), color var(--t-1) var(--ease); }
+      .periodSeg button:hover { color: var(--ink); }
+      .periodSeg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+      .periodNote { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
 
       .card { position: relative; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--paper-sunk); }
       .card svg { display: block; width: 100%; height: auto; }
@@ -119,7 +129,8 @@
       .moveList { margin-top: 10px; }
       .move { display: grid; grid-template-columns: 24px auto minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--rule); }
       .move:first-child { border-top: 0; }
-      .move .dir { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 13px/1 var(--sans); color: var(--paper); }
+      .move .dir { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: var(--paper); }
+      .move .dir svg { width: 13px; height: 13px; display: block; }
       .move .dir.in { background: var(--moss); }
       .move .dir.out { background: var(--clay); }
       .move .amt { font: 400 var(--step-1)/1.2 var(--serif); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -151,7 +162,7 @@
       }
 
       @media print {
-        header, .side, .panel, .why, .kicker, h1, .lead, footer { display: none !important; }
+        header, .side, .panel, .why, .kicker, h1, .lead, .periodBar, footer { display: none !important; }
         body { display: block; background: #fff; }
         .wrap { max-width: none; padding: 0; }
         .card { border: 0; }
@@ -205,7 +216,15 @@
     <main class="wrap">
       <div class="kicker">statement</div>
       <h1>Ask it out loud, keep the paper</h1>
-      <p class="lead">The chain for the amounts. Walrus for the names. The same numbers the agent just spoke, set on one card you can save, print or post.</p>
+      <p class="lead">The chain for the amounts. Walrus for the names. Pick a week or a month, and both sides of the money arrive on one card with the newest five moves, ready to save, print or post.</p>
+
+      <div class="periodBar">
+        <div class="periodSeg" role="group" aria-label="Statement period">
+          <button type="button" data-period="week" aria-pressed="false">This week</button>
+          <button type="button" data-period="month" aria-pressed="true">This month</button>
+        </div>
+        <span class="periodNote" id="periodNote">reading the chain…</span>
+      </div>
 
       <div class="stage">
         <div class="card loading" id="card" aria-busy="true">
@@ -231,6 +250,7 @@
           <button class="btn" id="csv">Download CSV</button>
           <button class="btn ghost" id="again">Re-read the chain</button>
           <p class="note">Amounts <b>read from chain</b>. Names and notes <b>read from memory</b>. Nothing here was written by a model.</p>
+          <p class="tiny bad" id="toolNote" hidden></p>
         </div>
       </div>
 
@@ -257,7 +277,7 @@
 
         <section class="panel" id="moves">
           <div class="head">
-            <h2>Recent moves</h2>
+            <h2>Last 5 moves</h2>
             <span class="tiny" id="moveNote" style="margin:0">reading…</span>
           </div>
           <div class="moveList" id="moveList"></div>
@@ -282,24 +302,40 @@
 
       const card = $("card");
       const skeleton = card.innerHTML;
+      let range = "month";
+      let cardSeq = 0;
+      let statementSeq = 0;
 
-      async function paint() {
+      async function paint(refresh) {
+        const seq = ++cardSeq;
         card.innerHTML = skeleton;
         card.classList.add("loading");
         card.setAttribute("aria-busy", "true");
         $("png").disabled = true;
-        const res = await fetch("/report.svg", { cache: "no-store" });
-        if (!res.ok) {
-          card.classList.remove("loading");
-          card.removeAttribute("aria-busy");
-          $("png").disabled = false;
-          card.innerHTML = `<p style="padding:24px;color:var(--brick)">the statement could not be built. ${res.status}</p>`;
-          return;
+        try {
+          const res = await fetch(`/report.svg?period=${range}${refresh ? "&refresh=1" : ""}`, { cache: "no-store" });
+          if (seq !== cardSeq) return;
+          if (!res.ok) {
+            const body = await res.json().catch(() => null);
+            throw new Error(body?.error || `the statement could not be built. ${res.status}`);
+          }
+          const svg = await res.text();
+          if (seq !== cardSeq) return;
+          card.innerHTML = svg;
+        } catch (err) {
+          if (seq !== cardSeq) return;
+          const p = document.createElement("p");
+          p.style.cssText = "padding:24px;color:var(--brick)";
+          p.textContent = err.message;
+          card.textContent = "";
+          card.append(p);
+        } finally {
+          if (seq === cardSeq) {
+            card.classList.remove("loading");
+            card.removeAttribute("aria-busy");
+            $("png").disabled = false;
+          }
         }
-        card.innerHTML = await res.text();
-        card.classList.remove("loading");
-        card.removeAttribute("aria-busy");
-        $("png").disabled = false;
       }
 
       function paintCap(c) {
@@ -349,6 +385,11 @@
 
       async function capLoad(refresh) {
         const seq = ++capSeq;
+        const badge = $("capState");
+        // A month on chain takes a moment to count, so the badge says what it is
+        // waiting for instead of sitting on last month's colour.
+        badge.className = "capState none";
+        badge.textContent = "reading…";
         try {
           const c = await fetch(`/cap${refresh ? "?refresh=1" : ""}`, { cache: "no-store" }).then((r) => r.json());
           if (seq !== capSeq) return;
@@ -390,10 +431,27 @@
         }
       }
 
-      function paintMoves(body) {
+      /* A plus or a minus drawn as two strokes, so the sign survives a colour-blind
+         eye and a monochrome print without relying on a font glyph. */
+      function signIcon(dir) {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 22 22");
+        svg.setAttribute("aria-hidden", "true");
+        const stroke = document.createElementNS(ns, "path");
+        stroke.setAttribute("d", dir === "in" ? "M5 11h12M11 5v12" : "M5 11h12");
+        stroke.setAttribute("stroke", "currentColor");
+        stroke.setAttribute("stroke-width", "2.2");
+        stroke.setAttribute("stroke-linecap", "round");
+        stroke.setAttribute("fill", "none");
+        svg.append(stroke);
+        return svg;
+      }
+
+      function paintStatement(d) {
         const list = $("moveList");
         list.textContent = "";
-        const rows = body.rows ?? [];
+        const rows = d.moves ?? [];
         for (const m of rows) {
           const row = document.createElement("div");
           row.className = "move";
@@ -401,7 +459,7 @@
 
           const dir = document.createElement("span");
           dir.className = `dir ${m.dir}`;
-          dir.textContent = m.dir === "in" ? "↓" : "↑";
+          dir.append(signIcon(m.dir));
 
           const amt = document.createElement("span");
           amt.className = "amt";
@@ -415,14 +473,14 @@
           who.textContent = m.who;
 
           const link = document.createElement("a");
-          link.href = explorerTx(body.network ?? payNetwork(), m.tx);
+          link.href = explorerTx(d.network ?? payNetwork(), m.tx);
           link.target = "_blank";
           link.rel = "noopener";
           link.textContent = `${String(m.tx).slice(0, 6)}…${String(m.tx).slice(-4)} ↗`;
 
           const at = document.createElement("time");
           at.textContent = m.at && !Number.isNaN(Date.parse(m.at))
-            ? new Date(m.at).toLocaleDateString(undefined, { day: "numeric", month: "short" })
+            ? new Date(m.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
             : "·";
 
           row.append(dir, amt, who, link, at);
@@ -431,25 +489,37 @@
         if (!rows.length) {
           const p = document.createElement("p");
           p.className = "tiny";
-          p.textContent = "No transfers on this wallet yet.";
+          p.textContent = `No transfers in ${d.range === "week" ? "this week" : "this month"}.`;
           list.append(p);
         }
+
         const note = $("moveNote");
         note.className = "tiny";
-        note.textContent = rows.length ? `${rows.length} newest${body.complete ? ", the whole history" : ", older ones exist"}` : "";
+        note.textContent = rows.length
+          ? `${rows.length} newest in ${d.period}${d.movesComplete ? "" : ", older ones exist"}`
+          : "";
+
+        const periodNote = $("periodNote");
+        periodNote.className = "periodNote";
+        periodNote.textContent = `${d.period} UTC${d.movesComplete ? "" : " · only the newest 50 transactions were read"}`;
       }
 
-      async function movesLoad(refresh) {
+      async function statementLoad(refresh) {
+        const seq = ++statementSeq;
         const note = $("moveNote");
         note.className = "tiny";
         note.textContent = "reading the chain…";
         try {
-          const body = await fetch(`/transfers${refresh ? "?refresh=1" : ""}`, { cache: "no-store" }).then((r) => r.json());
-          if (body.error) throw new Error(body.error);
-          paintMoves(body);
+          const res = await fetch(`/report.json?period=${range}${refresh ? "&refresh=1" : ""}`, { cache: "no-store" });
+          const body = await res.json();
+          if (seq !== statementSeq) return;
+          if (!res.ok) throw new Error(body.error || `the server answered ${res.status}`);
+          paintStatement(body);
         } catch (err) {
+          if (seq !== statementSeq) return;
           note.className = "tiny bad";
           note.textContent = err.message;
+          $("periodNote").textContent = "not read";
         }
       }
 
@@ -476,14 +546,29 @@
       }
 
       async function toCsv() {
-        const d = await (await fetch("/report.json", { cache: "no-store" })).json();
-        const rows = [["person", "amount", "flows", "next payment", "last seen", "named from memory"]];
+        const res = await fetch(`/report.json?period=${range}`, { cache: "no-store" });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `the server answered ${res.status}`);
+        const rows = [
+          ["period", d.period],
+          ["money in", d.inPeriod],
+          ["money out", d.outPeriod],
+          ["net", d.netPeriod],
+          ["other coins", d.otherPeriod ?? ""],
+          ["whole window read", d.movesComplete ? "yes" : "no, newest 50 only"],
+          [],
+          ["last 5 moves"],
+          ["date", "direction", "amount", "asset", "who", "transaction"],
+        ];
+        for (const m of d.moves ?? []) rows.push([m.at ?? "", m.dir, m.amount, m.asset, m.who, m.tx]);
+        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]));
+        rows.push([], ["person", "amount", "flows", "observed rhythm", "last seen", "named from memory"]);
         if (d.direction === "in") {
           for (const p of d.senders) rows.push([p.name, p.amount, p.flows, "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
         } else {
           for (const p of d.people) rows.push([p.name, p.amount, p.flows, p.cadence ?? "", p.lastSeen ?? "", p.memorised ? "yes" : "no"]);
         }
-        rows.push([], ["month", "total"], ...d.months.map((m) => [m.month, m.amount]), [], ["total in", d.totalIn], ["total out", d.totalOut], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
+        rows.push([], ["things remembered", d.remembered], ["facts bought", d.bought], ["paid to learn", d.paid], ["wallet", d.wallet], ["network", d.network]);
         const cell = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(",")).join("\n")], { type: "text/csv" }));
@@ -491,12 +576,45 @@
         a.click();
       }
 
-      $("png").onclick = toPng;
-      $("csv").onclick = toCsv;
-      $("pdf").onclick = () => window.print();
-      $("again").onclick = async () => {
-        await Promise.allSettled([loadMeta(true).then(fillStats), paint(), movesLoad(true), capLoad(true)]);
-      };
+      // Every control in this column reads the chain again, so each one has to say it
+      // is working and come back even when the read fails.
+      async function runTool(btn, label, run) {
+        if (btn.disabled) return;
+        const was = btn.textContent;
+        const note = $("toolNote");
+        note.hidden = true;
+        note.textContent = "";
+        btn.disabled = true;
+        btn.textContent = label;
+        try {
+          await run();
+        } catch (err) {
+          note.hidden = false;
+          note.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+          btn.textContent = was;
+        }
+      }
+
+      $("png").onclick = () => runTool($("png"), "drawing the image…", toPng);
+      $("csv").onclick = () => runTool($("csv"), "writing the csv…", toCsv);
+      $("pdf").onclick = () => runTool($("pdf"), "opening the print sheet…", () => window.print());
+      $("again").onclick = () =>
+        runTool($("again"), "reading the chain…", async () => {
+          await Promise.allSettled([loadMeta(true).then(fillStats), paint(true), statementLoad(true), capLoad(true)]);
+        });
+
+      const periodButtons = [...document.querySelectorAll("[data-period]")];
+      for (const b of periodButtons) {
+        b.onclick = () => {
+          if (b.dataset.period === range) return;
+          range = b.dataset.period;
+          for (const x of periodButtons) x.setAttribute("aria-pressed", String(x.dataset.period === range));
+          paint();
+          statementLoad();
+        };
+      }
 
       $("capForm").onsubmit = (e) => {
         e.preventDefault();
@@ -505,15 +623,15 @@
       };
       $("capClear").onclick = () => saveCap(0);
 
-      // Four reads that do not depend on each other. Waiting for the statement card to
-      // finish before the budget and the ledger even start is what makes a page arrive
-      // in pieces, so they all leave at once and each panel fills when it is ready.
+      // The card, the five moves, the budget and the name count do not depend on each
+      // other. Waiting for the card before the ledger even starts is what makes a page
+      // arrive in pieces, so they all leave at once and each panel fills when it is ready.
       const reload = async () => {
-        await Promise.allSettled([loadMeta().then(fillStats), paint(), movesLoad(), capLoad()]);
+        await Promise.allSettled([loadMeta().then(fillStats), paint(), statementLoad(), capLoad()]);
       };
       mountWallet(reload);
       mountNetwork(reload);
-      await Promise.allSettled([loadMeta().then(fillStats), paint(), movesLoad(), capLoad()]);
+      await Promise.allSettled([loadMeta().then(fillStats), paint(), statementLoad(), capLoad()]);
     </script>
   </body>
 </html>

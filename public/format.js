@@ -38,6 +38,9 @@ export function addressNeed(steps) {
     needs.push({
       who,
       amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+      // The coin travels with the amount, or the address form would finish a SUI
+      // sentence as a USDC payment.
+      asset: r.asset === "SUI" ? "SUI" : "USDC",
       looksLikeAddress: r.looks_like_address === true,
       ...(r.inspect === true ? { inspect: true } : {}),
     });

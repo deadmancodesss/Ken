@@ -15,6 +15,10 @@ const RULES: [RegExp, string, (m: RegExpMatchArray) => Record<string, unknown>][
   [/^\s*(remember|note) (that )?(.*)$/i, "remember_this", (m) => ({ text: m[3] })],
   // Both word orders, because nobody says "pay 0.95 to Tara". The landing page
   // advertises "pay Tara 0.95", so the fallback has to answer that too.
+  // SUI first, because "send 0.4 SUI to Ravi" would otherwise read the coin as part
+  // of the name and quietly prepare a USDC transfer.
+  [/^\s*(?:pay|send) ([\d.]+)\s*sui\s+(?:to\s+)?(.+)$/i, "pay_sui", (m) => ({ amount: m[1], to: m[2] })],
+  [/^\s*(?:pay|send)\s+(.+?)\s+([\d.]+)\s*sui\b/i, "pay_sui", (m) => ({ amount: m[2], to: m[1] })],
   [/^\s*(?:pay|send) ([\d.]+)\s*(?:usdc\s+)?(?:to\s+)?(.+)$/i, "pay_usdc", (m) => ({ amount: m[1], to: m[2] })],
   [/^\s*(?:pay|send)\s+(.+?)\s+([\d.]+)\s*(?:usdc)?$/i, "pay_usdc", (m) => ({ amount: m[2], to: m[1] })],
   // A full address spoken back to the agent is a lookup, not a memory search.
@@ -32,7 +36,6 @@ const RULES: [RegExp, string, (m: RegExpMatchArray) => Record<string, unknown>][
   [/has ([a-z][a-z]{2,}) paid/i, "find_person", (m) => ({ name: m[1] })],
   [/(?:sent|paid|given|received|owe) (?:me back )?(?:to |from )?(?:me )?([a-z][a-z]{2,})/i, "find_person", (m) => ({ name: m[1] })],
   [/who do i (know|pay)|my people|list people/i, "people_you_know", () => ({})],
-  [/due|overdue|bill|subscription|recurring|every month|each month|committed/i, "what_is_due", () => ({})],
   [/what do i (usually )?(pay|owe)|how much do i|history|spent/i, "money_history", () => ({ limit: 12 })],
   [/month|last month/i, "monthly_summary", () => ({})],
   [/how many|how much.*stored|memory.*full|what.*stored/i, "memory_stats", () => ({})],
@@ -118,11 +121,6 @@ function say(name: string, result: any, args: any = {}): string {
       `, most recently ${when(p.lastSeen)}.`;
     return result.slice(0, 5).map(line).join(" ");
   }
-  if (name === "what_is_due") {
-    const lines = (result?.said ?? []) as string[];
-    if (!lines.length) return "Nothing has a rhythm yet, so nothing is due.";
-    return lines.map((s) => `${s}.`).join(" ");
-  }
   if (name === "monthly_summary") {
     if (!result?.length) return "No monthly totals yet.";
     return result.map((m: any) => `${monthName(m.month)}: ${spoken(m.total)} ${m.asset}`).join(". ");
@@ -131,11 +129,11 @@ function say(name: string, result: any, args: any = {}): string {
   if (name === "remember_this") return "Stored. That is on Walrus now.";
   // This string goes to speech synthesis. A 64-character digest read aloud is
   // unlistenable, so the proof stays in the tool trace and the eye only says it landed.
-  if (name === "pay_usdc") {
+  if (name === "pay_usdc" || name === "pay_sui") {
     if (result?.awaiting_signature) {
-      return `I have put ${spoken(result.usdc)} USDC for ${result.to} in the ticket under this reply. Sign it there and it goes.`;
+      return `I have put ${spoken(result.amount)} ${result.asset} for ${result.to} in the ticket under this reply. Sign it there and it goes.`;
     }
-    return `Sent ${spoken(result?.usdc)} USDC. It settled on chain just now.`;
+    return `Sent ${spoken(result?.amount)} ${result?.asset}. It settled on chain just now.`;
   }
   if (name === "find_person")
     return result?.address ? `Found ${result.address.slice(0, 10)}…` : `I have never been told who that is.`;
@@ -187,7 +185,7 @@ function say(name: string, result: any, args: any = {}): string {
 function speakResult(name: string, result: any, args: any = {}): string {
   if (result && typeof result === "object" && "error" in result) {
     const why = String(result.error);
-    return name === "pay_usdc" ? `I did not send anything. ${why}` : `That did not work. ${why}`;
+    return name === "pay_usdc" || name === "pay_sui" ? `I did not send anything. ${why}` : `That did not work. ${why}`;
   }
   return say(name, result, args);
 }

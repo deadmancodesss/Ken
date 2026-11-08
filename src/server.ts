@@ -4,12 +4,12 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { runTurn, modelName, brainState, fallbackNote } from "./brain.js";
-import { paymentCap, paymentsEnabled, prepareUsdc, USDC_DECIMALS } from "./wallet.js";
+import { baseUnitsFor, decimalsFor, paymentCap, paymentsEnabled, preparePayment, prepareUsdc, type PayAsset } from "./wallet.js";
 import { spamMarkFor } from "./spam.js";
 import { dueReminders, markReminderFired } from "./reminders.js";
-import { PAY_CHAIN, PAY_NET, allHoldings, isUsdcCoin, type Holding, type Net, waitForTransaction } from "./chain.js";
+import { PAY_CHAIN, PAY_NET, allHoldings, provedPayment, type Holding, type Net, waitForTransaction } from "./chain.js";
 import { usdPrices } from "./price.js";
-import { bills, commitments, counterparties, dueRows, forgetCounterparties } from "./knowledge.js";
+import { counterparties, forgetCounterparties } from "./knowledge.js";
 import { peopleRoster, memoryStats, personForAddress, labelPerson, resolvePerson } from "./people.js";
 import { runTool } from "./tools.js";
 import { keepAddress, keptTurn } from "./address.js";
@@ -18,12 +18,12 @@ import { line as memoryLine, lines as memoryLines, remember, searchMemory } from
 import { forgotten, held, hold, release, settle, type Pending } from "./pending.js";
 import { forgetAudio, synthesize, ttsState } from "./speech.js";
 import { type Fact, canonical, noteResourceId, receiptResourceId } from "./resources.js";
-import { learn, indexPayout, overCeiling, price, priceCeiling, priceUsdc, purchases, retryStuck, settleSigned, totalSpent } from "./x402.js";
+import { learn, overCeiling, price, priceCeiling, priceUsdc, purchases, retryStuck, settleSigned, totalSpent } from "./x402.js";
 import { salesOf } from "./catalog.js";
 import { openEnvelope } from "./x402wire.js";
 import { capOwner, chainMismatch, session, useDemoWallet, useNetwork, useWallet } from "./session.js";
 import { tally } from "./earn.js";
-import { buildStatement, cardSvg } from "./report.js";
+import { buildStatement, cardSvg, previewStatement, type Range } from "./report.js";
 import { liveState, startLive, type LiveCall, type LiveEvent } from "./live.js";
 import { chatKey, DEFAULT_CHAT_DB, FORM_KINDS, openChats } from "./chats.js";
 import { currentSeat, seatId, seatFor, seatsOpen, sweepSeats, within } from "./seat.js";
@@ -44,6 +44,9 @@ import {
 const PORT = Number(process.env.PORT ?? process.env.APP_PORT ?? 8787);
 const HOST = process.env.HOST ?? process.env.APP_HOST ?? "0.0.0.0";
 const PUBLIC = new URL("../public/", import.meta.url).pathname;
+
+/** A missing or misspelled period is the month, never a silent third window. */
+const rangeOf = (v: string | null): Range => (v === "week" ? "week" : "month");
 
 /*
  * The chat store is the one thing that survives a restart, because it is the only
@@ -127,7 +130,7 @@ function offered(n: Note) {
     link: `/ask/${n.id}`,
     // Counted from the receipts rather than from a number stored beside the note, so
     // "opened three times" and "paid for three times" can never be different claims.
-    opened: salesOf(`note:${n.id}`).length,
+    opened: salesOf(`note:${n.id}`, session().network).length,
     // Which of the two kinds of wall this is: words written for the link, or a line
     // that was already sitting in somebody's memory before the price existed. The blob
     // id itself stays out of a list that anybody holding the link can read, since the
@@ -189,23 +192,27 @@ async function capSnapshot() {
  * ticket and a request link go through this one check, so a route added later cannot
  * accept a digest on a different standard than the one the product already trusts.
  */
-async function usdcProof(digest: string, waiting: Pending, net: Net): Promise<string | null> {
+async function paymentProof(digest: string, waiting: Pending, net: Net): Promise<string | null> {
   // The index has been measured taking longer than fifteen seconds on testnet, and a
   // signature that is real but not visible yet used to be reported as no transaction.
   // Thirty seconds is still bounded, and the page now counts the seconds out loud.
   const proof = await waitForTransaction(digest, net, 30);
   if (!proof) return `the chain index did not show that digest within 30 seconds, so nothing was recorded. If your wallet shows it, check the digest before paying again`;
   if (proof.status !== "SUCCESS") return `that transaction ended ${proof.status}, so nothing was recorded`;
-  const expected = BigInt(Math.round(waiting.usdc * 10 ** USDC_DECIMALS));
-  const isUsdc = isUsdcCoin;
-  const left = proof.changes.find(
-    (c) => c.amount === -expected && isUsdc(c.coinType) && c.address.toLowerCase() === waiting.sender.toLowerCase(),
-  );
-  const arrived = proof.changes.find(
-    (c) => c.amount === expected && isUsdc(c.coinType) && c.address.toLowerCase() === waiting.to.toLowerCase(),
-  );
-  if (!left || !arrived) return `that transaction is not ${waiting.usdc} USDC from your wallet to ${waiting.to}`;
+  const expected = baseUnitsFor(waiting.amount, waiting.asset);
+  if (!provedPayment(proof.changes, waiting.sender, waiting.to, expected, waiting.asset)) {
+    return `that transaction is not ${waiting.amount} ${waiting.asset} from your wallet to ${waiting.to}`;
+  }
   return null;
+}
+
+/**
+ * The ledger a ticket was built on outranks whichever ledger the page is reading when
+ * the signature comes back. A switch in another tab must not send a testnet signature
+ * to the mainnet index, and a mainnet signature must not be checked against testnet.
+ */
+function netOfChain(chain: string): Net {
+  return chain === "sui:mainnet" ? "mainnet" : "testnet";
 }
 
 const server = createServer((req, res) => {
@@ -565,7 +572,6 @@ async function handle(req: any, res: any) {
         return json(res, 200, {
           roster: [],
           parties: [],
-          due: { rows: [], committed: [] },
           stats: { total: 0, namespaces: [] },
           session: { wallet: "", network: s.network, source: "none", reported: "" },
           payments: paymentsEnabled(),
@@ -589,22 +595,16 @@ async function handle(req: any, res: any) {
         counterparties(s.wallet, s.network),
         memoryStats(),
       ]);
-      const owed = bills(dueRows(parties), [indexPayout()]);
       return json(res, 200, {
         roster,
         parties,
-        // Measured from the same read, so the rhythm on the page and the rhythm the
-        // agent speaks are the same arithmetic and can never disagree out loud. The
-        // monthly total is added here for the same reason: a page that did its own
-        // sums would be a second sum to get wrong.
-        due: { rows: owed, committed: commitments(owed) },
         stats,
         session: s,
         payments: paymentsEnabled(),
         pay_network: s.network,
         spend: {
-          usdc: totalSpent(s.wallet),
-          lookups: purchases(s.wallet).length,
+          usdc: totalSpent(s.wallet, s.network),
+          lookups: purchases(s.wallet, s.network).length,
           price: priceUsdc(),
         },
         model: modelName(),
@@ -633,10 +633,48 @@ async function handle(req: any, res: any) {
       return json(res, 200, { cancelled: true });
     }
 
+    /*
+     * A person who changes their mind about the coin before signing should not have to
+     * cancel and say the whole sentence again. This rebuilds the same amount in the
+     * other coin, at the same address, and replaces the unsigned ticket.
+     *
+     * Only a transfer to a person can switch. A paid fact and a request link have a
+     * price fixed in USDC by terms that are not ours to rewrite here.
+     */
+    if (req.method === "POST" && url.pathname === "/pending/switch") {
+      const { asset } = JSON.parse((await readBody(req)) || "{}");
+      const next: PayAsset = asset === "SUI" ? "SUI" : "USDC";
+      const waiting = held();
+      if (!waiting) return json(res, 409, { error: "nothing is waiting for a signature" });
+      if (waiting.digest) return json(res, 409, { error: "this payment already settled, so its coin cannot change" });
+      if (waiting.resource || waiting.request) {
+        return json(res, 409, { error: `this ticket is priced in USDC by its terms, so it cannot become ${next}` });
+      }
+      if (waiting.asset === next) return json(res, 200, { pending: waiting });
+      try {
+        const p = await preparePayment(waiting.sender, waiting.to, waiting.amount, next, netOfChain(waiting.chain));
+        return json(res, 200, {
+          pending: hold({
+            sender: p.sender,
+            to: p.to,
+            name: waiting.name,
+            amount: p.amount,
+            asset: p.asset,
+            bytes: p.bytes,
+            chain: p.chain,
+            chat: waiting.chat,
+          }),
+        });
+      } catch (err) {
+        return json(res, 400, { error: (err as Error).message });
+      }
+    }
+
     if (req.method === "POST" && url.pathname === "/pending/settle") {
       const body = JSON.parse((await readBody(req)) || "{}");
       const waiting = held();
       if (!waiting) return json(res, 409, { error: "nothing is waiting for a signature" });
+      const ticketNet = netOfChain(waiting.chain);
 
       /*
        * A ticket that buys a fact is settled by handing the seller the bytes this wallet
@@ -653,7 +691,7 @@ async function handle(req: any, res: any) {
           });
         }
         try {
-          const released = await settleSigned(waiting.resource, waiting.sender, bytes, signature, session().network);
+          const released = await settleSigned(waiting.resource, waiting.sender, bytes, signature, ticketNet);
           if ("error" in released) return json(res, 402, { error: released.error, pending: waiting });
           const learned = await learn(waiting.resource, released.fact, released.usdc, released.tx, released.on);
           const done = settle(released.tx);
@@ -683,7 +721,7 @@ async function handle(req: any, res: any) {
 
       // The digest arrives from a browser, so the chain decides whether it is a
       // payment at all. Nothing is written to memory on a claim alone.
-      const bad = await usdcProof(digest, waiting, session().network);
+      const bad = await paymentProof(digest, waiting, ticketNet);
       if (bad) return json(res, 400, { error: bad });
 
       const done = settle(digest);
@@ -691,7 +729,7 @@ async function handle(req: any, res: any) {
       // payments that were prepared and then refused in the wallet.
       if (done) {
         await remember(
-          `Paid ${done.usdc} USDC to ${done.to}${done.name ? ` (${done.name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${done.digest}`,
+          `Paid ${done.amount} ${done.asset} to ${done.to}${done.name ? ` (${done.name})` : ""} on ${new Date().toISOString().slice(0, 10)}. tx ${done.digest}`,
         );
         forgetCounterparties();
       }
@@ -706,12 +744,13 @@ async function handle(req: any, res: any) {
         // receipt a person reads back: the digest rides in the step, which the transcript
         // turns into an explorer link instead of a string nobody can check by eye.
         const who = done.name ?? `${done.to.slice(0, 6)}…${done.to.slice(-4)}`;
-        const line = `${done.usdc} USDC to ${who} was signed in the wallet and settled on chain.`;
+        const tool = done.asset === "SUI" ? "pay_sui" : "pay_usdc";
+        const line = `${done.amount} ${done.asset} to ${who} was signed in the wallet and settled on chain.`;
         turnId = chats.append(threadKeyFor(chatKey(), waiting.chat), {
           asked: `signed the payment to ${who}`,
           said: line,
-          steps: [{ name: "pay_usdc", ok: true, result: { digest, to: done.to, usdc: done.usdc } }],
-          delta: [{ role: "user", content: `I signed the payment to ${who} in my wallet. ${line} Do not call pay_usdc again for this payment.` }],
+          steps: [{ name: tool, ok: true, result: { digest, to: done.to, amount: done.amount, asset: done.asset, chain: waiting.chain } }],
+          delta: [{ role: "user", content: `I signed the payment to ${who} in my wallet. ${line} Do not call ${tool} again for this payment.` }],
           at: Date.now(),
         });
       }
@@ -777,6 +816,7 @@ async function handle(req: any, res: any) {
           usdc,
           owner: capOwner(),
           minutes: Number(input.minutes),
+          network: s.network,
         });
         const view = publicRequest(made);
         // A request made from the chat form happened outside the model's turn, so it is
@@ -794,7 +834,10 @@ async function handle(req: any, res: any) {
     }
 
     if (req.method === "GET" && url.pathname === "/requests") {
-      return json(res, 200, { requests: requestsBy(capOwner()).map((r) => publicRequest(r)), network: session().network });
+      return json(res, 200, {
+        requests: requestsBy(capOwner(), 12, session().network).map((r) => publicRequest(r)),
+        network: session().network,
+      });
     }
 
     if (req.method === "GET" && requestPath && !requestPath[2]) {
@@ -830,12 +873,20 @@ async function handle(req: any, res: any) {
       if (found.to.toLowerCase() === s.wallet.toLowerCase()) {
         return json(res, 400, { error: "this request points at the wallet you have connected, so there is nothing here to pay" });
       }
+      // The link names its ledger. Building it on the other one would pay real mainnet
+      // USDC for a testnet ask, or dust for a real one, to the very same address.
+      if (s.network !== found.network) {
+        return json(res, 400, {
+          error: `this link asks to be paid on ${found.network} and this page is reading ${s.network}. Move the switch to ${found.network} first, so nothing is paid on the wrong ledger`,
+          request: publicRequest(found),
+        });
+      }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
       try {
-        const p = await prepareUsdc(s.wallet, found.to, found.usdc, s.network);
+        const p = await prepareUsdc(s.wallet, found.to, found.usdc, found.network);
         return json(res, 200, {
-          pending: hold({ sender: p.sender, to: p.to, name: null, usdc: p.usdc, bytes: p.bytes, chain: p.chain, request: found.id }),
+          pending: hold({ sender: p.sender, to: p.to, name: null, amount: p.amount, asset: p.asset, bytes: p.bytes, chain: p.chain, request: found.id }),
           request: publicRequest(found),
         });
       } catch (err) {
@@ -855,7 +906,7 @@ async function handle(req: any, res: any) {
       if (!waiting || waiting.request !== found.id) {
         return json(res, 409, { error: "nothing is waiting for this request in this browser. Press pay again" });
       }
-      const bad = await usdcProof(digest, waiting, s.network);
+      const bad = await paymentProof(digest, waiting, found.network);
       if (bad) return json(res, 400, { error: bad });
       if (digestTaken(digest, found.id)) {
         return json(res, 409, { error: "that transaction already settled a different request, so this one is still open" });
@@ -886,8 +937,8 @@ async function handle(req: any, res: any) {
           byName: (name) => resolvePerson(name),
           byAddress: (address) => personForAddress(address),
           label: (name, address) => labelPerson(name, address),
-          pay: async (to, usdc) => {
-            const result = await runTool("pay_usdc", { to, amount: usdc });
+          pay: async (to, amount, asset) => {
+            const result = await runTool(asset === "SUI" ? "pay_sui" : "pay_usdc", { to, amount });
             // A settled demo payment changed the coins this wallet holds, and the page
             // asks for the balance the moment this answer lands.
             if (!(result as { awaiting_signature?: boolean })?.awaiting_signature) {
@@ -933,7 +984,7 @@ async function handle(req: any, res: any) {
      * lost answer is retried with the same signature instead of a second transfer.
      */
     if (req.method === "POST" && url.pathname === "/x402/settle") {
-      const { resource, payer, bytes, signature } = JSON.parse((await readBody(req)) || "{}");
+      const { resource, payer, bytes, signature, chain } = JSON.parse((await readBody(req)) || "{}");
       let canon: string;
       try {
         canon = canonical(String(resource ?? ""));
@@ -945,7 +996,13 @@ async function handle(req: any, res: any) {
       if (typeof bytes !== "string" || !bytes || typeof signature !== "string" || !signature) {
         return json(res, 400, { error: "bytes and signature required" });
       }
-      const released = await settleSigned(canon, who, bytes, signature, session().network);
+      // The page signs for the ledger its own quote named. That ledger decides where the
+      // bytes are settled, so a switch after the signature cannot move the payment.
+      if (chain !== undefined && chain !== "sui:testnet" && chain !== "sui:mainnet") {
+        return json(res, 400, { error: "chain must be sui:testnet or sui:mainnet when it is sent" });
+      }
+      const net = chain === "sui:mainnet" ? "mainnet" : chain === "sui:testnet" ? "testnet" : session().network;
+      const released = await settleSigned(canon, who, bytes, signature, net);
       if ("error" in released) return json(res, 402, { error: released.error });
       return json(res, 200, { fact: released.fact, charged: released.usdc, tx: released.tx, reason: released.reason });
     }
@@ -1029,9 +1086,11 @@ async function handle(req: any, res: any) {
        * transfer at a time instead of by moving real USDC.
        */
       const all = notes();
+      const net = session().network;
+      const onNet = (resource: string) => salesOf(resource, net);
       const paid = new Map<string, string>();
       for (const n of all) {
-        for (const s of salesOf(`note:${n.id}`)) {
+        for (const s of onNet(`note:${n.id}`)) {
           const key = s.payer.toLowerCase();
           if (paid.has(key)) continue;
           // Named where this wallet already knows the buyer, because a stranger's address
@@ -1041,7 +1100,7 @@ async function handle(req: any, res: any) {
         }
       }
       const s = session();
-      return json(res, 200, tally(all, salesOf, s.wallet, (a) => paid.get(a.toLowerCase()) ?? `${a.slice(0, 10)}…`));
+      return json(res, 200, tally(all, onNet, s.wallet, (a) => paid.get(a.toLowerCase()) ?? `${a.slice(0, 10)}…`));
     }
 
     if (req.method === "POST" && url.pathname === "/ask/sign") {
@@ -1085,7 +1144,8 @@ async function handle(req: any, res: any) {
       // The same ticket the voice agent fills, reached without a model. A person
       // typing an amount is no more allowed to skip their own signature than a
       // sentence is, so this prepares and holds and never sends.
-      const { to, usdc, confirm_spam } = JSON.parse((await readBody(req)) || "{}");
+      const { to, amount: asked, asset: coin, confirm_spam } = JSON.parse((await readBody(req)) || "{}");
+      const asset: PayAsset = coin === "SUI" ? "SUI" : "USDC";
       const s = session();
       if (s.source !== "wallet") {
         return json(res, 400, { error: "connect a wallet first. The demo story has no key in this browser, so there is nothing to sign" });
@@ -1105,9 +1165,12 @@ async function handle(req: any, res: any) {
         name = person.alias;
       }
 
-      const amount = Number(usdc);
-      if (!Number.isFinite(amount) || amount <= 0) return json(res, 400, { error: "the amount has to be a number of USDC above zero" });
-      if (amount > paymentCap()) return json(res, 400, { error: `the ceiling on one signature is ${paymentCap()} USDC. Raise PAY_MAX_BASE_UNITS in .env if you mean it` });
+      const amount = Number(asked);
+      if (!Number.isFinite(amount) || amount <= 0) return json(res, 400, { error: `the amount has to be a number of ${asset} above zero` });
+      if (amount > paymentCap(asset)) {
+        const knob = asset === "SUI" ? "PAY_MAX_SUI_MIST" : "PAY_MAX_BASE_UNITS";
+        return json(res, 400, { error: `the ceiling on one ${asset} signature is ${paymentCap(asset)}. Raise ${knob} in .env if you mean it` });
+      }
 
       // The mark stops the bytes before they exist. Sending a warning after a signed
       // transfer would be a receipt, not a warning.
@@ -1122,8 +1185,10 @@ async function handle(req: any, res: any) {
       }
 
       try {
-        const p = await prepareUsdc(s.wallet, address, amount, s.network);
-        return json(res, 200, { pending: hold({ sender: p.sender, to: p.to, name, usdc: p.usdc, bytes: p.bytes, chain: p.chain }) });
+        const p = await preparePayment(s.wallet, address, amount, asset, s.network);
+        return json(res, 200, {
+          pending: hold({ sender: p.sender, to: p.to, name, amount: p.amount, asset: p.asset, bytes: p.bytes, chain: p.chain }),
+        });
       } catch (err) {
         return json(res, 400, { error: (err as Error).message });
       }
@@ -1179,7 +1244,8 @@ async function handle(req: any, res: any) {
             sender: p.sender,
             to: p.to,
             name: "Paid chain index",
-            usdc: p.usdc,
+            amount: p.amount,
+            asset: p.asset,
             bytes: p.bytes,
             chain: p.chain,
             resource,
@@ -1347,45 +1413,21 @@ async function handle(req: any, res: any) {
     }
 
     // The same statement in three shapes: numbers to print, vector to share, page to look at.
+    if ((url.pathname === "/report.json" || url.pathname === "/report.svg") && url.searchParams.get("refresh")) {
+      forgetCounterparties();
+      forgetTransfers();
+    }
+
     if (url.pathname === "/report.json") {
-      return json(res, 200, await buildStatement());
+      return json(res, 200, await buildStatement(rangeOf(url.searchParams.get("period"))));
     }
 
     if (url.pathname === "/report.svg") {
-      if (session().source !== "wallet") {
-        const preview = cardSvg({
-          wallet: "0x0000000000000000000000000000000000000000000000000000000000000000",
-          network: PAY_NET,
-          isDemo: false,
-          period: "Connect wallet for live statement",
-          headline: "0.00 USDC",
-          direction: "none",
-          totalOut: "0.00 USDC",
-          otherAssets: "",
-          asset: "USDC",
-          totalIn: "0.00 USDC",
-          inAsset: "USDC",
-          inOtherAssets: "",
-          sendCount: 0,
-          senders: [],
-          months: [
-            { month: "2026-09", amount: 0, label: "Sep" },
-            { month: "2026-10", amount: 0, label: "Oct" },
-            { month: "2026-11", amount: 0, label: "Nov" },
-          ],
-          people: [],
-          overdue: 0,
-          dueNow: 0,
-          remembered: 0,
-          bought: 0,
-          paid: "0.00 USDC",
-          price: `${priceUsdc().toFixed(2)} USDC`,
-          generatedAt: new Date().toISOString().slice(0, 10),
-        });
-        res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" });
-        return res.end(preview);
-      }
-      const svg = cardSvg(await buildStatement());
+      const range = rangeOf(url.searchParams.get("period"));
+      const svg =
+        session().source === "wallet"
+          ? cardSvg(await buildStatement(range))
+          : cardSvg(previewStatement(session().network, range));
       res.writeHead(200, { "content-type": "image/svg+xml; charset=utf-8", "cache-control": "no-store" });
       return res.end(svg);
     }
@@ -1476,6 +1518,7 @@ async function handle(req: any, res: any) {
     });
     res.end(out);
   } catch (err) {
+    console.error(`${req.method} ${req.url} failed: ${(err as Error).message}`);
     json(res, 500, { error: (err as Error).message });
   }
 }

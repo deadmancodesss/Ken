@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { Transaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -31,11 +31,12 @@ process.env.PAID_MAX_USDC = "0.02";
 const { createNote } = await import("./notes.js");
 const { sell, salesOf } = await import("./catalog.js");
 const { addressOf, canonical, noteResourceId, parseResource, receiptResourceId, resourceId } = await import("./resources.js");
-const { overCeiling, priceCeiling, priceUsdc } = await import("./x402.js");
+const { overCeiling, priceCeiling, priceUsdc, buy } = await import("./x402.js");
 const { coversTerms } = await import("./facilitator.js");
 const { decodeHeader, envelopeFromSigned, requirementsFor } = await import("./x402wire.js");
 const { USDC_ASSET } = await import("./wallet.js");
 const { PAY_CHAIN } = await import("./chain.js");
+const { useNetwork } = await import("./session.js");
 
 let fails = 0;
 const expect = (what: string, ok: boolean) => {
@@ -217,6 +218,69 @@ const run = async () => {
 
   expect("only the settled note is on the seller's books", salesOf(resource).length === 1);
   expect("the sale names the payer and the transaction", salesOf(resource)[0].payer === BUYER && salesOf(resource)[0].digest === "FakeDigestFromTheFixture");
+
+  /* ---------- a fact belongs to the ledger its money settled on ---------- */
+
+  const payNet = PAY_CHAIN.split(":")[1] as "mainnet" | "testnet";
+  const otherNet = payNet === "mainnet" ? "testnet" : "mainnet";
+
+  const askedOnOther = await sell({ resource, payer: BUYER, network: otherNet });
+  expect("a note bought on one ledger is not free on the other", askedOnOther.http === 402);
+  expect(
+    "only the ledger that paid lists the sale",
+    salesOf(resource, payNet).length === 1 && salesOf(resource, otherNet).length === 0,
+  );
+
+  const replayOnOther = await sell(
+    { resource, payer: BUYER, envelope: signed.envelope, network: otherNet },
+    { settle: settleOk },
+  );
+  expect("the same envelope cannot be replayed on the other ledger", replayOnOther.http === 402);
+  expect(
+    "the replay refusal names the ledger the settlement belongs to",
+    /settlement happened on/.test(String((replayOnOther.body as any).error)),
+  );
+
+  const legacyNote = createNote({ title: "words from before the split", body: WORDS, usdc: 0.02, payTo: AUTHOR });
+  const legacyResource = noteResourceId(legacyNote.id);
+  const book = JSON.parse(readFileSync(scratchLedger, "utf8"));
+  book.sold[`${BUYER.toLowerCase()}|${canonical(legacyResource)}`] = {
+    resource: legacyResource,
+    payer: BUYER,
+    digest: "LegacyTestnetSale",
+    usdc: 0.02,
+    at: "2026-01-01",
+  };
+  writeFileSync(scratchLedger, JSON.stringify(book, null, 1));
+
+  const legacyTestnet = await sell({ resource: legacyResource, payer: BUYER, network: "testnet" });
+  expect(
+    "a sale written before the network existed is honoured on testnet",
+    legacyTestnet.http === 200 && Number((legacyTestnet.body as any).charged) === 0,
+  );
+  const legacyMainnet = await sell({ resource: legacyResource, payer: BUYER, network: "mainnet" });
+  expect("the same old row does not open the fact on mainnet", legacyMainnet.http === 402);
+
+  const crossNote = createNote({ title: "settled on the wrong ledger", body: WORDS, usdc: 0.02, payTo: AUTHOR });
+  const crossResource = noteResourceId(crossNote.id);
+  const crossSigned = await signedBy(buyerKey);
+  const crossed = await sell(
+    { resource: crossResource, payer: BUYER, envelope: crossSigned.envelope, network: otherNet },
+    { settle: settleOk },
+  );
+  expect(
+    "a facilitator that settles on another ledger cannot release this one",
+    crossed.http === 402 && /settlement happened on/.test(String((crossed.body as any).error)),
+  );
+  expect("a cross-ledger settlement writes nothing to the seller's books", salesOf(crossResource, otherNet).length === 0);
+
+  useNetwork(otherNet);
+  const wrongLedger = await buy(`receipt:${PHANTOM}`, BUYER);
+  expect(
+    "the agent's own key refuses to buy while the page reads the other ledger",
+    "error" in wrongLedger && /will not buy/.test(wrongLedger.error),
+  );
+  useNetwork(payNet);
 
   rmSync(scratchNotes, { force: true });
   rmSync(scratchLedger, { force: true });

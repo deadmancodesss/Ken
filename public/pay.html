@@ -103,9 +103,20 @@
       @media (max-width: 900px) { .forms { grid-template-columns: minmax(0, 1fr); } }
       .field { display: grid; gap: 7px; margin-bottom: 14px; }
       .field > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
-      .money { display: flex; align-items: baseline; gap: 8px; }
+      .money { display: flex; align-items: center; gap: 8px; }
       .money input { flex: 1; min-width: 0; }
-      .money b { font: var(--step-0)/1 var(--mono); color: var(--ink-2); font-weight: 400; }
+      /* The coin is chosen where the number is typed rather than on a screen after it.
+         Two names sit inside one drawn capsule and the chosen half goes dark, so a
+         glance at the amount already says which coin is about to leave. */
+      .coinPick { display: inline-flex; align-items: stretch; border: var(--edge) solid var(--rule-strong); border-radius: 9px; overflow: hidden; background: var(--rule); gap: 1px; flex: 0 0 auto; }
+      .coinPick button { border: 0; border-radius: 0; box-shadow: none; background: var(--paper); color: var(--ink-3); font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; padding: 10px 13px; min-width: 56px; text-align: center; }
+      .coinPick button:hover { background: var(--paper-sunk); color: var(--ink); transform: none; box-shadow: none; }
+      .coinPick button.on { background: var(--ink); color: var(--paper); }
+      .coinPick button:active { transform: none; box-shadow: none; }
+      .coinPick.sm button { padding: 6px 10px; min-width: 46px; font-size: 11px; }
+      .coinRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+      .coinRow > span { font: var(--step--1)/1 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); }
+      .coinNote { margin: 8px 0 0; font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); max-width: 46ch; }
       .hint { font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); margin: 0 0 14px; }
       .hint.bad { color: var(--brick); }
       .hint.good { color: var(--moss); }
@@ -195,13 +206,16 @@
                   <input type="text" id="to" list="people" placeholder="a name you have taught, or a full 0x address" autocomplete="off" spellcheck="false" />
                   <datalist id="people"></datalist>
                 </label>
-                <label class="field">
-                  <span>Amount</span>
+                <div class="field">
+                  <span id="amountLbl">Amount and coin</span>
                   <div class="money">
-                    <input type="text" id="amt" inputmode="decimal" value="1" autocomplete="off" />
-                    <b>USDC</b>
+                    <input type="text" id="amt" inputmode="decimal" value="1" autocomplete="off" aria-labelledby="amountLbl" />
+                    <div class="coinPick" id="coinPick" role="group" aria-label="coin to send">
+                      <button type="button" data-coin="USDC" class="on" aria-pressed="true">USDC</button>
+                      <button type="button" data-coin="SUI" aria-pressed="false">SUI</button>
+                    </div>
                   </div>
-                </label>
+                </div>
                 <p class="hint" id="sendHint">reading your balance…</p>
                 <button type="submit" class="primary" id="sendGo">Prepare the payment</button>
               </form>
@@ -305,9 +319,10 @@
        */
       function receipt(p, person) {
         const net = String(p.chain ?? payChain()).split(":").pop();
+        const asset = p.asset === "SUI" ? "SUI" : "USDC";
         return `<div class="rcp">
           <div class="rcp-top"><span class="rcp-seal">paid</span><span class="quiet">settled and read back from the chain</span></div>
-          <div class="rcp-amt">${esc(spoken(String(p.usdc)))} <small>USDC</small></div>
+          <div class="rcp-amt">${esc(spoken(String(p.amount)))} <small>${asset}</small></div>
           <div class="rcp-to">to ${esc(person?.alias ?? shortAddr(p.to))} · ${esc(shortAddr(p.to))}</div>
           <div class="rcp-digest">
             <div class="quiet">transaction digest</div>
@@ -341,16 +356,28 @@
 
         const person = st.roster?.find((r) => r.address.toLowerCase() === p.to.toLowerCase());
         const party = st.parties?.find((x) => x.address.toLowerCase() === p.to.toLowerCase());
+        const asset = p.asset === "SUI" ? "SUI" : "USDC";
+        // A ticket the person can still sign may be paid in the other coin. A request
+        // link and an x402 price both have a coin written into their terms, so offering
+        // the switch there would promise something the server will refuse.
+        const switchable = !p.digest && !p.resource && !p.request;
         root.innerHTML =
           `<div class="ticket">
              <div class="label">${p.digest ? "Settled on chain" : "Waiting for your signature"}</div>
-             <div class="amount">${esc(spoken(String(p.usdc)))} <small>USDC</small></div>
+             <div class="amount">${esc(spoken(String(p.amount)))} <small>${asset}</small></div>
              <div class="to">to <b>${esc(person?.alias ?? shortAddr(p.to))}</b>${person?.note ? ` <span class="quiet">${esc(plain(person.note))}</span>` : ""}</div>
              <dl class="terms">
                <div><dt>address</dt><dd>${esc(p.to)}</dd></div>
                <div><dt>from</dt><dd>${esc(shortAddr(p.sender))}</dd></div>
+               <div><dt>fee</dt><dd>${asset === "SUI" ? "paid from this same SUI balance, so keep a little above the amount" : "paid in SUI from your gas balance, not from this amount"}</dd></div>
+               ${p.request ? `<div><dt>coin</dt><dd>USDC, fixed by the request link that was made</dd></div>` : ""}
+               ${p.resource ? `<div><dt>coin</dt><dd>USDC, fixed by the seller's terms</dd></div>` : ""}
                <div><dt>paid before</dt><dd>${party ? esc(spoken(party.net + " " + party.asset) + " over " + party.flows + " payments") : "never, this is the first"}</dd></div>
              </dl>
+             ${switchable ? `<div class="coinRow"><span>pay in</span><div class="coinPick sm" id="coinSwitch" role="group" aria-label="pay in a different coin">
+               ${["USDC", "SUI"].map((c) => `<button type="button" data-coin="${c}" class="${c === asset ? "on" : ""}" aria-pressed="${c === asset}">${c}</button>`).join("")}
+             </div></div>
+             <p class="coinNote">switching keeps the number and changes the coin. One USDC and one SUI are not worth the same, so read the amount again before you sign.</p>` : ""}
              ${p.digest ? receipt(p, person) : ""}
              ${!person ? '<div class="warn">you have never named this address. If you do not recognise it, cancel.</div>' : ""}
            </div>
@@ -371,14 +398,56 @@
           };
         }
 
+        const pick = $("coinSwitch");
+        if (pick) {
+          pick.querySelectorAll("button").forEach((b) => {
+            b.onclick = async () => {
+              if (b.dataset.coin === asset) return;
+              const warn = $("signWarn");
+              const go = $("sign");
+              pick.querySelectorAll("button").forEach((x) => (x.disabled = true));
+              go.disabled = true;
+              go.textContent = "building the other coin…";
+              try {
+                const res = await fetch("/pending/switch", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ asset: b.dataset.coin }),
+                });
+                const back = await res.json();
+                if (!res.ok) throw new Error(back.error || `the server answered ${res.status}`);
+                render(back.pending, st);
+              } catch (err) {
+                warn.hidden = false;
+                warn.textContent = err.message;
+                pick.querySelectorAll("button").forEach((x) => (x.disabled = false));
+                go.disabled = false;
+                go.textContent = "Sign in wallet";
+              }
+            };
+          });
+        }
+
         // Cancelling only empties this ticket, and render() already has the state it
         // needs, so it redraws from what is in hand. Re-reading /state made the page
         // sit unchanged for seconds over a button press.
         $("cancel").onclick = async () => {
-          $("cancel").disabled = true;
-          await fetch("/pending/cancel", { method: "POST" });
-          render(null, st);
-          loadMeta();
+          const btn = $("cancel");
+          if (btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = "cancelling…";
+          try {
+            const res = await fetch("/pending/cancel", { method: "POST" });
+            if (!res.ok) throw new Error(`the server answered ${res.status}`);
+            render(null, st);
+            loadMeta();
+          } catch (err) {
+            const warn = $("signWarn");
+            warn.hidden = false;
+            warn.textContent = err.message;
+            btn.disabled = false;
+            btn.textContent = "Cancel";
+          }
         };
         $("sign").onclick = async () => {
           const btn = $("sign");
@@ -453,24 +522,56 @@
         }
       }
 
-      // A person decides how much to send knowing what is in the wallet, so the number
-      // that is about to leave is shown next to the box that asks for it.
+      // The person picks a coin before an amount is meaningful, so the box says what
+      // they hold in that coin and, for SUI, how much of it the fee will eat.
+      let coin = "USDC";
       async function balance() {
         const hint = $("sendHint");
         if (!hint) return;
         try {
           const b = await fetch("/balance").then((r) => r.json());
-          const usdc = (b.holdings ?? []).find((h) => /usdc/i.test(h.symbol ?? ""));
-          const sui = (b.holdings ?? []).find((h) => h.symbol === "SUI");
-          hint.className = "hint";
+          const holdings = b.holdings ?? [];
+          const usdc = holdings.find((h) => /usdc/i.test(h.symbol ?? ""));
+          const sui = holdings.find((h) => h.symbol === "SUI");
           const where = b.address ? ` at ${shortAddr(b.address)}` : "";
+          const asked = Number(String($("amt")?.value ?? "").replace(",", "."));
+          hint.className = "hint";
+          if (coin === "SUI") {
+            const held = Number(sui?.amount ?? 0);
+            if (!sui) {
+              hint.className = "hint bad";
+              hint.textContent = `no SUI${where} on ${b.network ?? "this network"}, so a SUI transfer has nothing to send. If your wallet app shows SUI, check that the account and network are the same ones, then press Connect again`;
+              return;
+            }
+            const left = held - (Number.isFinite(asked) && asked > 0 ? asked : 0);
+            if (Number.isFinite(asked) && asked > 0 && left < 0.01) {
+              hint.className = "hint bad";
+              hint.textContent = `this wallet${where} holds ${spoken(String(held))} SUI, and the network fee is paid from that same balance. This amount would leave ${spoken(String(Math.max(0, left)))} SUI for the fee, so lower the amount or add SUI`;
+              return;
+            }
+            hint.textContent = `this wallet${where} holds ${spoken(String(held))} SUI on ${b.network}. The network fee comes out of that same balance`;
+            return;
+          }
           hint.textContent = usdc
-            ? `this wallet${where} holds ${esc(spoken(String(usdc.amount)))} USDC on ${esc(b.network)} and ${esc(spoken(String(sui?.amount ?? 0)))} SUI for the gas`
-            : `no USDC${where} on ${esc(b.network ?? "this network")}, so a payment here has nothing to sign. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`;
+            ? `this wallet${where} holds ${spoken(String(usdc.amount))} USDC on ${b.network} and ${spoken(String(sui?.amount ?? 0))} SUI for the gas`
+            : `no USDC${where} on ${b.network ?? "this network"}, so a payment here has nothing to sign. If your wallet app shows USDC, check that the account and network are the same ones, then press Connect again`;
         } catch {
           hint.textContent = "the balance could not be read just now. The payment is still prepared and checked on the chain.";
         }
       }
+
+      function setCoin(next) {
+        coin = next === "SUI" ? "SUI" : "USDC";
+        document.querySelectorAll("#coinPick [data-coin]").forEach((b) => {
+          b.classList.toggle("on", b.dataset.coin === coin);
+          b.setAttribute("aria-pressed", String(b.dataset.coin === coin));
+        });
+        balance();
+      }
+      document.querySelectorAll("#coinPick [data-coin]").forEach((b) => {
+        b.onclick = () => setCoin(b.dataset.coin);
+      });
+      $("amt").addEventListener("input", balance);
 
       $("sendForm").onsubmit = async (e) => {
         e.preventDefault();
@@ -482,7 +583,7 @@
           const res = await fetch("/send", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ to: $("to").value, usdc: Number($("amt").value) }),
+            body: JSON.stringify({ to: $("to").value, amount: Number(String($("amt").value).replace(",", ".")), asset: coin }),
           });
           const back = await res.json();
           if (!res.ok) {
@@ -492,7 +593,7 @@
               const again = await fetch("/send", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ to: $("to").value, usdc: Number($("amt").value), confirm_spam: true }),
+                body: JSON.stringify({ to: $("to").value, amount: Number(String($("amt").value).replace(",", ".")), asset: coin, confirm_spam: true }),
               });
               const second = await again.json();
               if (!again.ok) throw new Error(second.error || `the server answered ${again.status}`);
