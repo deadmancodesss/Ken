@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/ken-wordmark.png" alt="Ken" width="280">
+</p>
+
 # Ken
 
 Ken is a personal agent for a Sui wallet. It reads the chain through Tatum, keeps your people on Walrus, and pays a few cents for a fact it has not learned yet. By default that money is `sui:mainnet` USDC, which is real money, and nothing leaves a wallet until its owner approves the transaction inside it.
@@ -20,6 +24,25 @@ you ask, by voice or by text
 
 The point of the build is the order. A wallet explorer answers every question by reading the chain. This one tries to never read the chain twice for the same fact, and the cost meter on the page proves it.
 
+## How it fits together
+
+<p align="center">
+  <img src="docs/assets/ken-architecture.webp" alt="One room with a desk, a card catalogue, a window onto a chain skyline, a telescope and a market booth, tied together by a red thread" width="880">
+</p>
+
+The drawing is one room and one loop, with no boxes and no arrows. The clay thread is a single request, followed from the question to the receipt.
+
+| In the drawing | In the build |
+| --- | --- |
+| The man at the desk, writing in a ledger | The one Node process that answers, and the chat store that keeps every turn |
+| The telephone and the key ring beside him | Text and voice enter through the same place, and the keys stay on the server |
+| The card catalogue, one drawer open, paper slips on the floor | Walrus memory, one namespace per wallet, read before anything else |
+| The window onto a skyline built from chain links | Sui, mainnet or testnet, chosen per browser seat |
+| The brass telescope aimed at that window | Tatum, used only when memory cannot answer |
+| The booth with a bell, ticket stubs, a coin dish and a cash box whose lock holds no key | The seller on port 8788, with its own wallet and ledger, and no key of its own |
+| The gramophone horn and its sound arcs | The spoken answer, in one of five voices |
+| The clay thread tying them together | One request, from memory to chain to a paid fact, and back into memory |
+
 ### The market is two processes
 
 The buyer and the seller cannot be the same call stack, so they are two processes.
@@ -40,14 +63,64 @@ The price is one cent for a profile, three cents above twenty transactions becau
 | Statement | A paper card typeset from chain reads and memory, saved as PNG, PDF or CSV. |
 | Paid links | A note, a profile or a chain check sold from one cent over x402, with the receipt stored so it is never bought twice. |
 
-## The hackathon tracks
+## In use
 
-| Track | What it does here |
+<p align="center">
+  <img src="docs/assets/app-chat.webp" alt="Ken chat thread on testnet with a tool step under the answer and older chats in the session rail" width="880">
+</p>
+
+<p align="center"><em>One thread on testnet. The question, the tool step and the answer stay together, and the session rail keeps older chats beside it.</em></p>
+
+| The signed ticket | The wallet card |
+| --- | --- |
+| <img src="docs/assets/app-ticket.webp" alt="A settled 0.03 USDC transfer with a green check and a transaction digest" width="420"> | <img src="docs/assets/wallet-card.webp" alt="Wallet card showing Slush, testnet, USDC and SUI balances, and the memory count" width="420"> |
+| A signed 0.03 USDC transfer to a saved name. The check is a read back from the chain, and the digest opens in Suiscan. | Ledger, both coins, the memory count and the model, all in one card. |
+
+| Memory on Walrus | The monthly statement |
+| --- | --- |
+| <img src="docs/assets/memory.webp" alt="Memory page with a semantic search for Prakash, the name it was given, and the closest stored rows" width="420"> | <img src="docs/assets/report.webp" alt="Monthly statement card with money in, money out, the newest five moves and the cost to know" width="420"> |
+| What Walrus holds for this wallet. The name Prakash was learned once, with two payments kept beside it. | The month as the agent remembers it. Money in and out, the newest five moves, and what it cost to know. |
+
+<p align="center">
+  <img src="docs/assets/call-live.webp" alt="A live call dock under the chat thread, listening, with one voice and an end call button" width="880">
+</p>
+
+<p align="center"><em>The call dock under the same thread. Listening, one voice, one way to end it.</em></p>
+
+## What the sponsors carry
+
+| Piece | What it does here |
 | --- | --- |
 | Tatum | Every chain read. Balances, transactions, counterparty history, on both mainnet and testnet, through the Sui GraphQL gateway. |
 | Walrus Memory | The agent's long term memory. Names, notes and bought receipts live in per wallet namespaces on mainnet, so a fresh session already knows who Sana is. |
 | Voice | One chat with two ways in. Type, or open the call sheet and talk. The microphone stays open, the answer arrives as speech, and every finished turn is written into the same chat, so a refresh does not erase it. Five working voices, and the choice is saved. |
 | Payments | Standard x402 v2 over Sui, with a separate seller process. A price arrives in a `PAYMENT-REQUIRED` header, your wallet signs the exact transfer without sending it, the signed bytes leave in `PAYMENT-SIGNATURE`, and the seller's facilitator verifies and settles them without holding a key. The fact is written to memory so the same answer is never bought twice. |
+
+## Where it fits
+
+Ken fits two of the three tracks.
+
+| Track | Why it fits |
+| --- | --- |
+| 02 Smart Agents for Real Life | An agent that remembers people, balances, habits and open commitments across sessions and devices. Text, voice, the morning brief and reminders share one memory. |
+| 03 Consumer Finance Apps | Balances, USDC and SUI payments, monthly limits, request links and statements, settled on Sui without leaving the chat. |
+
+There is no markets or sports product here, so track 01 is not claimed.
+
+## Stack
+
+Nothing here is a page framework. The hard parts are the wallet, the memory, the payment and the live socket, so the UI is plain files served by the same Node process that holds the keys.
+
+| Layer | What it is |
+| --- | --- |
+| Front end | Handwritten HTML, CSS and ES modules. GSAP for motion. No React, no Next, no bundler. |
+| Back end | Node.js and TypeScript run with `tsx`, on the built-in `node:http` server. |
+| Data | `node:sqlite` for seats and chat turns, JSON files for the seller ledger. |
+| Chain | Tatum Sui GraphQL, `@mysten/sui`, Wallet Standard in the browser. |
+| Memory | Walrus MemWal, one namespace per wallet. |
+| Payments | x402 v2 wire and a self-hosted facilitator, USDC and SUI on Sui. |
+| AI | Raw HTTP to Gemini and NVIDIA NIM, Gemini Live for calls, Fish and OpenRouter for speech. |
+| Tests | `tsc`, `node --check` and 24 TypeScript test scripts. No test framework. |
 
 ## Run it
 
@@ -163,7 +236,7 @@ src/
   brain.ts       one OpenAI compatible path for Gemini, NVIDIA NIM or OpenAI
   speech.ts      the model's own voice, and the honest answer when there is no key
   stub-model.ts  the rule based brain the demo runs on
-  tools.ts       the twenty tools and their schemas
+  tools.ts       the tool schemas
   live.ts        the two way audio socket, and the tool calls that run on it
   report.ts      the statement, and the vector card typeset from it
   knowledge.ts   counterparties, cadence, direction, usual amounts
@@ -196,5 +269,3 @@ The drawings are original, generated in the same four colours the tokens already
 ## Keys
 
 `.env` is gitignored and every key stays server side. The browser never sees one, and the only thing it ever signs is a transaction it built itself.
-
-The Walrus delegate key used during development was pasted into a chat once, so it gets rotated before this repository is made public. Rotation creates a new namespace, which means the demo memories have to be seeded again.

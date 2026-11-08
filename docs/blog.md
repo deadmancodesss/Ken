@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/ken-wordmark.png" alt="Ken" width="280">
+</p>
+
 # The agent that pays for what it does not know
 
 Most wallet tools answer every question the same way. You ask, they read the chain, they show you a table. Ask the same question a minute later and they read the chain again. Nobody remembers anything, so every answer costs the same whether you asked it yesterday or twice in a row.
@@ -16,7 +20,9 @@ Now say "who is 0xaaf0..." for an address you have never seen. Memory has nothin
 
 That second scene is the reason this is not a chat wrapper. Knowing has a price, the price is visible, and the price is paid once.
 
-## What each track actually carries
+## What each piece actually carries
+
+Ken fits 02 Smart Agents for Real Life and 03 Consumer Finance Apps. There is no markets or sports product here. These are the four pieces that carry it.
 
 Tatum is the eyes. Every balance, every transaction list, every counterparty read goes through the Sui GraphQL gateway, on whichever ledger the question is about, and one value in `.env` says which ledger a payment settles on. The free tier is about three requests a second, so the read paths batch and the client handles 429 with the retry-after header instead of falling over.
 
