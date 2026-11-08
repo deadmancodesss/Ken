@@ -721,8 +721,11 @@ async function transactionFrom(bytesBase64) {
   const tx = SuiTransaction.from(bytesBase64);
   /* Wallet generations disagree on which JSON version they parse. The first version
      is the one both generations read, and it rebuilds these exact bytes, so a wallet
-     is handed that whichever SDK it shipped with. */
-  tx.toJSON = () => tx.serialize();
+     is handed that whichever SDK it shipped with. A transfer drawn from the address
+     balance is the exception: the first version has no way to describe that input and
+     throws "Invalid input", so those keep the SDK's newer JSON instead. */
+  const newerInput = (tx.getData?.().inputs ?? []).some((i) => i?.FundsWithdrawal);
+  if (!newerInput) tx.toJSON = () => tx.serialize();
   return tx;
 }
 

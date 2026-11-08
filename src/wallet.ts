@@ -51,6 +51,42 @@ function checked(to: string, baseUnits: bigint, asset: PayAsset): void {
   if (baseUnits > caps[asset]) throw new Error(`above the per-payment cap of ${paymentCap(asset)} ${asset}`);
 }
 
+/*
+ * How much SUI has to stay on the gas coin beyond the amount being sent. A simple
+ * transfer costs a fraction of this, and leaving it out is how a payment builds cleanly
+ * and then fails in the wallet because the same coin had nothing left for the fee.
+ */
+const SUI_GAS_RESERVE = 5_000_000n;
+
+/*
+ * A wallet transaction is read back by the extension with whichever Sui SDK that
+ * extension shipped. The newest SDK now builds a SUI transfer from the address balance,
+ * a new input kind the older SDK reading path cannot encode, and the wallet answers
+ * "Invalid input" before showing anyone a popup. Ordinary coin objects are the shape
+ * every generation reads, so a payment spends those whenever they cover it.
+ */
+async function spendableCoins(
+  client: ReturnType<typeof payClient>,
+  owner: string,
+  coinType: string,
+  need: bigint,
+  single = false,
+): Promise<{ objectId: string; version: string; digest: string; balance: string }[]> {
+  const page: any = await client.core.listCoins({ owner, coinType });
+  const coins = (page?.objects ?? [])
+    .filter((c: any) => c?.objectId && BigInt(c.balance ?? 0) > 0n)
+    .sort((a: any, b: any) => (BigInt(b.balance) > BigInt(a.balance) ? 1 : -1));
+  if (single) return coins[0] && BigInt(coins[0].balance) >= need ? [coins[0]] : [];
+  const picked: any[] = [];
+  let sum = 0n;
+  for (const coin of coins) {
+    picked.push(coin);
+    sum += BigInt(coin.balance);
+    if (sum >= need) return picked;
+  }
+  return [];
+}
+
 /**
  * Builds the transfer and stops before anyone signs it. The bytes go to a browser
  * wallet so the person who owns the money is the one who approves it.
@@ -74,11 +110,32 @@ export async function preparePayment(
   // into it. A 502 from the gateway is transient and safe to retry: nothing has been
   // signed, so a second build cannot move money twice.
   const build = async () => {
+    const client = payClient(net);
     const tx = new Transaction();
     tx.setSender(sender);
     const coin = asset === "SUI" ? SUI_COIN : USDC_COIN[net];
-    tx.transferObjects([coinWithBalance({ type: coin, balance: baseUnits })], to);
-    return tx.build({ client: payClient(net) });
+    const coins = await spendableCoins(
+      client,
+      sender,
+      coin,
+      asset === "SUI" ? baseUnits + SUI_GAS_RESERVE : baseUnits,
+      asset === "SUI",
+    );
+    if (coins.length && asset === "SUI") {
+      // The gas coin is the one being spent, so the amount and the fee come from the
+      // same object and the wallet is handed a plain split rather than address balance.
+      tx.setGasPayment([{ objectId: coins[0].objectId, version: coins[0].version, digest: coins[0].digest }]);
+      tx.transferObjects([tx.splitCoins(tx.gas, [baseUnits])], to);
+    } else if (coins.length) {
+      const refs = coins.map((c) => tx.object(c.objectId));
+      if (refs.length > 1) tx.mergeCoins(refs[0], refs.slice(1));
+      tx.transferObjects([tx.splitCoins(refs[0], [baseUnits])], to);
+    } else {
+      // Nothing in coin objects covers this, so the balance must be withdrawn from the
+      // address balance. That is a newer input and only a newer wallet can sign it.
+      tx.transferObjects([coinWithBalance({ type: coin, balance: baseUnits })], to);
+    }
+    return tx.build({ client });
   };
 
   // build() hands back serialized TransactionData bytes, which is exactly what a
