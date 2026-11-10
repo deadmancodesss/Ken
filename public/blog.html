@@ -173,6 +173,7 @@
       .resGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
       .res { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 3px 12px; padding: 15px 18px 16px; background: var(--paper); border-bottom: 0; color: var(--ink); transition: background var(--t-1) var(--ease); }
       .res:hover { background: var(--paper-sunk); }
+      .resWide { grid-column: 1 / -1; }
       .resIcon { grid-row: 1 / 4; align-self: start; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid var(--rule); border-radius: 9px; background: var(--paper); }
       .resIcon img { display: block; width: auto; height: auto; max-width: 24px; max-height: 24px; }
       .resIcon.gsap img { filter: brightness(0.62) saturate(1.1); }
@@ -257,7 +258,6 @@
             <div class="cta reveal">
               <a class="btn" href="#videos">Watch the demos</a>
               <a class="btn ghost" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">Open the live app</a>
-              <a class="btn ghost" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">GitHub</a>
             </div>
             <p class="note reveal">The people in the demo are invented testnet wallets. The signatures, transactions and receipts are real.</p>
           </div>
@@ -681,12 +681,7 @@
               <span class="dom">gsap.com</span><b>GSAP</b>
               <span>The scroll work on the landing page. Everything else is plain CSS and a small module.</span>
             </a>
-            <a class="res" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">
-              <span class="resIcon"><img src="/assets/stack/github.svg" width="24" height="24" alt="" loading="lazy" /></span>
-              <span class="dom">github.com/deadmancodess</span><b>Ken on GitHub</b>
-              <span>The source, and the Actions run that has to pass before Render redeploys.</span>
-            </a>
-            <a class="res" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">
+            <a class="res resWide" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">
               <span class="resIcon"><img src="/assets/ken-mark.svg" width="24" height="24" alt="" loading="lazy" /></span>
               <span class="dom">ken-agent.onrender.com</span><b>The live app</b>
               <span>Open it, connect a Sui wallet, and ask it something. Nothing moves without your signature.</span>
@@ -702,10 +697,9 @@
             <span class="word">en<i>.</i></span>
           </div>
           <h2 class="reveal">The build is live. The log is the honest part.</h2>
-          <p class="lead reveal">Open the app, connect a Sui wallet, and ask it something. The source is public.</p>
+          <p class="lead reveal">Open the app, connect a Sui wallet, and ask it something. Nothing moves without your signature.</p>
           <div class="cta reveal">
             <a class="btn" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">ken-agent.onrender.com</a>
-            <a class="btn ghost" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">github.com/deadmancodess/Ken</a>
           </div>
           <p class="note reveal">Built solo for the Tatum x Walrus hackathon, 3 to 10 November 2026. The demo cast is invented. The chain receipts are real.</p>
         </div>
