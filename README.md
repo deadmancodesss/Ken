@@ -98,14 +98,10 @@ The price is one cent for a profile, three cents above twenty transactions becau
 
 ## Where it fits
 
-Ken fits two of the three tracks.
-
 | Track | Why it fits |
 | --- | --- |
-| 02 Smart Agents for Real Life | An agent that remembers people, balances, habits and open commitments across sessions and devices. Text, voice, the morning brief and reminders share one memory. |
-| 03 Consumer Finance Apps | Balances, USDC and SUI payments, monthly limits, request links and statements, settled on Sui without leaving the chat. |
-
-There is no markets or sports product here, so track 01 is not claimed.
+| Smart Agents for Real Life | An agent that remembers people, balances, habits and open commitments across sessions and devices. Text, voice, the morning brief and reminders share one memory. |
+| Consumer Finance Apps | Balances, USDC and SUI payments, monthly limits, request links and statements, settled on Sui without leaving the chat. |
 
 ## Stack
 
@@ -125,147 +121,61 @@ Nothing here is a page framework. The hard parts are the wallet, the memory, the
 ## Run it
 
 ```bash
-npm install
-cp .env.example .env      # then fill in the keys
-npm run sell              # the index on 8788: its own wallet, its own ledger, no key
-npm run live              # the agent on 8787: real model, the model's own voice, payments on
+npm install && cp .env.example .env   # add provider keys to .env (all keys stay server-side)
+npm start                             # starts seller (8788) and agent (8787) together
 ```
 
-Keep both terminals open, or run `npm start` to launch both together. Without the seller the agent still answers from memory and the chain, but a paid lookup says the index is not answering rather than pretending it paid.
+Open `http://127.0.0.1:8787`. Every connected wallet can switch `sui:testnet` / `sui:mainnet` in the header via zero-gas signature proof (`verifyPersonalMessageSignature`). On `429` / `503` limits, `MODEL_NAME` and `NVIDIA_MODEL` alternate (`gemini-3.1-flash-lite` -> `550B Ultra` -> `gemini-3.5-flash` -> `4B Bolt`).
 
-Every connected browser seat can switch between `sui:testnet` and `sui:mainnet` directly from the masthead without editing `.env`. Switching networks prompts your connected Wallet Standard extension to sign a zero-gas personal message challenge (`verifyPersonalMessageSignature`), proving live Ed25519 ownership alongside live Tatum GraphQL and Walrus MemWal connectivity.
-
-Open http://127.0.0.1:8787. With a key in `.env` the brain is a live model on Gemini direct, with NVIDIA NIM behind it, making real function calls against the tool layer, and the answer comes back in the model's own voice.
-
-```bash
-npm start                 # both processes: seller on 8788 and agent on 8787
-npm test                  # typecheck, syntax check and all 24 test suites
-npm run serve             # the live brain on 8787
-npm run chat              # the same agent in your terminal
-npm run plumb             # every provider checked end to end
-npm run selftest          # the tool loop, against a scripted model, offline
-npm run selftest:live     # the same loop against the real model, and its spoken numbers checked against the chain
-npm run voicetest         # the speech path, plus one real audio call when a key exists
-```
-
-`MODEL_NAME` names the Gemini models and `NVIDIA_MODEL` the NVIDIA ones. The two lanes are alternated, so the attempt order is `gemini-3.1-flash-lite`, the 550B Ultra, `gemini-3.5-flash`, then the 4B Bolt. On the nine shipped probes both leads were equally correct and Gemini was about three times slower, at a 3.4 second median against 1.2, with an 11.6 second tail that can spend the timeout and hand the turn to Ultra. The tools are what carry the accuracy, not the model size.
+| Command | Purpose | Command | Purpose |
+| --- | --- | --- | --- |
+| `npm start` | Launch seller (`8788`) + agent (`8787`) | `npm test` | `tsc`, JS syntax check + offline test suites |
+| `npm run sell` | Run paid index (`8788`) standalone | `npm run selftest` | Offline tool loop against scripted model |
+| `npm run live` | Run agent (`8787`) with `PAY_ENABLED=1` | `npm run selftest:live` | Live model loop checked against chain |
+| `npm run chat` | Interactive terminal agent session | `npm run voicetest` | Test TTS fallback ladder (Fish, OR, Gemini) |
+| `npm run plumb` | End-to-end check across upstream providers | `npm run seed` | Seed testnet cadence history (1 run / UTC day) |
 
 ## Pages
 
-| Path | What it is |
-| --- | --- |
-| `/` | Ken on one page. The cost ledger, the annotated payment ticket and the four-service hub are clickable. |
-| `/app` | Ken's desk. One transcript with a session rail, a call sheet that opens on top of the chat, balances, and the people it knows. Text and voice share the same thread. |
-| `/call` | Not a page of its own. The embeddable call sheet that `/app` opens over the current chat. One open socket with audio both ways, and every finished turn is written back to that chat. A direct visit lands on `/app` with the sheet open. |
-| `/report` | The statement card. Money in and money out for a week or a month, the newest five moves, and what it cost to learn them, saved as a PNG, a PDF or a CSV. |
-| `/memory` | What is stored on Walrus, per namespace, with the search box that reads it. |
-| `/pay` | The signing page. Nothing moves without your wallet approving it. |
-| `/request` | A payment request link. It names the amount, the reason, the ledger it must be paid on and a deadline, carries a QR, and dies when it expires. |
-| `/ask` | Sell a line out of your own memory. The words stay on the server and come out only after the chain says the money arrived. |
-| `/features` | Every capability on one sheet, each tile marked live, waiting on your wallet, or waiting on a key. The counts are measured from the tiles and the header state, so the page cannot drift into overclaiming. |
-| `/how` | An interactive five-chapter walkthrough of memory, chain indexing, unsigned tickets, statements and x402 pay-per-peek. |
-| `/life` | The same mechanics described as scenes from an ordinary week. |
+| Workspace (Wallet-Gated) | Purpose | Public / Link Route | Purpose |
+| --- | --- | --- | --- |
+| `/app` | Chat threads, session rail, balances & people | `/` | Landing overview, cost ledger & service hub |
+| `/call` | Bidirectional voice dock synced into active chat | `/features` | 18-drawer live capability status grid |
+| `/memory` | Searchable Walrus Mainnet ledger per wallet | `/how` | Interactive 5-chapter architecture walkthrough |
+| `/pay` | Unsigned transfer & x402 signing ticket | `/life` | Weekly real-life payment & recall scenarios |
+| `/request` | Single-use QR links (`TTL`, closes on pay) | `/ask/:id` | Public paywall unlock page (`x402` note) |
+| `/ask` & `/report` | Sell Walrus lines · export `PNG`/`PDF`/`CSV` statement | `/report.svg` | Live server-typeset vector statement image |
 
-## Tools the model can call
+## Tools (`21` core + `5` paid)
 
-`people_you_know` `who_is_this` `money_history` `monthly_summary` `wallet_balance` `how_money_came` `address_activity` `mark_spam` `unmark_spam` `spam_marks` `remind_me` `reminders` `cancel_reminder` `name_a_person` `find_person` `remember_this` `what_do_i_remember` `memory_stats` `make_report` `set_monthly_limit` `request_money` `pay_usdc` `pay_sui` `paid_lookup` `verify_payment` `open_paid_link`
+`pay_usdc`, `pay_sui`, `paid_lookup`, `verify_payment`, and `open_paid_link` load only when `PAY_ENABLED=1`.
 
-Twenty-one of them exist always. The last five only appear when `PAY_ENABLED=1`, because a build that cannot spend should not offer to. `pay_usdc` and `pay_sui` share one body: the name, the address, the spam mark and the signature are decided in one place, and only the coin handed to the builder changes.
+| Domain | Tools | Key Rules |
+| --- | --- | --- |
+| Chain & Balances | `wallet_balance`, `money_history`, `monthly_summary`, `how_money_came`, `address_activity` | Sole source of balances. Reads newest `40`–`200` txs via Tatum (`USDC`/`SUI` split). Never invents due dates. |
+| Walrus Memory | `people_you_know`, `who_is_this`, `name_a_person`, `find_person`, `remember_this`, `what_do_i_remember`, `memory_stats` | Scoped per wallet namespace. `find_person` fuzzy-matches voice recall, while spend tools demand exact address match. |
+| Safety & Limits | `mark_spam`, `unmark_spam`, `spam_marks`, `set_monthly_limit` | Per-owner SQLite spam guard blocks blind sends. Cap meter reports red/amber/green spend state. |
+| Briefs & Alarms | `make_report`, `remind_me`, `reminders`, `cancel_reminder` | Server typesets statements straight from reads (zero model totals). Background ticker fires due reminders. |
+| Payments | `pay_usdc`, `pay_sui`, `request_money` | Builds unsigned PTBs (`pay_usdc`/`pay_sui` share one path) or time-boxed USDC QR links. Browser wallet signs. |
+| x402 Paid Index | `paid_lookup`, `verify_payment`, `open_paid_link` | Pays `0.01`–`0.03 USDC` for address dossiers, digest checks, or locked notes. Writes receipt back to Walrus. |
 
-`wallet_balance` is the only tool allowed to answer how much money is in the wallet. It lists every coin with its own decimals, its own unit and a dollar value only when the price feed answered, and it prints a total only when every coin has a price. A movement total from `money_history` is never used as a balance.
+## Core guarantees
 
-`how_money_came` walks the wallet's own history back and reconciles the transfers against the balance, per coin. It names the faucet, names every counterparty it can, and when the transfers do not add up it says how much is missing and that gas is the usual reason. If it hits its read cap it says so instead of implying it reached the first transaction.
-
-`address_activity` reads any address's newest twenty public transactions and reports counts and shapes: how often it sent, how often it received, how many addresses it dealt with, whether any of it was with this wallet. It reports a pattern, never a verdict, and it says when the window does not reach the whole history.
-
-`money_history` takes an optional `person`, so "how much have I sent Imran" answers about Imran and not about everybody.
-
-There is no due-date tool on purpose. A transfer that repeats is an observed pattern, not a bill, and treating the pattern as an obligation invents a commitment the chain never recorded. The people list reports the measured gap and the usual amount in the past tense. When asked what is due, the agent says plainly that it measures patterns and does not predict payments.
-
-`verify_payment` sells the third resource kind behind the same x402 wall. Somebody claims they paid and hands over a digest, so the agent pays the same cent to have the chain read that transaction and answer what really moved. A digest that does not exist is delivered as the answer you paid for rather than as an error, because "nothing with that digest ever settled" is exactly the news a person needs. It earns its price in a way a name lookup does not: the seller spends a real Tatum read to answer, and a digest is the only pointer that names one transaction exactly, so a claim about a specific payment cannot be settled from an address list alone.
-
-`find_person` forgives a microphone, because a call hears "Sana" as "Sauna" often enough to matter, and returns the stored name with a confidence below one so the agent asks instead of assuming. `pay_usdc` and `pay_sui` deliberately do not use that matcher. Reading memory can afford a guess, spending real money on a guess cannot.
-
-## Giving the demo a history
-
-Cadence is a real measurement, so it needs transfers on different days. The seeder is day gated and will not pay the same person twice in one UTC day.
-
-```bash
-npm run seed
-```
-
-It prints who was paid and the next likely demo date. Run it once a day and the rhythm appears: Sana every two days, Imran every three, Tara every four, and Dev paying you back so one relationship reads as two way rather than a donation.
-
-The script pins `PAY_NETWORK=testnet`. The cast and its money only exist on that ledger, and the same command pointed at mainnet would try to move real USDC, which is exactly what the signing guard refuses.
-
-## What is finished
-
-- Chain reads through Tatum on mainnet and testnet, with 429 and retry handling. The header carries a network switch on the six pages that actually read a wallet, so the same wallet can be read on either ledger.
-- Dollar values beside each coin, priced from CoinGecko. `CoinMetadata` has no price field, so the chain can name a coin and count it but cannot say what it is worth. When the price feed fails the dollars go absent rather than zero.
-- A coin nobody in the build named still shows up, because balances are read as a list rather than looked up per type.
-- A balance read that lists every coin the chain says is there, priced per coin, with a total only when every coin has a price. The agent can no longer answer a balance question with a monthly movement total.
-- The newest transactions are read first, because the index orders oldest first by default. Measuring `first` on a busy testnet wallet returned August 2024 while `last` returned the same day, 2026-11-04. Paging back uses `last` with `before` and stops honestly at its cap.
-- Inbound money is named from every side the build can read: `relation:AFFECTED` includes transfers the wallet received, and each known counterparty's newest transactions are read as a second pass. The faucet's published address is labelled, and it is kept out of the people list because it is where test money comes from, not a person you pay.
-- Per-person and per-month rows are split by coin. Someone who sent 20 USDC and 0.0024 SUI reads as both. The month total that used to add SUI base units under USDC decimals, and once produced 110.84 USDC from a 12.63 USDC wallet, is gone and has an offline test that fails if it returns.
-- Walrus memory writes and recalls, namespaced per wallet so one person's memories never leak into another's.
-- The paid index and the paying agent as two processes speaking standard x402 v2. The seller runs on `SELLER_PORT` with its own wallet and ledger and holds no key. A price arrives in a base64 `PAYMENT-REQUIRED` header, the buyer's wallet signs the exact Sui transfer without executing it, and the signed envelope returns in `PAYMENT-SIGNATURE`. The facilitator verifies the signature against those bytes, simulates the transfer and checks the USDC credit is funded by the signing wallet before broadcasting. Three kinds of thing sit behind the wall: a measured profile of an address, a note somebody wrote and priced, and a transaction the chain has to be read for. A sold resource answers free, a repeated envelope returns the same digest, and a quote above `PAID_MAX_USDC` is refused.
-- Person to person payments in USDC or SUI, chosen before or after the ticket is built. The ticket names its coin, a SUI ticket says the fee comes out of the same balance, and the settled digest is proved by reading the chain back: the recipient gained the exact amount and the sender lost it. A SUI transfer that also paid gas from that coin still proves. Request links and x402 prices stay USDC because their terms fix the coin, and their tickets offer no switch.
-- Browser wallet connection through the Wallet Standard handshake, and the wallet signature as the payment confirmation.
-- A live voice call. Microphone bytes go to the server, the server holds the socket to the model, and audio, transcripts and tool calls come back over one event stream. Nothing new was installed to do it, so there is no WebSocket library in this project.
-- The model's own voice on `/speak`, real audio that drives the live scope, and the same voice answers a typed question.
-- Tool results carried forward inside the conversation, so an address the agent already paid to learn is visible to it on the next turn.
-- A statement card typeset from the same tool calls that answer a spoken question, for a week or a month, with both sides of the money and the newest five moves, exported as PNG, PDF or CSV. It is vector text rather than a generated picture, because an image model draws convincing paper and unreliable digits.
-- The model chain in `MODEL_NAME`, tried in order on one key, so a 503 or a 429 from a free tier moves to the next name instead of ending the turn.
-- Selling from the inside. `/ask` lists every line this wallet keeps on Walrus and puts any of them behind the same 402 door at a price you choose. The server reads the words back out of the store to build the link, so a link cannot claim to sell a memory while selling something typed, and the words never appear in the page or in the reply that asks for money.
-- Another agent can pay a person, not just an index. `open_paid_link` reads the price off the writer's link, pays the writer's wallet and writes the bought fact into the buyer's own memory. `/earned` reports what arrived by summing the receipts, never a number stored beside a link.
-- Every page listed above, all of them working against the live server.
-
-## Per-wallet isolation and network verification
-
-- Every workspace route (`/app`, `/memory`, `/pay`, `/request`, `/ask`, `/report`, `/call`) is strictly gated behind a connected Wallet Standard extension (`Slush`, `Suiet`, `Nightly`, `Surf`, `Backpack`). There is no shared demo wallet, so one visitor can never touch another wallet's Walrus memory, chat sessions, spending limits, spam marks, or payment tickets.
-- Each browser seat holds its own active network (`session().network`), allowing multiple users to operate on `sui:testnet` and `sui:mainnet` simultaneously on the same server.
-- Switching networks or pressing `Prove network live (0 gas)` challenges the connected wallet to sign a personal message and verifies the Ed25519 signature via `@mysten/sui/verify`, measures live Tatum GraphQL latency on the target ledger, and confirms the wallet's Walrus MemWal namespace without spending gas.
-- Every address lookup returns a structured wallet dossier with live coin holdings, directional counterparty breakdowns, and direct SuiVision transaction links alongside the x402 receipt.
-- The people list and the monthly summary read the newest 40 transactions, while `how_money_came` pages up to 200 and states honestly when it reaches its read window.
+| Pillar | What is built | How it stays honest |
+| --- | --- | --- |
+| Isolation | Per-browser seats (`AsyncLocalStorage` + `tr_seat`), Wallet Standard gate on workspace routes & `/speak` | Ed25519 challenge proof on connect/switch. SQLite tables keyed by `owner` (`sessions`, `marks`, `caps`, `reminders`). |
+| Chain Reads | Reverse chronological Tatum paging (`last` + `before`) with `429` retry + CoinGecko USD lookup | Separates SUI vs USDC decimals, labels & excludes faucet from people, omits USD total if price feed fails. |
+| Non-Custody | Two-process x402 market (`8787` buyer / `8788` facilitator+seller) + client-side PTB signing | Server holds zero user keys. Facilitator simulates balance deltas before broadcast. Replay & `PAID_MAX_USDC` guards. |
+| Voice & Proof | Plain `node:http` SSE live audio (zero WS libs) + Gemini Live + 83-language TTS (`/speak`) | Acoustic echo floor-gating, ungrounded model digits stripped, exported statements drawn deterministically. |
+| Paid Knowledge | `/ask` locks stored Walrus lines by owner. `open_paid_link` pays writer & caches to buyer memory | Server reads words back from store only after chain settlement. `/earned` sums verified receipts only. |
 
 ## Layout
 
-```
-src/
-  server.ts      the app process: keys, tools and HTTP
-  brain.ts       one OpenAI compatible path for Gemini, NVIDIA NIM or OpenAI
-  speech.ts      the model's own voice, and the honest answer when there is no key
-  stub-model.ts  the rule based brain the demo runs on
-  tools.ts       the tool schemas
-  live.ts        the two way audio socket, and the tool calls that run on it
-  report.ts      the statement, and the vector card typeset from it
-  knowledge.ts   counterparties, cadence, direction, usual amounts
-  people.ts      the named roster on Walrus
-  memory.ts      MemWal writes and recalls
-  chain.ts       Tatum GraphQL reads and retries
-  wallet.ts      USDC and SUI transfers, caps and payment gating
-  x402.ts        the paying agent: price, sign, settle, learn
-  x402wire.ts    the standard headers and the Sui signed envelope
-  catalog.ts     the seller: price a profile, note or receipt, release after settlement
-  facilitator.ts the self-hosted verify and settle endpoints, no key
-  seller.ts      the seller as its own process on SELLER_PORT
-  seed.ts        the day gated demo history
-public/
-  live.js        microphone capture and playback for the call sheet
-  theme.css      the paper design system, tokens only
-  shared.js      wallet, speech and page helpers shared by every page
-  story.js       the one motion engine, runs once then holds
-  wallet.js      the Wallet Standard handshake
-  assets/        ink drawings, white keyed for multiply, shared by the pages
-tools/
-  normalize.mjs  resizes a drawing and pushes its own paper to pure white
-  plate.mjs      one command from a sentence, or from a png you already have, to a finished plate
-```
-
-The drawings are original, generated in the same four colours the tokens already use, and sit on the page with `mix-blend-mode: multiply`. That only hides the rectangle if the sheet inside it is exactly white, so `tools/normalize.mjs` reads the PNG, resamples it, and lifts the measured paper tone per channel before `cwebp` encodes. A `transform` or a fade on any parent would isolate the blend and bring the box back, which is why the plates are left out of the reveal system.
-
-`npm run plate -- life-market "a woman at a market stall handing over a coin"` asks a provider for the drawing. `npm run plate -- life-market --from downloads/drawing.png` takes one you made anywhere, and it goes through the same keying and the same encoder, so an image from a site with no api is finished by the same command as an image from a model. The style preamble is only used by the first form.
-
-## Keys
-
-`.env` is gitignored and every key stays server side. The browser never sees one, and the only thing it ever signs is a transaction it built itself.
+| `src/` Core & AI | `src/` Chain & State | `public/` Client UI | `tools/` & Storage |
+| --- | --- | --- | --- |
+| `server.ts`: HTTP & tool router | `chain.ts`, `history.ts`: Tatum GraphQL | `app.html`, `call.html`: Desk & voice UI | `runner.mjs`: Boots `8788` + `8787` |
+| `brain.ts`: Model loop & failover | `knowledge.ts`, `report.ts`: Cadence & SVG | `wallet.js`: Wallet Standard handshake | `plate.mjs`: Drawing -> keyed WebP |
+| `live.ts`: Bidirectional call socket | `memory.ts`, `people.ts`: Walrus MemWal | `live.js`: Mic capture & audio stream | `normalize.mjs`: White paper keyer |
+| `speech.ts`: TTS fallback ladder | `wallet.ts`, `x402.ts`, `x402wire.ts`: Sui PTBs | `shared.js`, `story.js`: State & motion | `data/*.db`: Gitignored local SQLite |
+| `tools.ts`, `stub-model.ts`: Schemas | `seller.ts`, `facilitator.ts`, `catalog.ts` | `theme.css`, `assets/`: Tokens & ink art | `.env`: Gitignored server secrets |
+| `seed.ts`: Daily testnet cadence seed | `chats.ts`, `reminders.ts`, `requests.ts`, `cap.ts`, `spam.ts`, `seat.ts` | `memory.html`, `pay.html`, `request.html`, `ask.html`, `report.html` | `npm run plate -- <name> "prompt"` |
