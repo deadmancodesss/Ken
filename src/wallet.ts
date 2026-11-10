@@ -58,6 +58,83 @@ function checked(to: string, baseUnits: bigint, asset: PayAsset): void {
  */
 const SUI_GAS_RESERVE = 5_000_000n;
 
+/*
+ * Sui waives the network fee for an allowlisted stablecoin from 0.01 USDC upward when
+ * the money sits in the account's address balance. The transaction carries no gas
+ * payment and a zero price and budget, and a short ValidDuring expiration because it
+ * owns no object inputs.
+ * Nothing is charged, so the wallet needs no SUI at all. Proved on testnet on
+ * 2026-11-10: an address holding USDC and zero SUI received a transfer whose effects
+ * report gasUsed all zeros.
+ */
+const GASLESS_MIN_BASE_UNITS = 10_000n;
+
+export function gaslessTransfer(
+  sender: string,
+  to: string,
+  baseUnits: bigint,
+  coinType: string,
+  epoch: string,
+  chainIdentifier: string,
+): Transaction {
+  const tx = new Transaction();
+  tx.setSender(sender);
+  tx.setGasPayment([]);
+  tx.setGasPrice(0);
+  tx.setGasBudget(0);
+  // A transaction with no address-owned object input has no digest anchor, so the
+  // builder demands a validity window instead. One epoch past the current one is the
+  // same window the SDK's own address-balance executor uses.
+  tx.setExpiration({
+    ValidDuring: {
+      minEpoch: epoch,
+      maxEpoch: String(BigInt(epoch) + 1n),
+      minTimestamp: null,
+      maxTimestamp: null,
+      chain: chainIdentifier,
+      nonce: Math.floor(Math.random() * 4294967296),
+    },
+  });
+  const funds = tx.balance({ type: coinType, balance: baseUnits });
+  tx.moveCall({
+    target: "0x2::balance::send_funds",
+    typeArguments: [coinType],
+    arguments: [funds, tx.pure.address(to)],
+  });
+  return tx;
+}
+
+// Only this shape is free. A build that pulled in an owned object or fell back to a
+// gas coin would be charged, and this wallet has no SUI to charge, so such a build is
+// dropped instead of handed over.
+export function isGaslessShape(built: Uint8Array): boolean {
+  const data: any = Transaction.from(built).getData();
+  const inputs: any[] = data.inputs ?? [];
+  const gas: any = data.gasData ?? {};
+  if (!inputs.some((i) => i?.FundsWithdrawal)) return false;
+  if (inputs.some((i) => i?.Object)) return false;
+  if ((gas.payment ?? []).length || String(gas.price) !== "0" || String(gas.budget) !== "0") return false;
+  return true;
+}
+
+export async function gaslessUsdc(
+  client: ReturnType<typeof payClient>,
+  sender: string,
+  to: string,
+  baseUnits: bigint,
+  coinType: string,
+): Promise<Uint8Array | null> {
+  if (baseUnits < GASLESS_MIN_BASE_UNITS) return null;
+  const held: any = await client.core.getBalance({ owner: sender, coinType });
+  if (BigInt(held?.balance?.addressBalance ?? 0n) < baseUnits) return null;
+  const [{ systemState }, { chainIdentifier }] = await Promise.all([
+    client.core.getCurrentSystemState(),
+    client.core.getChainIdentifier(),
+  ]);
+  const built = await gaslessTransfer(sender, to, baseUnits, coinType, String(systemState.epoch), chainIdentifier).build({ client });
+  return isGaslessShape(built) ? built : null;
+}
+
 /* The coin listing is paged by the gateway. The cap is a guard against reading a
    dust wallet forever, not an expectation: a normal wallet finishes on page one.
    Sui GraphQL limits page sizes to 50 items maximum. */
@@ -112,6 +189,10 @@ export async function spendableCoins(
  * SUI is built differently in one way that matters: the network fee comes out of the
  * same coin being sent. The builder does the arithmetic, and a send that leaves nothing
  * for gas is refused here before the wallet is ever asked to sign.
+ *
+ * USDC that sits in the account's address balance can still move with no SUI, because
+ * Sui waives the fee for that shape. When the ordinary build fails for want of the fee,
+ * the payment is rebuilt that way before the wallet is told to find some SUI.
  */
 export async function preparePayment(
   sender: string,
@@ -176,13 +257,30 @@ export async function preparePayment(
     // The SDK answers this in coin type hashes and base units. What the person
     // needs to hear is that the wallet they connected cannot cover the amount.
     const msg = String((err as Error)?.message ?? err);
-    if (/429|too many requests|rate limit/i.test(msg)) {
+    if (/\b429\b|too many requests|rate limit/i.test(msg)) {
       throw new Error(`the ledger gateway is busy and refused to look up the coins for this payment, so nothing was built and nothing was signed. Try again in a few seconds`);
     }
     if (/bad gateway|\b50[234]\b/i.test(msg)) {
       throw new Error(`the Tatum gateway returned a transient ${msg.match(/\b50[234]\b/)?.[0] ?? "502"} while building this payment, so nothing was built and nothing was signed. This is an upstream failure, not a problem with your wallet. Try again in a moment`);
     }
     if (/no valid gas coins|insufficient SUI balance/i.test(msg)) {
+      // A wallet holding USDC in its address balance can still send it with no SUI,
+      // because Sui waives the fee for the gasless stablecoin shape. This is tried
+      // only after the ordinary build has already failed for want of the fee, and it
+      // is checked against the address balance, which is the only source that shape
+      // can spend. Coin objects cannot be converted into it here.
+      if (asset === "USDC") {
+        try {
+          const gasless = await throughRateLimit(() =>
+            gaslessUsdc(payClient(net), sender, to, baseUnits, USDC_COIN[net]),
+          );
+          if (gasless) {
+            return { bytes: Buffer.from(gasless).toString("base64"), to, amount, asset, chain: `sui:${net}`, sender };
+          }
+        } catch {
+          /* the message below is still true */
+        }
+      }
       // The SDK reaches this when the account holds no SUI the builder can use as gas.
       // It reads as a builder failure, but the person needs to know the wallet is short
       // one specific coin, and that nothing was signed.

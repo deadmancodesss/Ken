@@ -162,7 +162,9 @@ export const historyFloor = (net: Net): number => floors[net];
  * product to discover a rate limit. Anything that goes through the SDK client is run
  * through this, so the wait is the same on both paths.
  */
-const LIMITED = /429|too many requests|rate limit|cap on request/i;
+// The status has to stand alone. A Sui address is hex, and any address that happens to
+// contain "429" used to turn every unrelated build error into four slow retries.
+const LIMITED = /\b429\b|too many requests|rate limit|cap on request/i;
 
 export async function throughRateLimit<T>(work: () => Promise<T>, tries = 4): Promise<T> {
   for (let attempt = 1; ; attempt++) {

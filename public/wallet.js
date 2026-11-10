@@ -746,6 +746,33 @@ async function transactionFrom(bytesBase64) {
   return tx;
 }
 
+/**
+ * A payment drawn from the address balance carries an input kind that only wallets on a
+ * current Sui SDK can decode. An older extension answers "Invalid input" before it ever
+ * shows a popup, which reads as a broken page rather than an old wallet. The bytes are
+ * read here on the failure path only, so a wallet that can parse them is never refused
+ * in advance.
+ */
+async function addressBalanceRefusal(err, bytesBase64, tx, name) {
+  const said = String(err?.message ?? err ?? "");
+  if (!/invalid input|invalid transaction|invalid value|cannot deserialize|failed to deserialize|could not deserialize|unable to deserialize|invalid bcs/i.test(said)) return null;
+  let fromBalance = false;
+  try {
+    if (tx) {
+      fromBalance = (tx.getData?.().inputs ?? []).some((i) => i?.FundsWithdrawal);
+    } else {
+      SuiTransaction ??= (await import("/vendor/sui-transaction.js")).Transaction;
+      fromBalance = (SuiTransaction.from(bytesBase64).getData?.().inputs ?? []).some((i) => i?.FundsWithdrawal);
+    }
+  } catch {
+    return null;
+  }
+  if (!fromBalance) return null;
+  return new Error(
+    `${name} is running an older Sui signer that cannot read money held in this account's address balance, so it refused the payment before opening a popup. Nothing was signed and no money moved. Update ${name}, or connect the same account in a current version of another Sui wallet and press again`,
+  );
+}
+
 /** The first and last few characters, which is what a person recognises in a sentence. */
 function short(address) {
   const text = String(address || "");
@@ -874,7 +901,12 @@ export async function signAndExecute({ address, chain, bytesBase64, onStatus }) 
       throw new Error(`this payment could not be rebuilt for ${label(found.wallet)}: ${clean(err)}`);
     }
   }
-  const res = await sign.call(tx, chain ?? found.chain, bytesBase64);
+  let res;
+  try {
+    res = await sign.call(tx, chain ?? found.chain, bytesBase64);
+  } catch (err) {
+    throw (await addressBalanceRefusal(err, bytesBase64, tx, label(found.wallet))) ?? err;
+  }
   return { digest: res?.digest ?? res?.txResult?.digest ?? null, effects: res?.effects ?? res?.txResult ?? null };
 }
 
@@ -902,7 +934,12 @@ export async function signX402({ address, chain, bytesBase64, onStatus }) {
       throw new Error(`this payment could not be rebuilt for ${label(found.wallet)}: ${clean(err)}`);
     }
   }
-  const res = await sign.call(tx, chain ?? found.chain, bytesBase64);
+  let res;
+  try {
+    res = await sign.call(tx, chain ?? found.chain, bytesBase64);
+  } catch (err) {
+    throw (await addressBalanceRefusal(err, bytesBase64, tx, label(found.wallet))) ?? err;
+  }
   const bytes = res?.bytes ?? res?.transactionBlockBytes ?? "";
   const signature = res?.signature ?? "";
   if (!bytes || !signature) {
