@@ -36,9 +36,9 @@ Payments are the proof. The buyer and the seller are two processes speaking stan
 
 Inbound money is invisible. `address.transactions` only links the signer, so a wallet that received USDC sees nothing in its own history. The fix is to read the counterparty's side and reconstruct direction from both, which is why one relationship can honestly say "both ways" instead of guessing.
 
-Cadence cannot be faked. The demo says someone pays "about every three days" only when there are real transfers three days apart. A seeder that is day gated pays each person at most once per UTC day, so the rhythm has to be accumulated over actual days. Any shortcut would be a fabricated memory, and a memory product that fabricates is worse than no product.
+Cadence cannot be faked. The agent says someone pays "about every three days" only when there are real transfers three days apart. A seeder that is day gated pays each person at most once per UTC day, so the rhythm has to be accumulated over actual days. Any shortcut would be a fabricated memory, and a memory product that fabricates is worse than no product.
 
-A model key never arrived at first. So the demo can run on a rule based brain that routes the same tools, and the header says "stub rules, no model key" rather than pretending. The seam is one OpenAI compatible path, so Gemini, NVIDIA or OpenAI all drop in without touching a tool, and the live build now answers through that path.
+A model key never arrived at first. So the build can run on a rule based brain that routes the same tools, and the header says "stub rules, no model key" rather than pretending. The seam is one OpenAI compatible path, so Gemini, NVIDIA or OpenAI all drop in without touching a tool, and the live build now answers through that path.
 
 ## What it costs to run
 

@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PAY_CHAIN, PAY_NET } from "./chain.js";
+import { PAY_CHAIN } from "./chain.js";
 import { TOOLS, TOOL_NAMES, runTool } from "./tools.js";
 import { session } from "./session.js";
 import { localDay } from "./seat.js";
@@ -13,7 +13,7 @@ import { paymentsEnabled } from "./wallet.js";
  * A request is therefore an attempt, and an attempt is a route plus a model name.
  * The order is the product: Gemini answers first when it has a key, NVIDIA Ultra is the
  * very next attempt when a Gemini name refuses, and the local stub is alone in the list
- * so `npm run demo` never drifts onto a network. Nothing here is a fallback that hides a
+ * so `npm run local` never drifts onto a network. Nothing here is a fallback that hides a
  * failure: every attempt that did not answer is named in the error the page shows.
  */
 type Route = { id: string; base: string; key: string; models: string[] };
@@ -28,10 +28,10 @@ const STUB_BASE = (process.env.MODEL_BASE_URL ?? "https://generativelanguage.goo
 const STUB_KEY = (process.env.MODEL_API_KEY ?? process.env.GEMINI_API_KEY ?? "").trim();
 
 /**
- * `npm run demo` points the same code at a local rule based model and hands it the
+ * `npm run local` points the same code at a local rule based model and hands it the
  * word `stub` as a key. Both halves of that have to keep the lane to themselves,
- * because a demo that silently drifts onto a free tier answers a different question
- * than the one the video claims it answers.
+ * because a stub run that silently drifts onto a free tier answers a different question
+ * than the one this build ships.
  */
 const IS_STUB = /127\.0\.0\.1|localhost/.test(STUB_BASE) || STUB_KEY === "stub";
 
@@ -107,7 +107,7 @@ function list(raw: string | undefined, fallback: string): string[] {
  * turn. On 2026-11-03 NVIDIA answered 403 Authorization failed in about 200 ms while its
  * catalogue still listed every model, so the lead cost each turn a wasted round trip
  * before Gemini answered. A minute is short enough that a fixed key or a lifted block
- * recovers inside one demo, and long enough that a dead key costs one request a minute
+ * recovers inside one conversation, and long enough that a dead key costs one request a minute
  * rather than one a turn.
  */
 const REST_MS = Number(process.env.ROUTE_COOLDOWN_MS ?? 60_000);
@@ -248,13 +248,9 @@ export function brainState() {
 /** One prompt for both transports, so a call and a typed question can never disagree. */
 export const systemPrompt = () => `You are Ken, a personal agent for a Sui wallet. You can see the chain through Tatum and you remember
 things on Walrus. Today is ${localDay()}. ${
-  session().source === "wallet"
+  session().wallet
     ? `You are speaking for the wallet ${session().wallet} on ${session().network}, which the person in front of you connected themselves. Every payment you prepare needs their signature.`
-    : `The wallet you speak for is the demo wallet ${session().wallet} on ${session().network}. ${
-      PAY_NET === "testnet"
-        ? "It pays without asking because that money is worthless testnet dust."
-        : `It will not sign a payment of its own, because this build settles on ${PAY_CHAIN} where that money is real. Say a payment needs a connected wallet to sign, and never say money moved.`
-    }`
+    : "No wallet is connected yet, so nothing here can read a balance or prepare a payment. Ask the person to connect one."
 }
 
 Rules you must not break:

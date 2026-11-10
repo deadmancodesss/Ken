@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { ownerKey } from "./owner.js";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * A reminder is the one thing here that has to happen without a question first. The
@@ -36,7 +37,7 @@ function open(): DatabaseSync | null {
   try {
     const file = process.env.REMINDER_DB ?? DEFAULT_REMINDER_DB;
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    const made = new DatabaseSync(file);
+    const made = openDatabase(file);
     made.exec(`
       create table if not exists reminders (
         id text primary key,

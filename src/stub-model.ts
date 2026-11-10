@@ -28,7 +28,7 @@ const RULES: [RegExp, string, (m: RegExpMatchArray) => Record<string, unknown>][
   // cannot match: base58 has no 0, so the 0x that opens one breaks the run.
   [/(?:^|\s)([1-9A-HJ-NP-Za-km-z]{43,44})(?:\s|$)/, "verify_payment", (m) => ({ digest: m[1] })],
   // Must come before "who do I pay": a superlative is a ranking question, and
-  // answering it with a list of names is the difference between a demo and a toy.
+  // answering it with a list of names is the difference between a product and a toy.
   // "most often" is cadence and has to win over the plain amount reading.
   [/most often|frequent|regular/i, "money_history", () => ({ limit: 12, sort: "cadence" })],
   [/most|biggest|largest|top \d|highest/i, "money_history", () => ({ limit: 12, sort: "amount" })],

@@ -200,7 +200,7 @@ export async function counterparties(wallet: string, network: Net = "mainnet", l
       usualAmount: amounts.length ? formatAmount(BigInt(Math.round(median(amounts.map(Number)))), decimals) : null,
       // One observed gap is a rhythm already worth naming. Waiting for two made
       // every person read "last seen" instead of "every three days", which is the
-      // difference between a ledger and the subscription story the demo tells.
+      // difference between a ledger and a subscription story.
       gapDays: gaps.length ? Math.round(median(gaps)) : null,
       memorised: !!person,
       service: !!vendor && address.toLowerCase() === vendor,

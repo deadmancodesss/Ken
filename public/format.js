@@ -79,7 +79,7 @@ export function requestNeed(steps) {
 }
 
 /**
- * The four invented people in the demo cast each have a drawn portrait in
+ * The four invented people in the cast each have a drawn portrait in
  * public/assets. Anything else gets an empty string, and the caller draws no
  * face, because handing a stranger a stock portrait is how this product starts
  * pretending to know someone it does not.

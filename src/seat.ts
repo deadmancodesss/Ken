@@ -10,7 +10,7 @@ import type { Session } from "./session.js";
  */
 export type Seat = {
   id: string;
-  /** Null until this seat chooses a wallet, and then it falls back to the demo story. */
+  /** Null until this seat chooses a wallet, and it stays empty until it does. */
   session: Session | null;
   pending: Pending | null;
   /** The owner::session key of the thread this request is reading or writing. */

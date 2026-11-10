@@ -1,15 +1,15 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import type { Session } from "./session.js";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * A seat lives in memory while the browser is open, so every server restart used to
- * drop the wallet and quietly fall back to the demo story. The page could still say
- * "Disconnect" while the next call read a different wallet's memory. The address is
- * public and the cookie already outlives the process, so it is kept beside the chats
- * and cleared by the same Disconnect that clears the seat.
+ * drop the wallet and leave the page with no address while the page still said
+ * "Disconnect". The address is public and the cookie already outlives the process, so
+ * it is kept beside the chats and cleared by the same Disconnect that clears the seat.
  */
 export const DEFAULT_SEAT_DB = fileURLToPath(new URL("../data/seats.db", import.meta.url));
 
@@ -20,7 +20,7 @@ function open(): DatabaseSync | null {
   try {
     const file = process.env.SEATS_DB ?? DEFAULT_SEAT_DB;
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    const made = new DatabaseSync(file);
+    const made = openDatabase(file);
     made.exec(`create table if not exists seats (
       id text primary key,
       session text not null,
@@ -44,7 +44,7 @@ export function savedSession(id: string): Session | null {
     const ok =
       parsed &&
       typeof parsed.wallet === "string" &&
-      (parsed.source === "demo" || parsed.source === "wallet") &&
+      (parsed.source === "none" || parsed.source === "wallet") &&
       (parsed.network === "testnet" || parsed.network === "mainnet");
     return ok ? parsed : null;
   } catch {

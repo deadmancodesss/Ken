@@ -19,7 +19,7 @@ type Challenge = {
 /**
  * One hash costs about 10ms wherever it is computed, so more threads buy a
  * little speed and then stop helping. Measured on this machine: 1 thread 90/s,
- * 3 threads 140/s, 6 threads no faster than 3. Three it is, because the demo
+ * 3 threads 140/s, 6 threads no faster than 3. Three it is, because the host
  * machine also needs cores for the server and the browser.
  */
 function threadCount(): number {

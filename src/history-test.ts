@@ -6,7 +6,7 @@ import type { Flow } from "./chain.js";
 /*
  * The read layer is arithmetic over flows, and arithmetic is the part that must be
  * exact before a single provider request is spent. Every check here runs with no
- * network and no model, so a wrong split fails in a second instead of in a demo.
+ * network and no model, so a wrong split fails in a second instead of in front of a person.
  */
 
 let fails = 0;

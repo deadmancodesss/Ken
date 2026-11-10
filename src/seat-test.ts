@@ -5,7 +5,7 @@
  * neither can see or release the other's.
  */
 import { seatFor, seatsOpen, sweepSeats, within } from "./seat.js";
-import { session, useDemoWallet, useWallet } from "./session.js";
+import { session, useNoWallet, useWallet } from "./session.js";
 import { savedSession, saveSession } from "./seat-store.js";
 import { held, hold, release } from "./pending.js";
 import { chatKey } from "./chats.js";
@@ -31,7 +31,7 @@ const ticket = (sender: string, amount: number) => ({
   chain: CHAIN,
 });
 
-expect("a process with no seat still reads the demo story", session().source === "demo");
+expect("a process with no seat still reads as no wallet", session().source === "none");
 
 const one = seatFor("seat-one");
 const two = seatFor("seat-two");
@@ -41,7 +41,7 @@ within(one, () => {
   hold(ticket(A, 0.5));
 });
 within(two, () => {
-  expect("a second seat is still on the demo story after the first connects", session().source === "demo");
+  expect("a second seat still has no wallet after the first connects", session().source === "none");
   expect("a second seat cannot see the first seat's unsigned payment", held() === null);
   useWallet(B, CHAIN);
 });
@@ -52,7 +52,7 @@ within(one, () => {
 });
 
 // The name the agent keeps is filed under the wallet it heard, not under the browser.
-// This is why a name saved while a wallet was connected goes quiet on the demo wallet.
+// This is why a name saved while a wallet was connected goes quiet after disconnecting.
 const peopleA = within(one, () => scope("people"));
 const peopleB = within(two, () => scope("people"));
 expect("two wallets read two different people namespaces", peopleA !== peopleB);
@@ -69,13 +69,13 @@ within(two, () => {
   release();
 });
 
-within(one, () => useDemoWallet());
-const peopleDemo = within(one, () => scope("people"));
-expect("letting go of a wallet changes which names that page can read", peopleDemo !== peopleA);
+within(one, () => useNoWallet());
+const peopleNone = within(one, () => scope("people"));
+expect("letting go of a wallet changes which names that page can read", peopleNone !== peopleA);
 within(two, () => expect("letting go in one seat leaves the other seat's wallet alone", session().wallet === B));
 
-const demoOne = within(one, () => chatKey());
-const demoTwo = within(two, () => useDemoWallet() && chatKey());
+const noWalletOne = within(one, () => chatKey());
+const noWalletTwo = within(two, () => (useNoWallet(), chatKey()));
 within(two, () => useWallet(B, CHAIN));
 const walletTwo = within(two, () => chatKey());
 const three = seatFor("seat-three");
@@ -84,8 +84,8 @@ const walletThree = within(three, () => {
   return chatKey();
 });
 
-expect("two demo visitors never share one chat transcript", demoOne !== demoTwo && demoOne.includes("seat-one"));
-expect("demo chats are stored under the seat, not the shared demo wallet", demoOne.startsWith("demo:"));
+expect("two visitors without a wallet never share one chat transcript", noWalletOne !== noWalletTwo && noWalletOne.includes("seat-one"));
+expect("unconnected chats are stored under the seat", noWalletOne.startsWith("seat:"));
 expect("the same wallet on two seats reads the same chat", walletTwo === walletThree && walletTwo.startsWith("wallet:"));
 expect("a wallet chat is not keyed to a browser seat", !walletTwo.includes("seat-"));
 
@@ -101,4 +101,4 @@ expect("clearing a saved seat forgets the wallet", savedSession("seat-saved") ==
 expect("sweeping an idle seat closes it", sweepSeats(-1) === 4 && seatsOpen() === 0);
 
 console.log(checks.join("\n"));
-console.log(`\neach browser keeps its own wallet, its own ticket and its own demo transcript, and every check above is offline`);
+console.log(`\neach browser keeps its own wallet, its own ticket and its own transcript, and every check above is offline`);

@@ -400,7 +400,7 @@ function open(model: string, emit: (e: LiveEvent) => void, voice?: string): Prom
     });
 
     // A preview model can accept the socket and never finish the handshake, which would
-    // otherwise leave the call button spinning for the whole demo.
+    // otherwise leave the call button spinning for the whole call.
     const guard = setTimeout(() => {
       if (settled) return;
       ws.close();

@@ -1,0 +1,50 @@
+# Litestream streams every SQLite store to Cloudflare R2. A Render free service starts
+# each cold boot with an empty disk, so without this the seat that remembers the wallet
+# and the chats themselves are gone after fifteen idle minutes.
+#
+# These paths are the defaults in src/seat-store.ts, src/chats.ts, src/cap.ts,
+# src/requests.ts, src/reminders.ts and src/spam.ts. A *_DB environment override moves
+# a store out of this list without saying so, which is why the deployed environment
+# sets none of them.
+#
+# Ten seconds rather than the default one because every sync is a write operation
+# against a free R2 bucket. Litestream flushes on SIGTERM, which is how Render stops
+# the container on a spin-down and on a deploy, so the window only costs rows on a
+# hard crash.
+dbs:
+  - path: /app/data/seats.db
+    replica:
+      url: s3://ken-db/seats.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s
+  - path: /app/data/chats.db
+    replica:
+      url: s3://ken-db/chats.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s
+  - path: /app/data/caps.db
+    replica:
+      url: s3://ken-db/caps.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s
+  - path: /app/data/requests.db
+    replica:
+      url: s3://ken-db/requests.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s
+  - path: /app/data/reminders.db
+    replica:
+      url: s3://ken-db/reminders.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s
+  - path: /app/data/marks.db
+    replica:
+      url: s3://ken-db/marks.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      sync-interval: 10s

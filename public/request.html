@@ -536,7 +536,7 @@
       }
 
       function createView() {
-        const demo = st?.session?.source !== "wallet";
+        const unlinked = st?.session?.source !== "wallet";
         return `<div class="reqHero">
             <div class="reqIntro">
               <span class="seal">ask</span>
@@ -591,8 +591,8 @@
                 </select>
               </label>
               <div class="perf"></div>
-              <button type="submit" class="primary" id="make">${demo ? "Connect a wallet to make it" : "Make the link"}</button>
-              <p class="hint" id="makeHint">${demo ? "The link has to point at a wallet you can spend from, so connect one above first." : "The link points at your connected wallet, never at a typed address."}</p>
+              <button type="submit" class="primary" id="make">${unlinked ? "Connect a wallet to make it" : "Make the link"}</button>
+              <p class="hint" id="makeHint">${unlinked ? "The link has to point at a wallet you can spend from, so connect one above first." : "The link points at your connected wallet, never at a typed address."}</p>
             </form>
           </div>`;
       }

@@ -5,7 +5,7 @@ import "dotenv/config";
  * first because it measured an order of magnitude faster and is not throttled, HeyGen
  * comes through OpenRouter when it has a key, and Gemini speaks when both of them fail.
  * Which one actually answered is returned with the audio rather than assumed, because a
- * demo that quietly falls back mid-sentence has to say so on screen.
+ * page that quietly falls back mid-sentence has to say so on screen.
  *
  * None of them runs a conversation. Turn taking, listening for the user's voice over the
  * agent's, and knowing when a sentence has ended all belong to the Live socket in
@@ -18,7 +18,7 @@ const GEMINI_MODEL = process.env.TTS_MODEL ?? "gemini-3.8-flash-tts";
 const GEMINI_KEY = process.env.TTS_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.MODEL_API_KEY;
 const FISH_KEY = process.env.FISH_API_KEY;
 
-/** A vendor that is present but throttled is not enabled, so the demo does not wait on it. */
+/** A vendor that is present but throttled is not enabled, so the agent does not wait on it. */
 const usable = (k?: string) => {
   const v = (k ?? "").trim();
   return v.length > 0 && v !== "stub";
@@ -149,7 +149,7 @@ export function ttsEnabled() {
  * Which vendor last produced bytes. A page prints this as "speaks with openrouter", so
  * it has to be a measurement of who answered rather than a reading of which keys exist.
  * A route that holds a working credential and still refuses every sentence is not the
- * voice of the demo, and naming it as one is the same lie the `x-voice` header exists to
+ * voice of this agent, and naming it as one is the same lie the `x-voice` header exists to
  * stop. Empty until a sentence has actually been spoken.
  */
 let spoke: Provider | "" = "";
@@ -192,7 +192,7 @@ function wav(pcm: Buffer, rate: number) {
 
 /**
  * A vendor that just failed is left alone for a minute. Without this, every sentence
- * of a demo pays for a retry against a quota that is already spent, and the fall over
+ * of a conversation pays for a retry against a quota that is already spent, and the fall over
  * looks like slowness rather than absence. Zero turns the guard off, which is what the
  * scripted tests need in order to see each failure rather than the memory of one.
  */
@@ -319,7 +319,7 @@ async function viaGemini(text: string, voiceName: string): Promise<Buffer> {
   const body: any = await res.json().catch(() => ({}));
   if (!res.ok) {
     const raw = String(body?.error?.message ?? JSON.stringify(body).slice(0, 240));
-    // The provider's blob is not something to put on screen mid demo, but the wait is
+    // The provider's blob is not something to put on screen mid reply, but the wait is
     // the whole story: twenty seconds and until midnight are different problems.
     const wait = (unit: string) => Number(raw.match(new RegExp(`retry in [\\dhm]*?([\\d.]+)${unit}`))?.[1]);
     const h = wait("h");
@@ -422,7 +422,7 @@ export async function synthesize(text: string, raw?: string): Promise<Spoken> {
       const message = (err as Error).message;
       failures.push(message);
       refused.set(p, message);
-      // A quota that is spent will not open again inside this demo, so the vendor is
+      // A quota that is spent will not open again inside this conversation, so the vendor is
       // rested. A network blip is not that, and resting it would hide a working voice.
       if (/out of sentences|out of free requests|concurrency|needs the free model|refused the voice key|needs credit|empty take/.test(message)) cool(p);
     }

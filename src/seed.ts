@@ -11,7 +11,7 @@ const FILE = ".personas.json";
 const SUI = 1_000_000_000n;
 const USDC = 1_000_000n;
 
-/** Invented identities for the demo. They are not real people and never will be. */
+/** Invented identities for the seeded history. They are not real people and never will be. */
 const CAST: Record<string, string> = {
   Sana: "buys groceries every couple of days",
   Imran: "flat maintenance, ask for it monthly",
@@ -140,7 +140,7 @@ const daysSince = (alias: string) =>
 /**
  * Every branch is gated on the UTC day it last fired, so running the seeder
  * twice in one day cannot manufacture a second payment on the same date. That
- * would flatten the gap the demo is supposed to detect.
+ * would flatten the gap this seed is meant to show.
  */
 if (daysSince("Sana") >= 2) {
   const amount = jitter(0.4, 0.15);
@@ -161,7 +161,7 @@ if (daysSince("Imran") >= 3) {
 }
 
 // Tara is a subscription. The 1st and the 15th are the story, and every fourth
-// day is the fallback that lets a gap appear between two demo runs instead of
+// day is the fallback that lets a gap appear between two seed runs instead of
 // leaving her with a single payment and no rhythm to detect.
 const day = new Date().getUTCDate();
 if ((day === 1 || day === 15 || daysSince("Tara") >= 4) && daysSince("Tara") >= 1) {
@@ -188,7 +188,7 @@ console.log(
     `run this once a day: npm run seed (a second run on the same day pays nobody)`,
 );
 // A rhythm only exists once the same person has been paid on two different days,
-// so the next likely demo date is printed rather than left to guesswork.
+// so the next likely payment date is printed rather than left to guesswork.
 console.log(
-  `next likely demo payment · Sana ${due("Sana", 2)} · Imran ${due("Imran", 3)} · Tara ${due("Tara", 4)} · Dev ${due("Dev", 1)}`,
+  `next likely payment · Sana ${due("Sana", 2)} · Imran ${due("Imran", 3)} · Tara ${due("Tara", 4)} · Dev ${due("Dev", 1)}`,
 );

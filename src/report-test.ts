@@ -155,7 +155,6 @@ function statement(t: Totals, over: Partial<Statement> = {}): Statement {
   return {
     wallet: A("1"),
     network: "testnet",
-    isDemo: false,
     preview: false,
     range: "month",
     period: "Nov 2026",
@@ -265,9 +264,10 @@ const weekCard = cardSvg(statement(arriving, { range: "week", period: "2 to 8 No
 expect("a week card is named as a week", weekCard.includes("Your week") && weekCard.includes("2 to 8 Nov 2026") && weekCard.includes("this week"));
 
 const preview = cardSvg(previewStatement("testnet", "week"));
-expect("the no-wallet card is an honest week of zeros", preview.includes("Your week") && preview.includes("2 to 8 Nov") && preview.includes("no money moved this week"));
+const thisWeek = windowOf("week").label;
+expect("the no-wallet card is an honest week of zeros", preview.includes("Your week") && preview.includes(thisWeek) && preview.includes("no money moved this week"));
 expect("the no-wallet card asks for a wallet instead of inventing one", preview.includes("connect a wallet on the statement page"));
-expect("the no-wallet card does not claim to be a demo", !preview.includes("invented for the demo"));
+expect("the no-wallet card carries no invented names to disclaim", !preview.includes("invented"));
 
 const hostile = summarise([
   party({ address: A("b"), name: "John <Doe>", memorised: true, coins: [coin({ asset: "SUI", in: "1" })] }),

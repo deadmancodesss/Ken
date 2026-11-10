@@ -21,7 +21,7 @@ import { type Fact, canonical, noteResourceId, receiptResourceId } from "./resou
 import { learn, overCeiling, price, priceCeiling, priceUsdc, purchases, retryStuck, settleSigned, totalSpent } from "./x402.js";
 import { salesOf } from "./catalog.js";
 import { openEnvelope } from "./x402wire.js";
-import { capOwner, chainMismatch, session, useDemoWallet, useNetwork, useWallet } from "./session.js";
+import { capOwner, chainMismatch, session, useNetwork, useNoWallet, useWallet } from "./session.js";
 import { tally } from "./earn.js";
 import { buildStatement, cardSvg, previewStatement, type Range } from "./report.js";
 import { liveState, startLive, type LiveCall, type LiveEvent } from "./live.js";
@@ -113,7 +113,7 @@ function dropDerived() {
 /**
  * A seat is a browser, not an account. The cookie is random and has no relation to a
  * wallet, so it can only ever group one visitor's tabs together. Two different browsers
- * get two different seats even when both are reading the demo story.
+ * get two different seats even when neither has connected a wallet.
  */
 function seatFromCookie(req: any): { id: string; fresh: boolean } {
   const hit = String(req.headers.cookie ?? "").match(/(?:^|;\s*)tr_seat=([A-Za-z0-9_-]{10,64})/);
@@ -189,8 +189,8 @@ function readBytes(req: any, limit: number): Promise<Buffer> {
 }
 
 /**
- * A limit belongs to one wallet when one is connected and to one browser seat on the
- * demo story, so a visitor trying the demo cannot move the number under the next
+ * A limit belongs to one wallet when one is connected and to one browser seat
+ * otherwise, so a visitor setting a limit cannot move the number under the next
  * visitor's meter. The rule lives in session.ts because the chat tool writes the
  * same budget the route below reads.
  */
@@ -307,7 +307,7 @@ async function handle(req: any, res: any) {
   try {
     if (isGatedApi && session().source !== "wallet") {
       return json(res, 401, {
-        error: "Connect your Sui wallet first. Demo mode has been disabled so every action belongs strictly to your connected wallet.",
+        error: "Connect your Sui wallet first. Every action belongs strictly to the wallet you connect.",
         needs: "wallet",
       });
     }
@@ -326,7 +326,7 @@ async function handle(req: any, res: any) {
       try {
         const past = chats.history(key);
         const turn = await runTurn(asked, past);
-        // A demo payment moves coins in the same wallet the page reads, and the balance
+        // A payment moves coins in the same wallet the page reads, and the balance
         // answer is held for twenty seconds. Without this, the rail refreshed after the
         // turn still prints the number from before the money moved.
         if (turn.steps.some((s) => (s.name === "pay_usdc" || s.name === "pay_sui") && s.ok)) {
@@ -409,8 +409,9 @@ async function handle(req: any, res: any) {
     /*
      * The transcript is read back from the store rather than replayed from a global,
      * because a narrow screen closing its tab must not be the moment a conversation
-     * ends. Demo turns are keyed by this browser's seat and wallet turns by the address,
-     * so the same wallet on a phone reads the same rows as on a laptop.
+     * ends. Turns from a browser with no wallet are keyed by this browser's seat and
+     * turns from a connected wallet by the address, so the same wallet on a phone
+     * reads the same rows as on a laptop.
      */
     if (req.method === "GET" && url.pathname === "/chats") {
       const owner = chatKey();
@@ -519,44 +520,49 @@ async function handle(req: any, res: any) {
     }
 
     if (req.method === "POST" && url.pathname === "/wallet") {
-      const { address, chain, demo, message, bytes, signature } = JSON.parse((await readBody(req)) || "{}");
-      if (!demo) {
-        const wanted = String(address ?? "");
-        const open = walletChallenges.get(seatId());
-        // A challenge is one use whether or not the signature checks out, so a failed
-        // attempt cannot be replayed with a different address.
-        walletChallenges.delete(seatId());
-        if (!/^0x[0-9a-fA-F]{64}$/.test(wanted)) return json(res, 400, { error: `${wanted} is not a full Sui address` });
-        if (!open) return json(res, 403, { error: "ask for a wallet challenge first, then approve the popup it opens" });
-        if (Date.now() - open.at > CHALLENGE_MS) {
-          return json(res, 403, { error: "that wallet challenge expired. Ask for a new one and approve it in the wallet" });
+      const { address, chain, release, message, bytes, signature } = JSON.parse((await readBody(req)) || "{}");
+      // Letting go needs no signature: it grants nothing and only removes what this
+      // seat held, so a person can lock the page even when the wallet itself is gone.
+      if (release) {
+        const next = useNoWallet();
+        dropDerived();
+        return json(res, 200, next);
+      }
+      const wanted = String(address ?? "");
+      const open = walletChallenges.get(seatId());
+      // A challenge is one use whether or not the signature checks out, so a failed
+      // attempt cannot be replayed with a different address.
+      walletChallenges.delete(seatId());
+      if (!/^0x[0-9a-fA-F]{64}$/.test(wanted)) return json(res, 400, { error: `${wanted} is not a full Sui address` });
+      if (!open) return json(res, 403, { error: "ask for a wallet challenge first, then approve the popup it opens" });
+      if (Date.now() - open.at > CHALLENGE_MS) {
+        return json(res, 403, { error: "that wallet challenge expired. Ask for a new one and approve it in the wallet" });
+      }
+      if (open.address.toLowerCase() !== wanted.toLowerCase()) {
+        return json(res, 403, { error: "the challenge this seat was given belongs to a different address" });
+      }
+      if (!signature) {
+        return json(res, 403, { error: "approve the wallet proof popup so this page can prove the address it claims" });
+      }
+      const signedText =
+        typeof bytes === "string" && bytes
+          ? new TextDecoder().decode(new Uint8Array(Buffer.from(bytes, "base64")))
+          : typeof message === "string"
+            ? message
+            : "";
+      if (signedText !== open.message) {
+        return json(res, 403, { error: "the signed words are not the challenge this seat was given. Approve the popup the page just opened" });
+      }
+      try {
+        const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
+        const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(open.message), String(signature), {
+          address: wanted,
+        });
+        if (pub.toSuiAddress().toLowerCase() !== wanted.toLowerCase()) {
+          return json(res, 403, { error: "the wallet signature belongs to a different account than the address this page is claiming" });
         }
-        if (open.address.toLowerCase() !== wanted.toLowerCase()) {
-          return json(res, 403, { error: "the challenge this seat was given belongs to a different address" });
-        }
-        if (!signature) {
-          return json(res, 403, { error: "approve the wallet proof popup so this page can prove the address it claims" });
-        }
-        const signedText =
-          typeof bytes === "string" && bytes
-            ? new TextDecoder().decode(new Uint8Array(Buffer.from(bytes, "base64")))
-            : typeof message === "string"
-              ? message
-              : "";
-        if (signedText !== open.message) {
-          return json(res, 403, { error: "the signed words are not the challenge this seat was given. Approve the popup the page just opened" });
-        }
-        try {
-          const { verifyPersonalMessageSignature } = await import("@mysten/sui/verify");
-          const pub = await verifyPersonalMessageSignature(new TextEncoder().encode(open.message), String(signature), {
-            address: wanted,
-          });
-          if (pub.toSuiAddress().toLowerCase() !== wanted.toLowerCase()) {
-            return json(res, 403, { error: "the wallet signature belongs to a different account than the address this page is claiming" });
-          }
-        } catch (err) {
-          return json(res, 403, { error: `the wallet proof did not check out: ${(err as Error).message}` });
-        }
+      } catch (err) {
+        return json(res, 403, { error: `the wallet proof did not check out: ${(err as Error).message}` });
       }
       /*
        * Whoever this page speaks for can change, and everything derived from the previous
@@ -567,7 +573,7 @@ async function handle(req: any, res: any) {
        * let go of. The conversation is not dropped any more: it is stored under the wallet
        * it belongs to, and this seat reads the other one back from its own key.
        */
-      const next = demo ? useDemoWallet() : useWallet(String(address), chain ? String(chain) : undefined);
+      const next = useWallet(String(address), chain ? String(chain) : undefined);
       dropDerived();
       return json(res, 200, next);
     }
@@ -1048,7 +1054,7 @@ async function handle(req: any, res: any) {
           label: (name, address) => labelPerson(name, address),
           pay: async (to, amount, asset) => {
             const result = await runTool(asset === "SUI" ? "pay_sui" : "pay_usdc", { to, amount });
-            // A settled demo payment changed the coins this wallet holds, and the page
+            // A settled payment changed the coins this wallet holds, and the page
             // asks for the balance the moment this answer lands.
             if (!(result as { awaiting_signature?: boolean })?.awaiting_signature) {
               balanceCache.clear();
@@ -1265,7 +1271,7 @@ async function handle(req: any, res: any) {
       const asset: PayAsset = coin === "SUI" ? "SUI" : "USDC";
       const s = session();
       if (s.source !== "wallet") {
-        return json(res, 400, { error: "connect a wallet first. The demo story has no key in this browser, so there is nothing to sign" });
+        return json(res, 400, { error: "connect a wallet first. There is no key in this browser, so there is nothing to sign" });
       }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
@@ -1319,7 +1325,7 @@ async function handle(req: any, res: any) {
       const { digest } = JSON.parse((await readBody(req)) || "{}");
       const s = session();
       if (s.source !== "wallet") {
-        return json(res, 400, { error: "connect a wallet first. On the demo story the agent pays for this itself, on the Talk page" });
+        return json(res, 400, { error: "connect a wallet first, then sign the index payment with it" });
       }
       const crossed = chainMismatch();
       if (crossed) return json(res, 400, { error: crossed });
@@ -1407,7 +1413,7 @@ async function handle(req: any, res: any) {
     }
 
     // A call is one event stream out and a stream of small posts in, because this
-    // server has no WebSocket library and a demo does not need one for two-way audio.
+    // server has no WebSocket library and two-way audio does not need one.
     if (url.pathname === "/live/stream") {
       // The call was opened from a chat, and any ticket it builds during the call
       // belongs to that same chat rather than to whatever thread is newest later.
@@ -1583,7 +1589,7 @@ async function handle(req: any, res: any) {
       <div class="wgShell">
         <div class="wgCard">
           <div class="wgTop">
-            <span class="wgKicker">wallet required · demo mode disabled</span>
+            <span class="wgKicker">wallet required · private workspace</span>
             <span class="wgStamp">locked</span>
           </div>
           <div class="wgBody">
@@ -1595,7 +1601,7 @@ async function handle(req: any, res: any) {
             </div>
             <div class="wgCopy">
               <h1>Connect your Sui wallet to unlock this room.</h1>
-              <p class="wgLead">Shared demo mode has been removed so no visitor can pollute another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for the wallet you connect.</p>
+              <p class="wgLead">This room opens only for the wallet you connect, so no visitor can touch another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for your own address.</p>
               <div class="wgGrid">
                 <div class="wgCell">
                   <span class="wgIdx">01 · walrus</span>
@@ -1628,7 +1634,7 @@ async function handle(req: any, res: any) {
         .replace(/<html\b/, '<html data-wallet-locked="1"')
         .replace(/<main\b/, `${gateMarkup}\n    <main hidden`);
     }
-    // A demo recording must never show a stale theme, so nothing is cached at all.
+    // A stale theme must never show, so nothing is cached at all.
     res.writeHead(200, {
       "content-type": TYPES[extname(file)] ?? "application/octet-stream",
       "cache-control": "no-store",

@@ -2,7 +2,7 @@ import { session } from "./session.js";
 
 /**
  * One delegate key serves every visitor, so without this the person who connects
- * their own wallet would read and write the demo's memories, and two strangers
+ * their own wallet would read and write everyone else's memories, and two strangers
  * would share one brain. Each namespace is derived from the wallet being narrated.
  */
 export function scope(kind: "people" | "counterparties"): string {

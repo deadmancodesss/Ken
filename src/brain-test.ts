@@ -9,7 +9,7 @@ import "dotenv/config";
  */
 // An empty MODEL_API_KEY in .env is still a value to `??=`, so test for falsy.
 process.env.MODEL_API_KEY = "stub-key";
-// Pinned so the fake always matches, whatever the demo profile has in .env.
+// Pinned so the fake always matches, whatever the local profile has in .env.
 process.env.MODEL_BASE_URL = "https://model.test/openai";
 /*
  * Switched off for the same reason the line above exists. Gemini leads the chain and the
@@ -62,6 +62,10 @@ globalThis.fetch = (async (url: any, init: any) => {
 
 const { runTurn, groundAnswer } = await import("./brain.js");
 const { localDay } = await import("./seat.js");
+const { useWallet } = await import("./session.js");
+
+// The tools only answer for a connected wallet now, so this seat stands in for one.
+useWallet("0x" + "1".repeat(64), "testnet");
 
 const checks: string[] = [];
 function expect(label: string, ok: boolean) {

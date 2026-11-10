@@ -22,7 +22,14 @@ if (!key || key === "stub" || /127\.0\.0\.1|localhost|model\.test/.test(base)) {
 const { runTurn, modelName } = await import("./brain.js");
 const { runTool } = await import("./tools.js");
 const { counterparties } = await import("./knowledge.js");
-const { session } = await import("./session.js");
+const { session, useWallet } = await import("./session.js");
+
+const bench = process.env.SEED_WALLET ?? process.env.AGENT_ADDRESS ?? "";
+if (!/^0x[0-9a-fA-F]{64}$/.test(bench)) {
+  console.error("refusing to run: set SEED_WALLET to the wallet the cast was seeded from");
+  process.exit(1);
+}
+useWallet(bench, process.env.SEED_NETWORK ?? "testnet");
 
 const checks: string[] = [];
 function expect(label: string, ok: boolean, detail = "") {
@@ -49,7 +56,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const truth = await counterparties(session().wallet, session().network);
 const sana = truth.find((p) => p.name === "Sana");
 if (!sana) {
-  console.error("the demo wallet has no Sana, so there is nothing to check");
+  console.error("the seeded wallet has no Sana, so there is nothing to check");
   process.exit(1);
 }
 console.log(`ground truth from Tatum: Sana has ${sana.flows} flows, last seen ${sana.lastSeen}, usual ${sana.usualAmount}`);
@@ -95,7 +102,7 @@ expect("q1 named Sana", /sana/i.test(t1.text));
 
 /* Part three, the same conversation. A warm question is allowed to re-read the
    chain, that only costs a second of latency. What it must never do is spend USDC
-   on a name it was already handed, because that is the promise the demo makes. */
+   on a name it was already handed, because that is the promise this agent makes. */
 const t2 = await runTurn("what do you remember about Sana?", t1.history);
 console.log(`Q2 what do you remember about Sana?\n   ${t2.text}\n`);
 const reread = t2.steps.filter((s) => CHAIN_TOOLS.has(s.name)).map((s) => s.name);

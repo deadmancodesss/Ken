@@ -7,7 +7,7 @@ import "dotenv/config";
  * argued about from memory.
  *
  * Every vendor is mocked here. A scripted test that reaches the network spends a daily
- * allowance, and an allowance spent by a test is a demo that cannot answer.
+ * allowance, and an allowance spent by a test is a live conversation that cannot answer.
  */
 const GEMINI_KEY = (process.env.GEMINI_API_KEY ?? "").trim();
 const FISH_KEY = (process.env.FISH_API_KEY ?? "").trim();

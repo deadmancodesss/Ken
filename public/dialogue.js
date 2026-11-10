@@ -371,7 +371,7 @@ export function walletWaiting(name, { onAgain } = {}) {
 
 /** What came back when a wallet did answer, including the one thing that matters:
     whether that account can sign, and which network it is sitting on. */
-export function walletOpen(picked, { seconds, onDemo, payNet = "mainnet" }) {
+export function walletOpen(picked, { seconds, onDisconnect, payNet = "mainnet" }) {
   /* Wallets name their network with different capitalisation, and "not testnet" over
      a sui:Testnet account is a scare claim about somebody's real money. The name being
      checked is the one the server pays on, never a hard coded one. */
@@ -399,7 +399,7 @@ export function walletOpen(picked, { seconds, onDemo, payNet = "mainnet" }) {
       { text: parseFloat(seconds) >= 1 ? `the whole exchange took ${seconds} seconds` : "it answered straight away, with nothing to approve", mark: "dot" },
     ],
     stamp: "open",
-    actions: onDemo ? [{ label: "disconnect", primary: true, onClick: (dlg) => { dlg.close(true); onDemo(); } }] : [],
+    actions: onDisconnect ? [{ label: "disconnect", primary: true, onClick: (dlg) => { dlg.close(true); onDisconnect(); } }] : [],
   };
 }
 
@@ -413,7 +413,7 @@ export function walletOpen(picked, { seconds, onDemo, payNet = "mainnet" }) {
  * into one sentence of dots and a forty-character extension id wrapped in the middle
  * of itself. A person reading a failure needs to point at a line, not decode one.
  */
-export function walletFailed(err, { seconds, retry, onDemo } = {}) {
+export function walletFailed(err, { seconds, retry, onDisconnect } = {}) {
   /* A failure can come from two different places. A wallet that said no carries its
      own census with it, but a 500 from this page's own server carries nothing, and
      printing "no wallet answers" over that is a lie about somebody's browser. So the

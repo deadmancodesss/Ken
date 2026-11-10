@@ -1,14 +1,14 @@
 import "dotenv/config";
 import { MemWal } from "@mysten-incubation/memwal";
 import { LEGACY, scope } from "./scope.js";
-import { useDemoWallet } from "./session.js";
+import { useWallet } from "./session.js";
 
 /**
  * One-off move from the shared namespaces to per-wallet ones. It rewrites the same
  * facts, only changing where they are filed and swapping stored em dashes for
  * commas, so the old records stay on chain unread and this can run twice safely.
  *
- *   npx tsx src/migrate.ts
+ *   npx tsx src/migrate.ts 0x<the wallet whose namespaces receive the records>
  */
 const ACCOUNT = {
   key: process.env.MEMWAL_KEY!,
@@ -36,9 +36,11 @@ async function writeAll(namespace: string, texts: string[]) {
 }
 
 async function main() {
-  useDemoWallet();
+  const address = process.argv[2];
+  if (!/^0x[0-9a-fA-F]{64}$/.test(address ?? "")) throw new Error("pass the wallet address whose namespaces receive the records");
+  useWallet(address);
   const into = { people: scope("people"), counterparties: scope("counterparties") };
-  console.log("demo session", into);
+  console.log("target wallet", address, into);
 
   const people = await readAll(LEGACY.people, "Person");
   const peopleTexts = [...new Set(people.map((p) => clean(p.text)).filter((t) => /^Person "/.test(t)))];

@@ -17,7 +17,7 @@ export type PayAsset = "USDC" | "SUI";
  * Each coin gets its own ceiling because a base unit of SUI is a billionth of a coin
  * and a base unit of USDC is a millionth. One shared number would either let a SUI
  * payment spend a thousand times what the limit reads as, or block a normal USDC
- * payment at five hundredths of a cent. The demo ceiling of one SUI is deliberately
+ * payment at five hundredths of a cent. The SUI ceiling of one SUI is deliberately
  * small: testnet SUI is free dust, and a mistyped zero should still be refused.
  */
 const caps: Record<PayAsset, bigint> = {
@@ -34,7 +34,7 @@ export function baseUnitsFor(amount: number, asset: PayAsset = "USDC"): bigint {
 }
 
 // The chain travels with the payment so every receipt drawn from it can link to the
-// explorer that actually saw the transfer. A demo payment that omitted the chain used
+// explorer that actually saw the transfer. A payment that omitted the chain used
 // to borrow whatever ledger the page happened to be reading at that moment.
 export type Payment = { digest: string; to: string; amount: number; asset: PayAsset; chain: string };
 export type Paid = Payment & { duplicate: boolean };
@@ -236,17 +236,14 @@ export type SignedPayment = {
 /**
  * Both of these functions sign with the server's own key, which means money leaves a
  * wallet without anyone watching a popup. That is only defensible while the money is
- * worthless testnet dust, so the demo story refuses to spend the moment the build
- * settles where USDC is real. A person's own wallet is never touched by this: those
- * transfers are built unsigned and the signature in their extension is the approval.
- *
- * Recorded demos that need the agent to pay keep running with PAY_NETWORK=testnet, and
- * nothing here stops a later build from spending mainnet money on purpose.
+ * worthless testnet dust, so the key refuses to spend the moment the build settles
+ * where USDC is real. A person's own wallet is never touched by this: those transfers
+ * are built unsigned and the signature in their extension is the approval.
  */
 function keySpendAllowed(): void {
   if (PAY_NET === "testnet") return;
   throw new Error(
-    `this build settles ${PAY_CHAIN}, where the demo wallet's USDC would be real money, so the agent will not sign a payment nobody approved. Record the paying demo with PAY_NETWORK=testnet, or connect a wallet and sign it yourself`,
+    `this build settles ${PAY_CHAIN}, where the agent's own USDC would be real money, so the agent will not sign a payment nobody approved. Connect a wallet and sign it yourself, or run the build on testnet`,
   );
 }
 

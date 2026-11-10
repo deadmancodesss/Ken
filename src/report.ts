@@ -17,7 +17,6 @@ export type Sender = {
 export type Statement = {
   wallet: string;
   network: string;
-  isDemo: boolean;
   preview: boolean;
   range: Range;
   period: string;
@@ -219,7 +218,6 @@ export function previewStatement(network: string, range: Range = "month"): State
   return {
     wallet: "0x" + "0".repeat(64),
     network,
-    isDemo: false,
     preview: true,
     range,
     period: windowOf(range).label,
@@ -273,11 +271,10 @@ export async function buildStatement(range: Range = "month"): Promise<Statement>
   return {
     wallet: s.wallet,
     network: s.network,
-    isDemo: s.source === "demo",
     preview: false,
     range,
     period: win.label,
-    headline: s.source === "demo" ? "A made-up circle, real transactions" : headlineFor(range),
+    headline: headlineFor(range),
     inPeriod: money(Number(windowRead.money.usdcIn) / USDC_UNIT, "USDC"),
     outPeriod: money(Number(windowRead.money.usdcOut) / USDC_UNIT, "USDC"),
     netPeriod: netDirection === "even" ? money(0, "USDC") : `${netDirection === "in" ? "+" : "−"}${money(Number(netAbs) / USDC_UNIT, "USDC")}`,
@@ -488,10 +485,6 @@ export function cardSvg(d: Statement, w = 1080, h = 1350) {
   if (d.preview) {
     out.push(
       `<text x="${pad}" y="${h - 30}" font-family="${SANS}" font-size="20" fill="${C.clay}">connect a wallet on the statement page to read your own</text>`,
-    );
-  } else if (d.isDemo) {
-    out.push(
-      `<text x="${pad}" y="${h - 30}" font-family="${SANS}" font-size="20" fill="${C.clay}">the people named here are invented for the demo, every transaction is real</text>`,
     );
   }
 

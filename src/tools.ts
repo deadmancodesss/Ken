@@ -2,13 +2,13 @@ import "dotenv/config";
 import { counterparties, forgetCounterparties, monthlyTotals } from "./knowledge.js";
 import { labelPerson, resolvePerson, matchPerson, canonicalNames, personForAddress, peopleRoster, memoryStats } from "./people.js";
 import { remember, recallAbout, searchMemory } from "./memory.js";
-import { payOnce, preparePayment, prepareUsdc, paymentsEnabled, paymentCap, baseUnitsFor, type PayAsset } from "./wallet.js";
-import { buy, knownProfile, learn, nameTheIndex, overCeiling, price, priceCeiling } from "./x402.js";
+import { preparePayment, prepareUsdc, paymentsEnabled, paymentCap, type PayAsset } from "./wallet.js";
+import { knownProfile, learn, nameTheIndex, overCeiling, price, priceCeiling } from "./x402.js";
 import { noteResourceId, receiptResourceId, resourceId } from "./resources.js";
 import { note } from "./notes.js";
 import { hold } from "./pending.js";
 import { capOwner, chainMismatch, session } from "./session.js";
-import { currentSeat, localDay } from "./seat.js";
+import { currentSeat } from "./seat.js";
 import { buildStatement } from "./report.js";
 import { PAY_CHAIN, PAY_NET, allHoldings, formatAmount } from "./chain.js";
 import { usdPrices } from "./price.js";
@@ -808,32 +808,19 @@ if (paymentsEnabled()) {
 
     // The user's own money never leaves on a sentence alone. Build the transfer,
     // hold it, and let the signature in their wallet be the approval.
-    if (session().source === "wallet") {
-      const crossed = chainMismatch();
-      if (crossed) throw new Error(crossed);
-      const p = await preparePayment(session().wallet, address, amount, asset, session().network);
-      const held = hold({ sender: p.sender, to: p.to, name, amount: p.amount, asset: p.asset, bytes: p.bytes, chain: p.chain });
-      return {
-        awaiting_signature: true,
-        id: held.id,
-        to: name ?? p.to,
-        amount: p.amount,
-        asset: p.asset,
-        where: "the ticket under this reply",
-      };
-    }
-
-    const payment = await payOnce(session().wallet, address, baseUnitsFor(amount, asset), asset);
-    forgetCounterparties();
-    // A duplicate is the same settled transfer, so writing it to Walrus again would
-    // make one payment read as two in the very history that is meant to be trusted.
-    if (!payment.duplicate) {
-      await remember(`Paid ${payment.amount} ${payment.asset} to ${address}${name ? ` (${name})` : ""} on ${localDay()}. tx ${payment.digest}`);
-    }
+    const me = session();
+    if (!me.wallet) throw new Error("connect a wallet first, because every payment needs the wallet's own signature");
+    const crossed = chainMismatch();
+    if (crossed) throw new Error(crossed);
+    const p = await preparePayment(me.wallet, address, amount, asset, me.network);
+    const held = hold({ sender: p.sender, to: p.to, name, amount: p.amount, asset: p.asset, bytes: p.bytes, chain: p.chain });
     return {
-      ...payment,
-      named_as: name,
-      note: payment.duplicate ? "this exact payment was already sent moments ago. It is the same digest, not a second transfer" : undefined,
+      awaiting_signature: true,
+      id: held.id,
+      to: name ?? p.to,
+      amount: p.amount,
+      asset: p.asset,
+      where: "the ticket under this reply",
     };
   }
 
@@ -891,62 +878,45 @@ if (paymentsEnabled()) {
         return { cost_usdc: 0, from: "memory", answer: remembered, said: "I already bought this profile, so I did not pay again" };
       }
 
-      const payer = session().wallet;
+      const me = session();
+      if (!me.wallet) throw new Error("connect a wallet first, because the index is paid from your own wallet");
+      const payer = me.wallet;
+      const net = me.network;
       const resource = resourceId(address);
-
-      if (session().source === "wallet") {
-        const net = session().network;
-        const crossed = chainMismatch();
-        if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer, net);
-        if ("error" in quoted) throw new Error(quoted.error);
-        if ("free" in quoted) {
-          const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
-          forgetCounterparties();
-          return { cost_usdc: 0, from: "the index, on the earlier receipt", answer: learned.note };
-        }
-        const refused = overCeiling(quoted.usdc);
-        if (refused) {
-          return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
-        }
-        await nameTheIndex();
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
-        const held = hold({
-          sender: prepared.sender,
-          to: prepared.to,
-          name: "Paid chain index",
-          amount: prepared.amount,
-          asset: prepared.asset,
-          bytes: prepared.bytes,
-          chain: prepared.chain,
-          resource,
-          requirements: quoted.requirements,
-        });
-        return {
-          awaiting_signature: true,
-          id: held.id,
-          to: "Paid chain index",
-          amount: prepared.amount,
-          asset: prepared.asset,
-          what: `a chain profile of ${address.slice(0, 8)}… that I have not bought yet`,
-          where: "the ticket under this reply",
-        };
+      const crossed = chainMismatch();
+      if (crossed) throw new Error(crossed);
+      const quoted = await price(resource, payer, net);
+      if ("error" in quoted) throw new Error(quoted.error);
+      if ("free" in quoted) {
+        const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
+        forgetCounterparties();
+        return { cost_usdc: 0, from: "the index, on the earlier receipt", answer: learned.note };
       }
-
+      const refused = overCeiling(quoted.usdc);
+      if (refused) {
+        return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
+      }
       await nameTheIndex();
-      const bought = await buy(resource, payer);
-      if ("error" in bought) {
-        if (bought.refusal) return { cost_usdc: 0, refused: true, saying: bought.error };
-        throw new Error(bought.error);
-      }
-      const learned = await learn(resource, bought.fact, bought.usdc, bought.tx, bought.on);
-      forgetCounterparties();
+      const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
+      const held = hold({
+        sender: prepared.sender,
+        to: prepared.to,
+        name: "Paid chain index",
+        amount: prepared.amount,
+        asset: prepared.asset,
+        bytes: prepared.bytes,
+        chain: prepared.chain,
+        resource,
+        requirements: quoted.requirements,
+      });
       return {
-        cost_usdc: bought.reason === "bought" ? bought.usdc : 0,
-        from: bought.reason === "bought" ? "the paid chain index" : bought.reason,
-        answer: learned.note,
-        tx: bought.tx,
-        remembered: true,
+        awaiting_signature: true,
+        id: held.id,
+        to: "Paid chain index",
+        amount: prepared.amount,
+        asset: prepared.asset,
+        what: `a chain profile of ${address.slice(0, 8)}… that I have not bought yet`,
+        where: "the ticket under this reply",
       };
     },
   });
@@ -961,7 +931,10 @@ if (paymentsEnabled()) {
     run: async (a) => {
       const digest = String(a.digest ?? "").trim();
       const resource = receiptResourceId(digest);
-      const payer = session().wallet;
+      const me = session();
+      if (!me.wallet) throw new Error("connect a wallet first, because the index is paid from your own wallet");
+      const payer = me.wallet;
+      const net = me.network;
 
       // The same order as a name: memory is read before anything is contacted, so a
       // digest already settled once is answered from the record for nothing. Only a row
@@ -973,58 +946,39 @@ if (paymentsEnabled()) {
         return { cost_usdc: 0, from: "memory", said: "I already paid to look this one up", answer: seen[0].text };
       }
 
-      if (session().source === "wallet") {
-        const net = session().network;
-        const crossed = chainMismatch();
-        if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer, net);
-        if ("error" in quoted) throw new Error(quoted.error);
-        if ("free" in quoted) {
-          const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
-          return { cost_usdc: 0, from: "the index, on the earlier receipt", answer: learned.note };
-        }
-        const refused = overCeiling(quoted.usdc);
-        if (refused) {
-          return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
-        }
-        await nameTheIndex();
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
-        const held = hold({
-          sender: prepared.sender,
-          to: prepared.to,
-          name: "Paid receipt index",
-          amount: prepared.amount,
-          asset: prepared.asset,
-          bytes: prepared.bytes,
-          chain: prepared.chain,
-          resource,
-          requirements: quoted.requirements,
-        });
-        return {
-          awaiting_signature: true,
-          id: held.id,
-          to: "Paid receipt index",
-          amount: prepared.amount,
-          asset: prepared.asset,
-          what: `a chain answer about whether ${digest.slice(0, 10)}… really moved money`,
-          where: "the ticket under this reply",
-        };
+      const crossed = chainMismatch();
+      if (crossed) throw new Error(crossed);
+      const quoted = await price(resource, payer, net);
+      if ("error" in quoted) throw new Error(quoted.error);
+      if ("free" in quoted) {
+        const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
+        return { cost_usdc: 0, from: "the index, on the earlier receipt", answer: learned.note };
       }
-
+      const refused = overCeiling(quoted.usdc);
+      if (refused) {
+        return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
+      }
       await nameTheIndex();
-      const bought = await buy(resource, payer);
-      if ("error" in bought) {
-        if (bought.refusal) return { cost_usdc: 0, refused: true, saying: bought.error };
-        throw new Error(bought.error);
-      }
-      const spent = bought.reason === "bought" ? bought.usdc : 0;
-      const learned = await learn(resource, bought.fact, bought.usdc, bought.tx, bought.on);
+      const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
+      const held = hold({
+        sender: prepared.sender,
+        to: prepared.to,
+        name: "Paid receipt index",
+        amount: prepared.amount,
+        asset: prepared.asset,
+        bytes: prepared.bytes,
+        chain: prepared.chain,
+        resource,
+        requirements: quoted.requirements,
+      });
       return {
-        cost_usdc: spent,
-        from: bought.reason === "bought" ? "the chain, through the paid index" : bought.reason,
-        answer: learned.note,
-        checked: digest,
-        remembered: true,
+        awaiting_signature: true,
+        id: held.id,
+        to: "Paid receipt index",
+        amount: prepared.amount,
+        asset: prepared.asset,
+        what: `a chain answer about whether ${digest.slice(0, 10)}… really moved money`,
+        where: "the ticket under this reply",
       };
     },
   });
@@ -1038,8 +992,11 @@ if (paymentsEnabled()) {
     required: ["id"],
     run: async (a) => {
       const id = String(a.id ?? "").trim().toLowerCase();
+      const me = session();
+      if (!me.wallet) throw new Error("connect a wallet first, because a link is paid from your own wallet");
+      const payer = me.wallet;
+      const net = me.network;
       const resource = noteResourceId(id);
-      const payer = session().wallet;
 
       // Read before the price so a link that does not exist is answered by this build
       // rather than by the index's own 404, and so the seller's name can be said out
@@ -1048,63 +1005,38 @@ if (paymentsEnabled()) {
       if (!sold) throw new Error(`no link ${id} is open on this index, so there is nothing here to pay for`);
       const seller = (await personForAddress(sold.pay_to))?.alias ?? `${sold.pay_to.slice(0, 10)}…`;
 
-      if (session().source === "wallet") {
-        const net = session().network;
-        const crossed = chainMismatch();
-        if (crossed) throw new Error(crossed);
-        const quoted = await price(resource, payer, net);
-        if ("error" in quoted) throw new Error(quoted.error);
-        if ("free" in quoted) {
-          const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
-          return { cost_usdc: 0, from: `${seller}, on the earlier receipt`, answer: learned.note };
-        }
-        const refused = overCeiling(quoted.usdc);
-        if (refused) {
-          return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
-        }
-        const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
-        const held = hold({
-          sender: prepared.sender,
-          to: prepared.to,
-          name: seller,
-          amount: prepared.amount,
-          asset: prepared.asset,
-          bytes: prepared.bytes,
-          chain: prepared.chain,
-          resource,
-          requirements: quoted.requirements,
-        });
-        return {
-          awaiting_signature: true,
-          id: held.id,
-          to: seller,
-          amount: prepared.amount,
-          asset: prepared.asset,
-          what: sold.blob ? `a line out of ${seller}'s memory, "${sold.title}"` : `the words behind "${sold.title}"`,
-          where: "the ticket under this reply",
-        };
+      const crossed = chainMismatch();
+      if (crossed) throw new Error(crossed);
+      const quoted = await price(resource, payer, net);
+      if ("error" in quoted) throw new Error(quoted.error);
+      if ("free" in quoted) {
+        const learned = await learn(resource, quoted.fact, quoted.paid, quoted.tx, quoted.on);
+        return { cost_usdc: 0, from: `${seller}, on the earlier receipt`, answer: learned.note };
       }
-
-      const bought = await buy(resource, payer);
-      if ("error" in bought) {
-        if (bought.refusal) return { cost_usdc: 0, refused: true, saying: bought.error };
-        throw new Error(bought.error);
+      const refused = overCeiling(quoted.usdc);
+      if (refused) {
+        return { cost_usdc: 0, refused: true, price_usdc: quoted.usdc, ceiling_usdc: priceCeiling(), saying: refused };
       }
-      // A receipt the index already honoured comes back carrying the price paid the
-      // first time. That number belongs in the memory, which records what the fact
-      // cost, and not in cost_usdc, which records what this ask spent.
-      const spent = bought.reason === "bought" ? bought.usdc : 0;
-      const learned = await learn(resource, bought.fact, bought.usdc, bought.tx, bought.on);
+      const prepared = await prepareUsdc(payer, quoted.requirements.payTo, quoted.usdc, net);
+      const held = hold({
+        sender: prepared.sender,
+        to: prepared.to,
+        name: seller,
+        amount: prepared.amount,
+        asset: prepared.asset,
+        bytes: prepared.bytes,
+        chain: prepared.chain,
+        resource,
+        requirements: quoted.requirements,
+      });
       return {
-        cost_usdc: spent,
-        // The kind is what separates this from an index lookup in the sentence the model
-        // builds: one answer was bought from a service, this one was bought from a person.
-        kind: bought.fact.kind,
-        from: bought.reason === "bought" ? `${seller}, who sells ${sold.blob ? "a line they remember" : "something they wrote"}` : bought.reason,
-        paid_to: seller,
-        answer: learned.note,
-        tx: bought.tx,
-        remembered: true,
+        awaiting_signature: true,
+        id: held.id,
+        to: seller,
+        amount: prepared.amount,
+        asset: prepared.asset,
+        what: sold.blob ? `a line out of ${seller}'s memory, "${sold.title}"` : `the words behind "${sold.title}"`,
+        where: "the ticket under this reply",
       };
     },
   });

@@ -17,7 +17,7 @@ async function main() {
      that money is real, that is a payment nobody approved, so it stops here. */
   if (String(p.chain ?? "").includes("mainnet")) {
     throw new Error(
-      "the pending ticket is sui:mainnet, and this script signs with the agent key and broadcasts. Record the paying demo with PAY_NETWORK=testnet, or connect a real wallet and sign it yourself",
+      "the pending ticket is sui:mainnet, and this script signs with the agent key and broadcasts. Run the build on testnet, or connect a real wallet and sign it yourself",
     );
   }
   const key = Ed25519Keypair.fromSecretKey(process.env.AGENT_SECRET_KEY!);

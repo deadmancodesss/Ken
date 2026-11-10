@@ -951,7 +951,7 @@ dd, dt { margin: 0; }
 .quiet { font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
 .quiet kbd { font-family: var(--mono); color: var(--ink-2); border: 1px solid var(--rule); border-radius: 3px; padding: 1px 4px; }
 /* Stands in front of a page of invented examples the moment the reader's own wallet is
-   connected, so a story about the demo cast can never be read as a report about them.
+   connected, so a story about the invented cast can never be read as a report about them.
    It is a small sheet pinned to the corner rather than a paragraph in the flow, because
    a correction that pushes the page down makes the page itself look wrong. */
 .castnote { position: fixed; left: var(--pad); bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 45; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; width: min(380px, calc(100vw - var(--pad) * 2)); margin: 0; padding: 13px 12px 13px 16px; border: var(--edge) solid var(--ink); border-radius: 14px; background: var(--clay-wash); color: var(--ink); font: var(--step--1)/1.55 var(--mono); box-shadow: var(--lift) var(--lift) 0 var(--sheet); animation: noteIn 320ms var(--ease-spring) both; }
@@ -1118,7 +1118,7 @@ dd, dt { margin: 0; }
 }
 
 /* ---------- faces ----------
-   The demo cast each have a drawn portrait in public/assets. They are encoded with
+   The invented cast each have a drawn portrait in public/assets. They are encoded with
    `npm run plate -- <name> --from drawing.png --alpha`, which keys the sheet out to
    real transparency, so a face is a cut-out rather than a wash on a rectangle. That
    is what makes it safe to sit on a tinted disc, to be cropped to a circle and to be

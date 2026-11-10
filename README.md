@@ -111,12 +111,12 @@ Nothing here is a page framework. The hard parts are the wallet, the memory, the
 | --- | --- |
 | Front end | Handwritten HTML, CSS and ES modules. GSAP for motion. No React, no Next, no bundler. |
 | Back end | Node.js and TypeScript run with `tsx`, on the built-in `node:http` server. |
-| Data | `node:sqlite` for seats and chat turns, JSON files for the seller ledger. |
+| Data | `node:sqlite` for seats, chats, limits, links, reminders and marks, JSON files for the notes and payment ledgers. Litestream streams the databases to R2. |
 | Chain | Tatum Sui GraphQL, `@mysten/sui`, Wallet Standard in the browser. |
 | Memory | Walrus MemWal, one namespace per wallet. |
 | Payments | x402 v2 wire and a self-hosted facilitator, USDC and SUI on Sui. |
 | AI | Raw HTTP to Gemini and NVIDIA NIM, Gemini Live for calls, Fish and OpenRouter for speech. |
-| Tests | `tsc`, `node --check` and 24 TypeScript test scripts. No test framework. |
+| Tests | `tsc`, `node --check` and 27 TypeScript test scripts. No test framework. |
 
 ## Run it
 
@@ -134,6 +134,12 @@ Open `http://127.0.0.1:8787`. Every connected wallet can switch `sui:testnet` / 
 | `npm run live` | Run agent (`8787`) with `PAY_ENABLED=1` | `npm run selftest:live` | Live model loop checked against chain |
 | `npm run chat` | Interactive terminal agent session | `npm run voicetest` | Test TTS fallback ladder (Fish, OR, Gemini) |
 | `npm run plumb` | End-to-end check across upstream providers | `npm run seed` | Seed testnet cadence history (1 run / UTC day) |
+
+### Cold starts
+
+A Render free service begins every boot with an empty disk. The Docker image runs `litestream replicate` around the app, so each SQLite store in `tools/litestream.yml` is restored from Cloudflare R2 before the server opens it, then streamed back every ten seconds and on shutdown. The wallet binding in `seats.db` and the transcript in `chats.db` therefore survive a spin-down, a restart and a deploy. A restore that fails for a real reason stops the boot instead of starting empty and streaming that emptiness over the only backup. `npm start` does not use Litestream and reads the local `data/` folder.
+
+Four files stay outside the replica. `data/notes.json` (the notes offered for sale), `.seller.json` (the seller's own sales ledger), `.paid.json` (the buyer-side receipts and stuck envelopes) and `.facilitator.json` (the replay guard) are JSON rather than SQLite. Litestream cannot copy them, so they start empty after a cold boot. The chain remains the proof that money moved.
 
 ## Pages
 
@@ -168,14 +174,3 @@ Open `http://127.0.0.1:8787`. Every connected wallet can switch `sui:testnet` / 
 | Non-Custody | Two-process x402 market (`8787` buyer / `8788` facilitator+seller) + client-side PTB signing | Server holds zero user keys. Facilitator simulates balance deltas before broadcast. Replay & `PAID_MAX_USDC` guards. |
 | Voice & Proof | Plain `node:http` SSE live audio (zero WS libs) + Gemini Live + 83-language TTS (`/speak`) | Acoustic echo floor-gating, ungrounded model digits stripped, exported statements drawn deterministically. |
 | Paid Knowledge | `/ask` locks stored Walrus lines by owner. `open_paid_link` pays writer & caches to buyer memory | Server reads words back from store only after chain settlement. `/earned` sums verified receipts only. |
-
-## Layout
-
-| `src/` Core & AI | `src/` Chain & State | `public/` Client UI | `tools/` & Storage |
-| --- | --- | --- | --- |
-| `server.ts`: HTTP & tool router | `chain.ts`, `history.ts`: Tatum GraphQL | `app.html`, `call.html`: Desk & voice UI | `runner.mjs`: Boots `8788` + `8787` |
-| `brain.ts`: Model loop & failover | `knowledge.ts`, `report.ts`: Cadence & SVG | `wallet.js`: Wallet Standard handshake | `plate.mjs`: Drawing -> keyed WebP |
-| `live.ts`: Bidirectional call socket | `memory.ts`, `people.ts`: Walrus MemWal | `live.js`: Mic capture & audio stream | `normalize.mjs`: White paper keyer |
-| `speech.ts`: TTS fallback ladder | `wallet.ts`, `x402.ts`, `x402wire.ts`: Sui PTBs | `shared.js`, `story.js`: State & motion | `data/*.db`: Gitignored local SQLite |
-| `tools.ts`, `stub-model.ts`: Schemas | `seller.ts`, `facilitator.ts`, `catalog.ts` | `theme.css`, `assets/`: Tokens & ink art | `.env`: Gitignored server secrets |
-| `seed.ts`: Daily testnet cadence seed | `chats.ts`, `reminders.ts`, `requests.ts`, `cap.ts`, `spam.ts`, `seat.ts` | `memory.html`, `pay.html`, `request.html`, `ask.html`, `report.html` | `npm run plate -- <name> "prompt"` |

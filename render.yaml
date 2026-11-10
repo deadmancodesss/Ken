@@ -14,8 +14,6 @@ services:
         value: "1"
       - key: PAY_NETWORK
         value: testnet
-      - key: DEMO_WALLET_NETWORK
-        value: testnet
       - key: SELLER_WALLET
         value: 0x81cd5dad14a509f609431e5ae99d22aeb9b1f14fad84cb0eac31ab3096cb8d8f
       - key: GEMINI_API_KEY
@@ -57,5 +55,13 @@ services:
       - key: NVIDIA_BASE_URL
         sync: false
       - key: NVIDIA_MODEL
+        sync: false
+      # Cold start persistence. The endpoint is the account's R2 address without a
+      # bucket in it, and the token needs Object Read and Write on ken-db alone.
+      - key: R2_ENDPOINT
+        sync: false
+      - key: LITESTREAM_ACCESS_KEY_ID
+        sync: false
+      - key: LITESTREAM_SECRET_ACCESS_KEY
         sync: false
 

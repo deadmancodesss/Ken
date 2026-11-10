@@ -2,7 +2,7 @@
  * Proves the fallback order without spending a provider request. Two fake hosts stand in
  * for the lanes: Gemini refuses the first name, and the test asserts the very next call
  * went to NVIDIA Ultra rather than to Gemini's second name. The lanes are alternated by
- * depth, so a return to grouped ordering fails here rather than in a demo.
+ * depth, so a return to grouped ordering fails here rather than in front of a person.
  *
  * Nothing here reaches a network. The env is set before brain.ts is imported, because the
  * route table is built at import time and dotenv never overrides a value already present.

@@ -304,7 +304,7 @@ export async function speakRemote(text, { onLevel, onEnd, onVoice } = {}) {
 async function post(payload) {
   // A wallet claim carries a one use signature from the account it names. The address
   // alone is public, so it cannot be the thing that decides whose memory is read.
-  const proof = payload.address && !payload.demo
+  const proof = payload.address
     ? await proveWallet({ address: payload.address, chain: payload.chain })
     : {};
   const res = await fetch("/wallet", {
@@ -408,15 +408,15 @@ export function mountWallet(onChange) {
   if (!btn) return;
   mountWalletPanel();
 
-  const toDemo = async () => {
+  const releaseWallet = async () => {
     btn.textContent = "letting go…";
     let left = null;
     try {
-      left = await post({ demo: true });
+      left = await post({ release: true });
     } catch {
       /* nothing was dropped, and the sheet below says so */
     }
-    if (left?.source !== "demo" && left?.source !== "none") {
+    if (left?.source !== "none") {
       btn.textContent = "Disconnect";
       dialogue({
         who: "mouse",
@@ -430,7 +430,7 @@ export function mountWallet(onChange) {
         ],
         stamp: "still here",
         actions: [
-          { label: "try again", primary: true, onClick: (dlg) => { dlg.close(true); toDemo(); } },
+          { label: "try again", primary: true, onClick: (dlg) => { dlg.close(true); releaseWallet(); } },
           { label: "reload the page", onClick: () => location.reload() },
         ],
       });
@@ -467,7 +467,7 @@ export function mountWallet(onChange) {
   const ask = async () => {
     const found = discover();
     if (!found.length) {
-      dialogue(walletFailed(new Error(whyNoSuiWallet()), { retry: ask, onDemo: toDemo }));
+      dialogue(walletFailed(new Error(whyNoSuiWallet()), { retry: ask, onDisconnect: releaseWallet }));
       return;
     }
 
@@ -476,7 +476,7 @@ export function mountWallet(onChange) {
     const waiting = () =>
       walletWaiting(who, {
         onAgain: () => control.again?.(),
-        onDemo: toDemo,
+        onDisconnect: releaseWallet,
       });
 
     /* The sheet opens before the wallet is asked, so the window the extension opens
@@ -511,15 +511,15 @@ export function mountWallet(onChange) {
       btn.classList.add("on");
       syncWalletGate(true);
       document.dispatchEvent(new CustomEvent("wallet:changed"));
-      dlg.replace(walletOpen(picked, { seconds: dlg.seconds(), onDemo: toDemo, payNet: settleNet }));
+      dlg.replace(walletOpen(picked, { seconds: dlg.seconds(), onDisconnect: releaseWallet, payNet: settleNet }));
       onChange?.();
     } catch (err) {
       btn.textContent = "Connect wallet";
-      dlg.replace(walletFailed(err, { seconds: dlg.seconds(), retry: ask, onDemo: toDemo }));
+      dlg.replace(walletFailed(err, { seconds: dlg.seconds(), retry: ask, onDisconnect: releaseWallet }));
     }
   };
 
-  btn.onclick = () => (btn.dataset.mode === "wallet" ? toDemo() : ask());
+  btn.onclick = () => (btn.dataset.mode === "wallet" ? releaseWallet() : ask());
 }
 
 /*
@@ -678,7 +678,7 @@ export function syncWalletGate(connected) {
       <div class="wgShell">
         <div class="wgCard">
           <div class="wgTop">
-            <span class="wgKicker">wallet required · demo mode disabled</span>
+            <span class="wgKicker">wallet required · private workspace</span>
             <span class="wgStamp">locked</span>
           </div>
           <div class="wgBody">
@@ -690,7 +690,7 @@ export function syncWalletGate(connected) {
             </div>
             <div class="wgCopy">
               <h1>Connect your Sui wallet to unlock this room.</h1>
-              <p class="wgLead">Shared demo mode has been removed so no visitor can pollute another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for the wallet you connect.</p>
+              <p class="wgLead">This room opens only for the wallet you connect, so no visitor can touch another person's Walrus memory, chats, reminders, limits or payment tickets. Every tool here speaks strictly for your own address.</p>
               <div class="wgGrid">
                 <div class="wgCell">
                   <span class="wgIdx">01 · walrus</span>
@@ -944,8 +944,8 @@ export function mountNetwork(onChange) {
       connectedWallet = "";
       let released = false;
       try {
-        const left = await post({ demo: true });
-        released = left?.source === "demo" || left?.source === "none";
+        const left = await post({ release: true });
+        released = left?.source === "none";
       } catch {
         /* the sheet below says the server kept the old address */
       }
@@ -1403,7 +1403,7 @@ export async function loadMeta(refresh) {
  * pages a judge reads while a wallet is connected from a earlier tab. Nothing about those
  * sentences is false about the cast, and everything about them is false about the reader,
  * so the difference has to be stated where it is being read rather than assumed from a
- * masthead line two scrolls away. In demo mode there is nothing to correct, so no line.
+ * masthead line two scrolls away. With no wallet there is nothing to correct, so no line.
  */
 export function castNotice(body) {
   if (body?.session?.source !== "wallet") return;

@@ -14,7 +14,7 @@
     "serve": "tsx src/server.ts",
     "sell": "tsx src/seller.ts",
     "stub": "tsx src/stub-model.ts",
-    "demo": "npm run stub & npm run sell & MODEL_BASE_URL=http://127.0.0.1:8899 MODEL_API_KEY=stub PAY_ENABLED=1 npm run serve",
+    "local": "npm run stub & npm run sell & MODEL_BASE_URL=http://127.0.0.1:8899 MODEL_API_KEY=stub PAY_ENABLED=1 npm run serve",
     "selftest": "tsx src/brain-test.ts",
     "selftest:live": "tsx src/brain-live-test.ts",
     "voicetest": "tsx src/speech-test.ts",

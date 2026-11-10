@@ -1,7 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * A monthly limit a person sets for one wallet, kept beside the seats rather than in
@@ -9,9 +10,9 @@ import { DatabaseSync } from "node:sqlite";
  * the person writes for themselves, not a control the server enforces: nothing here
  * blocks a payment, it only tells the truth about how much of the month is gone.
  *
- * The owner is the wallet when one is connected and the seat when the demo story is
- * being read. A demo visitor setting a limit must not change the number the next
- * visitor sees, and a connected person should find their limit again on a phone.
+ * The owner is the wallet when one is connected and the seat otherwise. A visitor
+ * without a wallet setting a limit must not change the number the next visitor sees,
+ * and a connected person should find their limit again on a phone.
  */
 export const DEFAULT_CAP_DB = fileURLToPath(new URL("../data/caps.db", import.meta.url));
 
@@ -26,7 +27,7 @@ function open(): DatabaseSync | null {
   try {
     const file = process.env.CAPS_DB ?? DEFAULT_CAP_DB;
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    const made = new DatabaseSync(file);
+    const made = openDatabase(file);
     made.exec(`create table if not exists caps (
       owner text primary key,
       monthly_base integer not null,

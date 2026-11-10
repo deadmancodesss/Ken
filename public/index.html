@@ -88,18 +88,19 @@
       .cta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
       .cta a { border-bottom: 0; }
 
-      /* The product itself, running. Every number in here is read from the same
-         server the agent answers from, so nothing in this card is invented. */
-      .demo { border: 1px solid var(--rule-strong); border-radius: 14px; background: var(--paper); overflow: hidden; box-shadow: none; }
-      .demo .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 14px 16px; border-bottom: 1px solid var(--rule); }
+      /* The product itself, running. With a wallet connected every number is read
+         from the same server the agent answers from. With none, the card runs a
+         labelled showcase and says so beside the amount. */
+      .preview { border: 1px solid var(--rule-strong); border-radius: 14px; background: var(--paper); overflow: hidden; box-shadow: none; }
+      .preview .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 14px 16px; border-bottom: 1px solid var(--rule); }
       /* The wallet label and the balance used to share one line. At the card's real
          width that squeezed the unit into a five-line column and silently changed the
          card's height when the balance arrived, which moved the whole page. They get a
          line each now, and every line truncates instead of wrapping. */
-      .demo .top .chip { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
-      .demo .top .bal { flex: 1 1 auto; display: flex; align-items: baseline; gap: 8px; min-width: 0; text-align: left; }
-      .demo .top .bal b { flex: 0 0 auto; font: 400 var(--step-2)/1.1 var(--serif); font-variant-numeric: tabular-nums; }
-      .demo .top .bal span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
+      .preview .top .chip { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: var(--step--1)/1 var(--mono); color: var(--ink-2); }
+      .preview .top .bal { flex: 1 1 auto; display: flex; align-items: baseline; gap: 8px; min-width: 0; text-align: left; }
+      .preview .top .bal b { flex: 0 0 auto; font: 400 var(--step-2)/1.1 var(--serif); font-variant-numeric: tabular-nums; }
+      .preview .top .bal span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
       .faces { display: flex; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--rule); overflow: hidden; }
       .face { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; border: var(--edge) solid var(--rule-strong); border-radius: 999px; padding: 4px 11px 4px 4px; transition: border-color var(--t-1) var(--ease); }
       .face:hover { border-color: var(--ink-2); }
@@ -124,11 +125,11 @@
       /* Both of these are flex or grid, and a class that sets display beats the hidden
          attribute, so a card trying to fall back to a blank state would keep showing the
          question it had just decided not to ask. */
-      .ask[hidden], .ans[hidden], .demo .blank[hidden] { display: none; }
+      .ask[hidden], .ans[hidden], .preview .blank[hidden] { display: none; }
       /* Nothing has been read about a brand new wallet, and a card that types an invented
          sentence over a real address is a card making things up about the person looking at
          it. So the card says it has nothing, in the same box. */
-      .demo .blank { margin: 0; padding: 18px 16px; font: var(--step--1)/1.7 var(--mono); color: var(--ink-2); }
+      .preview .blank { margin: 0; padding: 18px 16px; font: var(--step--1)/1.7 var(--mono); color: var(--ink-2); }
 
       /* Three things sit behind the same 402 wall, so they are shown as three of one
          kind rather than as three features. */
@@ -403,13 +404,13 @@
             </div>
           </div>
 
-          <div class="demo" id="demo">
+          <div class="preview" id="preview">
             <div class="top">
-              <span class="chip" id="demoWallet">reading wallet…</span>
-              <span class="bal"><b id="demoBal">·</b><span id="demoUnit">USDC available</span></span>
+              <span class="chip" id="previewWallet">reading wallet…</span>
+              <span class="bal"><b id="previewBal">·</b><span id="previewUnit">USDC available</span></span>
             </div>
             <div class="faces" id="faces"></div>
-            <div class="ask" id="demoAsk">
+            <div class="ask" id="previewAsk">
               <span class="you">you</span>
               <span class="line"><span id="typed"></span><i class="caret"></i></span>
             </div>
@@ -418,7 +419,7 @@
               <div class="bar"><i id="ansBar"></i></div>
               <div class="meter" id="ansMeter"></div>
             </div>
-            <p class="blank" id="demoBlank" hidden></p>
+            <p class="blank" id="previewBlank" hidden></p>
           </div>
 
           <figure class="plate cut">
@@ -919,7 +920,7 @@
       ];
 
       /* When a wallet is connected, the hero runs against real wallet data; when
-         unconnected, it runs the self-contained showcase so no shared demo wallet exists. */
+         unconnected, it runs the self-contained showcase so no shared wallet exists. */
       function script(state) {
         if (state?.session?.source !== "wallet") return SHOWCASE_SCRIPT;
         const named = state.parties.filter((p) => p.name && !p.service);
@@ -966,8 +967,8 @@
 
       function showBalance(owned) {
         if (!owned) {
-          $("demoBal").textContent = "12.60";
-          $("demoUnit").textContent = "USDC · showcase preview";
+          $("previewBal").textContent = "12.60";
+          $("previewUnit").textContent = "USDC · showcase preview";
           $("liveBal").textContent = "—";
           $("liveBalUnit").textContent = "connect wallet to read";
           return;
@@ -983,13 +984,13 @@
               : top.amount > 0
                 ? `${top.symbol} available${typeof top.usd === "number" ? ` · about $${top.usd.toFixed(2)}` : ""}`
                 : "nothing in this wallet yet";
-            $("demoBal").textContent = amount;
-            $("demoUnit").textContent = unit;
+            $("previewBal").textContent = amount;
+            $("previewUnit").textContent = unit;
             $("liveBal").textContent = amount;
             $("liveBalUnit").textContent = unit;
           })
           .catch(() => {
-            $("demoUnit").textContent = "balance not read";
+            $("previewUnit").textContent = "balance not read";
             $("liveBalUnit").textContent = "balance not read";
           });
       }
@@ -1027,7 +1028,7 @@
       async function run(state) {
         if (!state?.session) return;
         const owned = state.session.source === "wallet" && Boolean(state.session.wallet);
-        $("demoWallet").textContent = owned
+        $("previewWallet").textContent = owned
           ? `your wallet · ${shortAddr(state.session.wallet)} · ${state.session.network}`
           : "interactive showcase · connect wallet for live data";
         const named = owned ? (state.parties ?? []).filter((p) => p.name && !p.service) : SHOWCASE_CAST;
@@ -1048,9 +1049,9 @@
         showBalance(owned);
 
         const rows = script(state);
-        const ask = $("demoAsk");
+        const ask = $("previewAsk");
         const box = $("ans");
-        const blank = $("demoBlank");
+        const blank = $("previewBlank");
         if (!rows.length) {
           ask.hidden = true;
           box.hidden = true;
@@ -1073,7 +1074,7 @@
          * hold the frame at the tallest, and the words can change inside a card that
          * does not move.
          */
-        const demoCard = $("demo");
+        const previewCard = $("preview");
         let tallest = 0;
         for (const ask of rows) {
           typed.textContent = ask.ask;
@@ -1083,14 +1084,14 @@
             pills.innerHTML = "";
             r.meter.filter((m) => m[0]).forEach((m) => pills.append(pill(m[0], m[1])));
             box.classList.add("on");
-            tallest = Math.max(tallest, demoCard.getBoundingClientRect().height);
+            tallest = Math.max(tallest, previewCard.getBoundingClientRect().height);
           }
         }
         typed.textContent = "";
         $("ansText").textContent = "";
         $("ansMeter").innerHTML = "";
         box.classList.remove("on");
-        demoCard.style.minHeight = `${Math.ceil(tallest)}px`;
+        previewCard.style.minHeight = `${Math.ceil(tallest)}px`;
 
         let i = 0;
         const step = () => {

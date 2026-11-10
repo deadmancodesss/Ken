@@ -1,4 +1,4 @@
-/* GSAP is vendored into public/vendor rather than pulled from a CDN, so a demo-day
+/* GSAP is vendored into public/vendor rather than pulled from a CDN, so a venue
    network failure costs animation and not the page.
    Everything here is additive. If gsap never loads, or the visitor has asked for
    less motion, the page is already complete and correct without it, because the
@@ -37,7 +37,7 @@ export function heroScene() {
   if (!ready()) return;
   const g = window.gsap;
   const plate = document.querySelector(".hero .plate");
-  const card = document.getElementById("demo");
+  const card = document.getElementById("preview");
 
   squiggle(0.5);
   if (plate) g.from(plate, { y: 30, rotate: -1.2, opacity: 0, duration: 0.85, ease: "back.out(1.5)", delay: 0.15 });

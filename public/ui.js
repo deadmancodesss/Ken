@@ -1,6 +1,6 @@
 /*
  * The one dropdown in this build. Tom Select is vendored rather than fetched, because
- * a demo on a venue network cannot wait for a CDN, and it is wrapped here so every
+ * a page on a venue network cannot wait for a CDN, and it is wrapped here so every
  * picker gets the same paper shape, the same keyboard behaviour and the same quiet
  * scroll. A page loads the vendor files only if it has a select.
  */

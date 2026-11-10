@@ -1,20 +1,20 @@
-import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { currentSeat } from "./seat.js";
 import { session } from "./session.js";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * The conversation is a thing a person keeps, not a thing the process happens to hold.
  * It is stored per wallet so a reload, a server restart or a second device reads the
  * same turns back, and it is stored in SQLite so two requests cannot interleave into a
- * half written history the way a shared array could. The demo story has no wallet of
- * its own to be shared under, so those turns are keyed to the browser seat instead and
- * two judges never read each other's conversation.
+ * half written history the way a shared array could. A visitor with no wallet has no
+ * address to be shared under, so those turns are keyed to the browser seat instead and
+ * two visitors never read each other's conversation.
  *
- * One wallet can hold several conversations. The owner is the wallet (or the demo
+ * One wallet can hold several conversations. The owner is the wallet (or the browser
  * seat), a session is a named thread inside it, and a turn belongs to exactly one
  * owner::session pair. Voice and text write to the same pair, which is what lets a
  * spoken call continue as a typed question without repeating itself.
@@ -95,7 +95,7 @@ export function liveDelta(
 
 export function openChats(file: string) {
   if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
+  const db = openDatabase(file);
   db.exec(`
     create table if not exists turns (
       id integer primary key autoincrement,
@@ -344,13 +344,13 @@ export function openChats(file: string) {
 export type ChatStore = ReturnType<typeof openChats>;
 
 /**
- * A demo conversation belongs to one browser, because every visitor shares the demo
- * wallet and a wallet key would hand one judge another judge's transcript. A connected
- * wallet is the opposite: the address is the identity, so the same person on a phone
- * reads what they typed on a laptop.
+ * A conversation on a page with no wallet belongs to one browser, so nothing typed
+ * before a wallet is chosen can be read by another visitor. A connected wallet is the
+ * opposite: the address is the identity, so the same person on a phone reads what they
+ * typed on a laptop.
  */
 export function chatKey(): string {
   const s = session();
-  if (s.source === "demo") return `demo:${currentSeat()?.id ?? "console"}:${s.network}`;
+  if (!s.wallet) return `seat:${currentSeat()?.id ?? "console"}:${s.network}`;
   return `wallet:${s.wallet.toLowerCase()}:${s.network}`;
 }

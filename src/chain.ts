@@ -14,7 +14,7 @@ function endpoint(net: Net): { url: string; key: string } {
  * Reads and memory answered on mainnet long before this, so the only thing that ever
  * pinned the build to testnet was a handful of coin addresses and network strings
  * copied between six files. PAY_NETWORK now sets all of them from the server
- * environment: the deployed app defaults to mainnet, and the recorded demo can name
+ * environment: the deployed app defaults to mainnet, and a testnet run can name
  * testnet in one line without touching code.
  */
 export const PAY_NET: Net = process.env.PAY_NETWORK === "testnet" ? "testnet" : "mainnet";
@@ -256,7 +256,7 @@ export type Holding = { symbol: string; amount: number; decimals: number; type?:
  * The read this replaces took a list of coin types we wrote, so a wallet holding a coin
  * that never occurred to us read as an empty wallet, and on mainnet the list was one coin
  * because nobody here had verified another. This asks the chain what is there instead.
- * Measured on the demo wallet on 2026-11-04: SUI 1.058194424 and USDC 12.631540, both
+ * Measured on the testnet agent wallet on 2026-11-04: SUI 1.058194424 and USDC 12.631540, both
  * with their own decimals, in one request.
  *
  * The metadata is a second request rather than a field beside each balance because a

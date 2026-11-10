@@ -28,7 +28,7 @@ export type Note = {
 
 /**
  * A note is somebody's writing, so the checks are run against a scratch file rather
- * than against the links on this machine. The demo's own notes are never a test fixture.
+ * than against the links on this machine. The notes this build serves are never a test fixture.
  */
 const FILE = process.env.NOTES_FILE ?? new URL("../data/notes.json", import.meta.url).pathname;
 const ADDRESS = /^0x[0-9a-fA-F]{64}$/;

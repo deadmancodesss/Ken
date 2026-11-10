@@ -3,7 +3,7 @@
  * them. They are public chain addresses, not secrets.
  *
  * The testnet faucet address was read from the faucet's own challenge on 2026-11-04
- * (GET /v3/challenge) and matched a transfer already in the demo wallet's history.
+ * (GET /v3/challenge) and matched a transfer in the testnet history this build reads.
  * A faucet can rotate its sending address, so a miss falls back to the raw address
  * rather than to a guess about what the address is.
  */

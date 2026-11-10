@@ -27,7 +27,7 @@ globalThis.fetch = (async () =>
 const { PAY_CHAIN, PAY_NET } = await import("./chain.js");
 const { runTool, TOOLS } = await import("./tools.js");
 const { seatFor, within } = await import("./seat.js");
-const { useDemoWallet, useWallet } = await import("./session.js");
+const { useNoWallet, useWallet } = await import("./session.js");
 const { capUsdc } = await import("./cap.js");
 const { makeRequest, requestTurn } = await import("./requests.js");
 const { requestNeed } = await import("../public/format.js");
@@ -60,9 +60,9 @@ const money = async (args: Record<string, unknown>) =>
 const limit = async (args: Record<string, unknown>) =>
   (await within(seat, () => runTool("set_monthly_limit", args))) as Record<string, any>;
 
-within(seat, () => useDemoWallet());
-const demo = await money({ usdc: 2 });
-expect("the demo story cannot make a link, because nobody can pay it", demo.needs_wallet === true);
+within(seat, () => useNoWallet());
+const none = await money({ usdc: 2 });
+expect("without a wallet the form waits for one, because nobody can pay it", none.needs_wallet === true);
 
 const other = PAY_NET === "mainnet" ? "sui:testnet" : "sui:mainnet";
 within(seat, () => useWallet(A, other));

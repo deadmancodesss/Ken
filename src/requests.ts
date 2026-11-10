@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import type { Net } from "./chain.js";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * A request is an ask, never a payment. It holds a recipient, an amount and a line of
@@ -143,7 +144,7 @@ function open(): DatabaseSync | null {
   try {
     const file = process.env.REQUESTS_DB ?? DEFAULT_REQUEST_DB;
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    const made = new DatabaseSync(file);
+    const made = openDatabase(file);
     made.exec(`create table if not exists requests (
       id text primary key,
       to_addr text not null,

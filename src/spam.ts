@@ -1,14 +1,15 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { ownerKey } from "./owner.js";
+import { openDatabase } from "./sqlite.js";
 
 /**
  * A mark is a person's own judgement about an address, so it has to outlive the tab
  * that wrote it. It belongs to the wallet, not the browser and not the ledger, because
- * the same address is the same counterparty on Mainnet and on testnet. A demo seat has
- * no wallet to hang it on, so the seat is the owner instead.
+ * the same address is the same counterparty on Mainnet and on testnet. A visitor with
+ * no wallet has none to hang it on, so the seat is the owner instead.
  *
  * Reads and writes are guarded separately from the seat store. A mark that silently
  * failed to save would be worse than no mark at all, because the warning that never
@@ -25,7 +26,7 @@ function open(): DatabaseSync | null {
   try {
     const file = process.env.SPAM_DB ?? DEFAULT_SPAM_DB;
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
-    const made = new DatabaseSync(file);
+    const made = openDatabase(file);
     made.exec(`create table if not exists marks (
       owner text not null,
       address text not null,
