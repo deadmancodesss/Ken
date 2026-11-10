@@ -51,6 +51,22 @@ The buyer and the seller cannot be the same call stack, so they are two processe
 
 The price is one cent for a profile, three cents above twenty transactions because a busy wallet costs the seller more Tatum reads. The reason is published in the 402 reply. The buyer has its own ceiling in `PAID_MAX_USDC`, and a quote above it is refused rather than paid. A resource already sold to your wallet answers free, and a lost response can be retried with the same signed envelope without moving money twice.
 
+### Who pays on mainnet
+
+On `sui:mainnet` the payer is always the wallet connected in the browser, and the money comes out of that wallet's own USDC. There is no shared bankroll and no server key holding a person's money. Saving a name is a Walrus write and costs nothing. Sending a payment, paying a request link or buying a fact starts from `prepareUsdc` or `preparePayment`, which builds bytes for the connected address and stops. The signature happens inside the wallet extension.
+
+| Paid action | What the wallet does | What the server does |
+| --- | --- | --- |
+| Save a name | Nothing | Writes the alias to this wallet's Walrus namespace. This is not a payment. |
+| Send USDC or SUI | Signs and executes | Reads the transaction back from Sui before writing the receipt to memory |
+| Pay a request link | Signs and executes | Checks the transfer matches the requested amount, address and network |
+| Buy a fact over x402 | Signs only, no broadcast | Hands the signed bytes to the seller, whose facilitator verifies, simulates and broadcasts |
+| Check a digest or open a paid link | Signs only, no broadcast | Same envelope path, then writes the bought fact to memory |
+
+The agent's own key can sign only on testnet. `keySpendAllowed()` throws on mainnet, so `signUsdc` and `payCoin` cannot move real money even if a route called them by mistake. A per-payment cap of 5 USDC and a per-fact ceiling of 0.02 USDC (`PAID_MAX_USDC`) sit in front of every signature by default.
+
+Gas is the one thing USDC does not cover. A mainnet payer needs a little SUI in the same account, or USDC held in the Sui address balance at 0.01 USDC or more, which Sui can move with a zero-fee transaction. `preparePayment` prefers ordinary coin objects and rebuilds the transfer in the gasless shape only when the ordinary build fails for want of SUI. If an older wallet extension cannot read the newer address-balance input, it answers "Invalid input" before its popup. The page catches that exact refusal and says the wallet is too old, that nothing was signed and no money moved, instead of showing the raw error.
+
 ## One agent, many surfaces
 
 | Surface | What Ken does there |
@@ -87,6 +103,12 @@ The price is one cent for a profile, three cents above twenty transactions becau
 
 <p align="center"><em>The call dock under the same thread. Listening, one voice, one way to end it.</em></p>
 
+<p align="center">
+  <img src="docs/assets/request-qr.png" alt="Request page with a 5 USDC request for funding, a copy link, a QR code labelled scan to open, and a countdown that closes the link" width="880">
+</p>
+
+<p align="center"><em>A request link made from the same chat. The QR opens the same page, the countdown closes it, and the page cannot pay itself.</em></p>
+
 ## What each service does
 
 | Piece | What it does here |
@@ -94,7 +116,7 @@ The price is one cent for a profile, three cents above twenty transactions becau
 | Tatum | Every chain read. Balances, transactions, counterparty history, on both mainnet and testnet, through the Sui GraphQL gateway. |
 | Walrus Memory | The agent's long term memory. Names, notes and bought receipts live in per wallet namespaces on mainnet, so a fresh session already knows who Sana is. |
 | Voice | One chat with two ways in. Type, or open the call sheet and talk. The microphone stays open, the answer arrives as speech, and every finished turn is written into the same chat, so a refresh does not erase it. Five working voices, and the choice is saved. |
-| Payments | Standard x402 v2 over Sui, with a separate seller process. A price arrives in a `PAYMENT-REQUIRED` header, your wallet signs the exact transfer without sending it, the signed bytes leave in `PAYMENT-SIGNATURE`, and the seller's facilitator verifies and settles them without holding a key. The fact is written to memory so the same answer is never bought twice. |
+| Payments | Standard x402 v2 over Sui, with a separate seller process. A price arrives in a `PAYMENT-REQUIRED` header, your wallet signs the exact transfer without sending it, the signed bytes leave in `PAYMENT-SIGNATURE`, and the seller's facilitator verifies and settles them without holding a key. On mainnet the connected wallet is the only payer, because the agent's own key refuses to sign there. The fact is written to memory so the same answer is never bought twice. |
 
 ## Where it fits
 
@@ -116,7 +138,7 @@ Nothing here is a page framework. The hard parts are the wallet, the memory, the
 | Memory | Walrus MemWal, one namespace per wallet. |
 | Payments | x402 v2 wire and a self-hosted facilitator, USDC and SUI on Sui. |
 | AI | Raw HTTP to Gemini and NVIDIA NIM, Gemini Live for calls, Fish and OpenRouter for speech. |
-| Tests | `tsc`, `node --check` and 27 TypeScript test scripts. No test framework. |
+| Tests | `tsc`, `node --check` and 28 TypeScript test scripts. No test framework. |
 
 ## Run it
 
@@ -162,7 +184,7 @@ Four files stay outside the replica. `data/notes.json` (the notes offered for sa
 | Walrus Memory | `people_you_know`, `who_is_this`, `name_a_person`, `find_person`, `remember_this`, `what_do_i_remember`, `memory_stats` | Scoped per wallet namespace. `find_person` fuzzy-matches voice recall, while spend tools demand exact address match. |
 | Safety & Limits | `mark_spam`, `unmark_spam`, `spam_marks`, `set_monthly_limit` | Per-owner SQLite spam guard blocks blind sends. Cap meter reports red/amber/green spend state. |
 | Briefs & Alarms | `make_report`, `remind_me`, `reminders`, `cancel_reminder` | Server typesets statements straight from reads (zero model totals). Background ticker fires due reminders. |
-| Payments | `pay_usdc`, `pay_sui`, `request_money` | Builds unsigned PTBs (`pay_usdc`/`pay_sui` share one path) or time-boxed USDC QR links. Browser wallet signs. |
+| Payments | `pay_usdc`, `pay_sui`, `request_money` | Builds unsigned PTBs (`pay_usdc`/`pay_sui` share one path) or time-boxed USDC QR links. The connected wallet signs. `preparePayment` prefers coin objects, then falls back to the zero-fee address-balance shape when USDC is all the account has. |
 | x402 Paid Index | `paid_lookup`, `verify_payment`, `open_paid_link` | Pays `0.01`–`0.03 USDC` for address dossiers, digest checks, or locked notes. Writes receipt back to Walrus. |
 
 ## Core guarantees
@@ -171,6 +193,6 @@ Four files stay outside the replica. `data/notes.json` (the notes offered for sa
 | --- | --- | --- |
 | Isolation | Per-browser seats (`AsyncLocalStorage` + `tr_seat`), Wallet Standard gate on workspace routes & `/speak` | Ed25519 challenge proof on connect/switch. SQLite tables keyed by `owner` (`sessions`, `marks`, `caps`, `reminders`). |
 | Chain Reads | Reverse chronological Tatum paging (`last` + `before`) with `429` retry + CoinGecko USD lookup | Separates SUI vs USDC decimals, labels & excludes faucet from people, omits USD total if price feed fails. |
-| Non-Custody | Two-process x402 market (`8787` buyer / `8788` facilitator+seller) + client-side PTB signing | Server holds zero user keys. Facilitator simulates balance deltas before broadcast. Replay & `PAID_MAX_USDC` guards. |
+| Non-Custody | Two-process x402 market (`8787` buyer / `8788` facilitator+seller) + client-side PTB signing | Server holds zero user keys, and its own signing key is testnet-only. Facilitator simulates balance deltas before broadcast. Replay & `PAID_MAX_USDC` guards. |
 | Voice & Proof | Plain `node:http` SSE live audio (zero WS libs) + Gemini Live + 83-language TTS (`/speak`) | Acoustic echo floor-gating, ungrounded model digits stripped, exported statements drawn deterministically. |
 | Paid Knowledge | `/ask` locks stored Walrus lines by owner. `open_paid_link` pays writer & caches to buyer memory | Server reads words back from store only after chain settlement. `/earned` sums verified receipts only. |
