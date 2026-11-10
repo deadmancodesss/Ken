@@ -19,7 +19,6 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 COPY public/ ./public/
 COPY tools/ ./tools/
-COPY docs/assets/ ./docs/assets/
 
 # Prepare data directory for SQLite storage and assign ownership to node user
 RUN mkdir -p /app/data && chown -R node:node /app

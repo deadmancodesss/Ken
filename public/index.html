@@ -281,6 +281,14 @@
       .tk2-note.hi::before, .tk2-note.hi::after { background: var(--clay); }
       .tk2-note.hi b { color: var(--clay); }
 
+      /* Languages section, matching the editorial ink ledger rhythm */
+      .langGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-top: 22px; }
+      .langPill { background: var(--paper); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 11px 14px; display: grid; gap: 5px; }
+      .langPill .lpHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+      .langPill .lpHead b { font: 400 var(--step-0)/1.1 var(--serif); color: var(--ink); }
+      .langPill .lpHead span { font: 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--clay); }
+      .langPill em { font: italic var(--step--1)/1.45 var(--serif); color: var(--ink-2); display: block; }
+
       @media (max-width: 900px) {
         .tk2 { grid-template-columns: minmax(0, 1fr); grid-template-areas: "copy" "obj" "marks"; gap: 34px; }
         .tk2-marks { grid-template-columns: minmax(0, 1fr); gap: 14px; }
@@ -749,6 +757,51 @@
                 <figcaption>This is the live card, not a picture of one. It reads whichever wallet this page is speaking for, and <a href="/report">the Statement page</a> will print it or save it as an image.</figcaption>
               </figure>
             </div>
+          </div>
+        </section>
+
+        <section id="languages">
+          <div class="split">
+            <div class="split-copy reveal">
+              <div class="kicker">Any language</div>
+              <h2>Speak naturally. Ken answers in your tongue.</h2>
+              <p class="lead">
+                Ken is not locked to English. Ask in Spanish, Hindi, French, Japanese, German, or Arabic and the
+                live voice and text pipeline understands your intent and replies back in the same language, without
+                a manual switcher.
+              </p>
+              <div class="langGrid">
+                <div class="langPill">
+                  <div class="lpHead"><b>Español</b><span>es</span></div>
+                  <em>"¿Cuánto USDC me queda en mi límite?"</em>
+                </div>
+                <div class="langPill">
+                  <div class="lpHead"><b>हिन्दी</b><span>hi</span></div>
+                  <em>"डिजाइनर को 0.5 USDC एडवांस भेज दो"</em>
+                </div>
+                <div class="langPill">
+                  <div class="lpHead"><b>Français</b><span>fr</span></div>
+                  <em>"Enregistre le designer d'intérieur"</em>
+                </div>
+                <div class="langPill">
+                  <div class="lpHead"><b>日本語</b><span>ja</span></div>
+                  <em>"今月の送金履歴と残高を見せて"</em>
+                </div>
+                <div class="langPill">
+                  <div class="lpHead"><b>Deutsch</b><span>de</span></div>
+                  <em>"Setze mein Monatslimit auf 25 USDC"</em>
+                </div>
+                <div class="langPill">
+                  <div class="lpHead"><b>العربية</b><span>ar</span></div>
+                  <em>"كم الرصيد المتبقي في محفظتي؟"</em>
+                </div>
+              </div>
+              <p class="note" style="margin-top: 20px;">Fish Audio detects language directly from the text across 83 languages, while Gemini Live handles spoken conversation in real time.</p>
+            </div>
+            <figure class="plate mid split-visual reveal">
+              <img src="/assets/how-switchboard.webp" width="1100" height="628" loading="lazy" decoding="async" alt="Four cartoon helpers passing a message across a wooden desk" />
+              <figcaption>Ask in whatever language you think in. The helpers understand the request and speak the answer back in the same tongue.</figcaption>
+            </figure>
           </div>
         </section>
 
