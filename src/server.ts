@@ -1568,6 +1568,7 @@ async function handle(req: any, res: any) {
       "/how": "how.html",
       "/life": "life.html",
       "/report": "report.html",
+      "/blog": "blog.html",
     };
     // One page serves every link, because the id belongs in the URL the person sends
     // rather than in a file per note. A request is the same shape as a paid note.
@@ -1580,7 +1581,7 @@ async function handle(req: any, res: any) {
           : url.pathname.replace(/^\/+/, ""));
     const body = file && !file.includes("..") ? await readFile(join(PUBLIC, file)).catch(() => null) : null;
     if (!body) return json(res, 404, { error: "not found" });
-    const PUBLIC_HTML = new Set(["index.html", "how.html", "features.html", "life.html", "open.html"]);
+    const PUBLIC_HTML = new Set(["index.html", "how.html", "features.html", "life.html", "open.html", "blog.html"]);
     const isGatedHtml = extname(file) === ".html" && !PUBLIC_HTML.has(file);
     const connected = session().source === "wallet" && Boolean(session().wallet);
     let out: Buffer | string = body;

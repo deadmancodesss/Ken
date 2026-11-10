@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/assets/ken-mark.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build log · Ken, a personal agent for a Sui wallet</title>
+    <meta
+      name="description"
+      content="How Ken was built in seven days: every screen, the bugs that changed the design, a homemade Cloudflare image generator, and the two demos."
+    />
+    <meta property="og:title" content="Build log · Ken" />
+    <meta
+      property="og:description"
+      content="Seven days, one agent, and every wall in between. The screens, the bugs, the drawings, and the two demos."
+    />
+    <meta property="og:image" content="https://ken-agent.onrender.com/assets/blog/chat.webp" />
+    <link rel="stylesheet" href="/theme.css" />
+    <style>
+      .wrap { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); }
+      main { overflow-x: clip; }
+      section { position: relative; padding: clamp(54px, 5.4vw, 84px) 0; }
+      section::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 1px; background: var(--rule); transform: translateX(-50%); }
+      section:last-of-type::after { display: none; }
+
+      .kicker { font: var(--step--1)/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 20px; }
+      h2 { font-size: clamp(28px, 3vw, var(--step-4)); margin-bottom: 8px; max-width: 24ch; }
+      .lead { color: var(--ink-2); max-width: 62ch; margin-bottom: 34px; }
+      .note { margin-top: 20px; font: var(--step--1)/1.6 var(--mono); color: var(--ink-3); }
+      code { font: 0.9em/1.4 var(--mono); background: var(--paper-sunk); border: 1px solid var(--rule); border-radius: 4px; padding: 1px 5px; }
+
+      /* ---------- hero ---------- */
+      .heroSec { padding-top: clamp(40px, 4.2vw, 64px); padding-bottom: clamp(42px, 4vw, 60px); }
+      .heroGrid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr); gap: clamp(32px, 4.4vw, 70px); align-items: center; }
+      .heroGrid h1 { font: 400 clamp(34px, 5vw, 64px)/1.05 var(--serif); letter-spacing: -0.03em; margin: 0 0 18px; max-width: 15ch; }
+      .heroGrid .lead { font-size: var(--step-1); max-width: 56ch; margin-bottom: 0; }
+      .cta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 26px; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: var(--edge) solid var(--ink); border-radius: 999px; background: var(--ink); color: var(--paper); font: var(--step--1)/1 var(--mono); letter-spacing: 0.04em; transition: background var(--t-1) var(--ease), border-color var(--t-1) var(--ease), color var(--t-1) var(--ease); }
+      .btn:hover { background: var(--clay); border-color: var(--clay); color: var(--paper); }
+      .btn.ghost { background: var(--paper); color: var(--ink); }
+      .btn.ghost:hover { background: var(--paper-sunk); border-color: var(--ink); color: var(--ink); }
+      .heroGrid .note { max-width: 52ch; }
+
+      /* The mark sits on paper, not inside a ring or a badge. The paper rules above
+         and below it are the frame. */
+      .heroPlate { position: relative; border-top: var(--edge) solid var(--ink); border-bottom: var(--edge) solid var(--ink); padding: 24px 0 18px; }
+      .stamp { font: var(--step--1)/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--clay); }
+      .lockup { display: flex; align-items: center; margin: 16px 0 4px; }
+      .lockup img { display: block; width: clamp(76px, 9vw, 108px); height: auto; margin-right: -7px; }
+      .lockup .word { font: 400 clamp(44px, 5.2vw, 68px)/1 var(--serif); letter-spacing: -0.04em; }
+      .lockup .word i { font-style: normal; color: var(--clay); }
+      .lockupNote { font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .heroFacts { display: grid; margin: 20px 0 0; padding: 0; }
+      .heroFacts div { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-top: 1px dashed var(--rule-strong); }
+      .heroFacts dt { font: var(--step--1)/1.4 var(--mono); color: var(--ink-3); }
+      .heroFacts dd { margin: 0; font: var(--step-0)/1.4 var(--sans); text-align: right; }
+
+      .factsWrap { padding-bottom: clamp(42px, 4.2vw, 64px); }
+      .facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .facts div { background: var(--paper); padding: 16px 18px 18px; }
+      .facts b { display: block; font: 400 var(--step-3)/1.1 var(--serif); }
+      .facts span { display: block; margin-top: 2px; font: var(--step--1)/1.45 var(--mono); color: var(--ink-3); }
+
+      /* ---------- videos ---------- */
+      .videoGrid { display: grid; gap: 26px; }
+      .videoCard { border: var(--edge) solid var(--ink); border-radius: 16px; background: var(--paper); box-shadow: 7px 7px 0 var(--sheet); overflow: hidden; }
+      .videoTop { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 13px 18px; border-bottom: var(--edge) solid var(--rule-strong); background: var(--paper-sunk); }
+      .videoTop .no { font: var(--step--1)/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--clay); }
+      .videoTop .time { font: var(--step--1)/1 var(--mono); color: var(--ink-3); }
+      .frame { position: relative; aspect-ratio: 16 / 9; background: var(--ink); }
+      .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+      .videoFoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 15px 18px 17px; }
+      .videoFoot p { color: var(--ink-2); max-width: 62ch; }
+      .videoFoot a { font: var(--step--1)/1.3 var(--mono); white-space: nowrap; }
+
+      /* ---------- screenshots ---------- */
+      .gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+      .shot { margin: 0; border: var(--edge) solid var(--rule-strong); border-radius: 14px; overflow: hidden; background: var(--paper); box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .shot.full { grid-column: 1 / -1; }
+      .shotImg { background: var(--paper-sunk); border-bottom: 1px solid var(--rule); }
+      .shotImg img { display: block; width: 100%; height: auto; }
+      .shotCap { padding: 16px 18px 18px; display: grid; gap: 8px; }
+      .shotHead { display: flex; align-items: baseline; gap: 10px; }
+      .shotHead .no { font: var(--step--1)/1 var(--mono); color: var(--clay); letter-spacing: 0.08em; }
+      .shotHead h3 { font-size: var(--step-2); line-height: 1.2; }
+      .shotCap p { color: var(--ink-2); font-size: var(--step-0); }
+      .proof { border-top: 1px dashed var(--rule-strong); padding-top: 9px; font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); }
+      .proof b { color: var(--ink-2); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; margin-right: 6px; }
+      .shot.request { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+      .shot.request .shotImg { border-bottom: 0; border-right: 1px solid var(--rule); }
+      .shot.request .shotCap { align-content: center; padding: 26px 28px; }
+
+      /* ---------- story ---------- */
+      .startGrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr); gap: clamp(30px, 4vw, 64px); align-items: start; }
+      .startCopy p { color: var(--ink-2); max-width: 62ch; }
+      .startCopy p + p { margin-top: 14px; }
+      .startCopy .lead { margin-bottom: 16px; }
+      .timeline { border-left: var(--edge) solid var(--rule-strong); padding-left: 24px; display: grid; gap: 26px; }
+      .tl { position: relative; }
+      .tl::before { content: ""; position: absolute; left: -30px; top: 5px; width: 11px; height: 11px; border-radius: 50%; background: var(--paper); border: var(--edge) solid var(--clay); }
+      .tl time { font: var(--step--1)/1 var(--mono); color: var(--clay); }
+      .tl b { display: block; margin: 6px 0 4px; font: 400 var(--step-2)/1.25 var(--serif); }
+      .tl p { color: var(--ink-2); font-size: var(--step-0); max-width: 46ch; }
+
+      /* ---------- failures ---------- */
+      .wallList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .wallItem { background: var(--paper); padding: 20px 18px 20px; display: flex; flex-direction: column; gap: 8px; }
+      .wallItem .no { font: var(--step--1)/1 var(--mono); color: var(--clay); letter-spacing: 0.06em; }
+      .wallItem h3 { font-size: var(--step-2); line-height: 1.18; }
+      .wallItem p { color: var(--ink-2); font-size: var(--step-0); }
+      .tag { align-self: flex-start; margin-top: auto; border: 1px solid var(--rule-strong); border-radius: 999px; padding: 4px 9px; font: 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+      .tag.fixed { color: var(--moss); border-color: var(--moss); }
+      .tag.part { color: var(--brick); border-color: var(--brick); }
+      .tag.guard { color: var(--clay); border-color: var(--clay); }
+
+      /* ---------- plates ---------- */
+      .plateGrid { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(300px, 0.98fr); gap: clamp(30px, 4vw, 60px); align-items: center; }
+      .plateCopy p { color: var(--ink-2); max-width: 62ch; }
+      .plateCopy p + p { margin-top: 14px; }
+      .plateCarousel { min-width: 0; }
+      .plateViewport { display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); box-shadow: var(--lift) var(--lift) 0 var(--sheet); scrollbar-width: none; }
+      .plateViewport::-webkit-scrollbar { display: none; }
+      .plateSlide { flex: 0 0 100%; scroll-snap-align: start; display: flex; flex-direction: column; margin: 0; }
+      .plateFrame { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 10; padding: 10px; }
+      .plateFrame img { display: block; width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+      .plateSlide figcaption { padding: 0 18px 16px; font: var(--step--1)/1.5 var(--mono); color: var(--ink-3); }
+      .plateBar { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+      .plateCount { font: var(--step--1)/1 var(--mono); letter-spacing: 0.06em; color: var(--ink-3); }
+      .plateDots { display: flex; margin-left: auto; }
+      .plateDot { width: 28px; height: 28px; padding: 0; border: 0; background: none; display: grid; place-items: center; cursor: pointer; }
+      .plateDot::after { content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--rule-strong); opacity: 0.45; transition: background var(--t-1) var(--ease), opacity var(--t-1) var(--ease), transform var(--t-1) var(--ease); }
+      .plateDot[aria-current="true"]::after { background: var(--clay); opacity: 1; transform: scale(1.15); }
+      .plateDot:focus-visible { outline: 2px solid var(--clay); outline-offset: -4px; border-radius: 999px; }
+      .plateArrows { display: flex; gap: 6px; }
+      .plateBtn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border: var(--edge) solid var(--rule-strong); border-radius: 8px; background: var(--paper); color: var(--ink); font: 400 15px/1 var(--mono); cursor: pointer; box-shadow: 2px 2px 0 var(--sheet); }
+      .plateBtn:hover:not(:disabled) { background: var(--paper-sunk); }
+      .plateBtn:focus-visible { outline: 2px solid var(--clay); outline-offset: 2px; }
+      .plateBtn:disabled { opacity: 0.3; box-shadow: none; cursor: default; }
+
+      /* ---------- film ---------- */
+      .filmGrid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr); gap: clamp(30px, 4vw, 60px); align-items: start; }
+      .filmCopy p { color: var(--ink-2); max-width: 64ch; }
+      .filmCopy p + p { margin-top: 14px; }
+      .board { border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); box-shadow: var(--lift) var(--lift) 0 var(--sheet); padding: 18px 18px 16px; }
+      .boardHead { font: var(--step--1)/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+      .boardRow { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 4px 10px; padding: 13px 0; border-bottom: 1px dashed var(--rule); }
+      .boardRow time { font: var(--step--1)/1.25 var(--mono); color: var(--clay); }
+      .boardRow b { font: 400 var(--step-1)/1.2 var(--serif); }
+      .boardRow em { font: var(--step--1)/1.2 var(--mono); font-style: normal; color: var(--ink-3); }
+      .boardRow .bar { grid-column: 2 / -1; height: 5px; background: var(--paper-sunk); border-radius: 999px; overflow: hidden; }
+      .boardRow .bar i { display: block; height: 100%; width: var(--w); background: var(--clay); }
+      .boardFoot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 12px; font: var(--step--1)/1.3 var(--mono); color: var(--ink-3); }
+      .boardFoot b { color: var(--ink); font-weight: 400; }
+
+      /* ---------- marks ---------- */
+      .marks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; margin: 26px 0 32px; }
+      .markCard { display: block; border: var(--edge) solid var(--rule-strong); border-radius: 12px; background: var(--paper); overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); transition: background var(--t-1) var(--ease); }
+      .markCard:hover { background: var(--paper-sunk); }
+      .markPlate { display: flex; align-items: center; justify-content: center; height: 128px; padding: 20px; border-bottom: 1px solid var(--rule); }
+      .markPlate img { display: block; width: auto; height: auto; max-width: 88%; max-height: 42px; }
+      .markCard.tatum .markPlate { background: #efebff; }
+      .markCard.x402 .markPlate { background: #1f3a2a; }
+      .markCard.gemini .markPlate { background: #fbf6ec; }
+      .markCard.walrus .markPlate { padding: 0; background: #120e2e; }
+      .markCard.walrus .markPlate > span { display: block; width: 100%; height: 100%; }
+      .markCard.walrus .markPlate img { width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
+      .markMeta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 11px 14px 12px; }
+      .markMeta b { font: 400 var(--step-1)/1.2 var(--serif); }
+      .markMeta span { font: var(--step--1)/1.2 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+      .resLabel { margin: 0 0 12px; font: var(--step--1)/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+      /* ---------- resources ---------- */
+      .resGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: var(--edge) solid var(--rule-strong); border-radius: 12px; overflow: hidden; box-shadow: var(--lift) var(--lift) 0 var(--sheet); }
+      .res { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 3px 12px; padding: 15px 18px 16px; background: var(--paper); border-bottom: 0; color: var(--ink); transition: background var(--t-1) var(--ease); }
+      .res:hover { background: var(--paper-sunk); }
+      .resIcon { grid-row: 1 / 4; align-self: start; display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid var(--rule); border-radius: 9px; background: var(--paper); }
+      .resIcon img { display: block; width: auto; height: auto; max-width: 24px; max-height: 24px; }
+      .resIcon.gsap img { filter: brightness(0.62) saturate(1.1); }
+      .res .dom { color: var(--clay); font: var(--step--1)/1.2 var(--mono); }
+      .res b { font: 400 var(--step-1)/1.3 var(--serif); }
+      .res span:last-child { font: var(--step--1)/1.55 var(--mono); color: var(--ink-3); }
+
+      /* ---------- close ---------- */
+      .end { display: grid; justify-items: center; gap: 14px; text-align: center; }
+      .endLock { display: flex; align-items: center; margin-bottom: 4px; }
+      .endLock img { display: block; width: 72px; height: 72px; margin-right: -5px; }
+      .endLock .word { font: 400 52px/1 var(--serif); letter-spacing: -0.04em; }
+      .endLock .word i { font-style: normal; color: var(--clay); }
+      .end h2 { max-width: 22ch; }
+      .end .lead { text-align: center; margin: 0 auto; }
+      .end .cta { justify-content: center; margin-top: 4px; }
+      .end .note { max-width: 62ch; }
+
+      footer.page { border-top: 1px solid var(--rule); padding: 26px 0 40px; }
+      footer.page .inner { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad); display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+      .footMark { font-size: 16px; }
+      .footMark img { width: 22px; height: 22px; margin-right: -2px; }
+
+      @media (max-width: 980px) {
+        .wallList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 900px) {
+        .heroGrid, .startGrid, .plateGrid, .filmGrid { grid-template-columns: minmax(0, 1fr); }
+        .gallery { grid-template-columns: 1fr; }
+        .shot, .shot.full, .shot.request { grid-column: 1 / -1; }
+        .shot.request { display: block; }
+        .shot.request .shotImg { border-right: 0; border-bottom: 1px solid var(--rule); }
+        .resGrid { grid-template-columns: 1fr; }
+        .marks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 640px) {
+        .wallList { grid-template-columns: 1fr; }
+        .videoFoot { grid-template-columns: 1fr; }
+        .heroGrid h1 { max-width: none; }
+        .marks { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <a class="mark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="32" height="32" alt="" /><span class="word">en<i>.</i></span></a>
+      </div>
+      <nav class="tabs" id="siteMenu" aria-label="Main">
+        <div class="navExtra" id="navExtra"></div>
+        <a href="/app">Chat</a>
+        <a href="/memory">Memory</a>
+        <a href="/pay">Pay</a>
+        <a href="/request">Request</a>
+        <div class="more">
+          <button class="moreBtn" type="button" aria-expanded="false" aria-controls="moreMenu">More</button>
+          <div class="moreMenu" id="moreMenu" hidden>
+            <a href="/ask">Ask to pay</a>
+            <a href="/report">Statement</a>
+            <a href="/features">Features</a>
+            <a href="/how">How it works</a>
+            <a href="/life">In your life</a>
+            <a href="/blog" aria-current="page">Build log</a>
+          </div>
+        </div>
+      </nav>
+      <button class="menuBtn" type="button" data-menu aria-expanded="false" aria-controls="siteMenu" aria-label="Open menu">
+        <span class="bars" aria-hidden="true"><i></i><i></i></span>
+      </button>
+    </header>
+
+    <main>
+      <section class="heroSec">
+        <div class="wrap heroGrid">
+          <div>
+            <div class="kicker reveal">Build log · Tatum x Walrus · 3 to 10 November 2026</div>
+            <h1 class="reveal">Seven days, one agent, and every wall in between.</h1>
+            <p class="lead reveal">
+              Ken is a personal agent for a Sui wallet. It reads the chain through Tatum, keeps your people on Walrus, and pays a few cents for a fact it has not learned yet. This is the honest log: the screens, the bugs, the drawings, and the two demos.
+            </p>
+            <div class="cta reveal">
+              <a class="btn" href="#videos">Watch the demos</a>
+              <a class="btn ghost" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">Open the live app</a>
+              <a class="btn ghost" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">GitHub</a>
+            </div>
+            <p class="note reveal">The people in the demo are invented testnet wallets. The signatures, transactions and receipts are real.</p>
+          </div>
+          <aside class="heroPlate reveal" aria-label="Ken">
+            <div class="stamp">build log 01</div>
+            <div class="lockup">
+              <img src="/assets/ken-mark.svg" width="108" height="108" alt="" />
+              <span class="word">en<i>.</i></span>
+            </div>
+            <p class="lockupNote">A K, a coin, and a full stop.</p>
+            <dl class="heroFacts">
+              <div><dt>Solo build</dt><dd>no team, no handoffs</dd></div>
+              <div><dt>First commit</dt><dd>3 November 2026</dd></div>
+              <div><dt>Live on</dt><dd>mainnet, behind one switch</dd></div>
+            </dl>
+          </aside>
+        </div>
+      </section>
+
+      <div class="wrap factsWrap">
+        <div class="facts reveal">
+          <div><b>7</b><span>days from first commit to submission</span></div>
+          <div><b>31</b><span>test suites, 935 checks, one command</span></div>
+          <div><b>2</b><span>videos, one of them unedited</span></div>
+          <div><b>1</b><span>switch between mainnet and testnet</span></div>
+        </div>
+      </div>
+
+      <section id="videos">
+        <div class="wrap">
+          <div class="kicker reveal">Watch first</div>
+          <h2 class="reveal">Two videos. One is polished. One is not.</h2>
+          <p class="lead reveal">The product demo is 1:19. The walkthrough is 4:17 and has no cuts. Both run against a real wallet on the live build.</p>
+          <div class="videoGrid">
+            <article class="videoCard reveal">
+              <div class="videoTop"><span class="no">01 · product demo</span><span class="time">1:19</span></div>
+              <div class="frame">
+                <iframe
+                  src="https://www.youtube.com/embed/k0JhZUGnQAo?rel=0"
+                  title="Ken product demo"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowfullscreen
+                ></iframe>
+              </div>
+              <div class="videoFoot">
+                <p>The story, the real product screens, and the close. The demo cast is invented. The chain receipts are not.</p>
+                <a href="https://youtu.be/k0JhZUGnQAo" target="_blank" rel="noreferrer">Open on YouTube</a>
+              </div>
+            </article>
+
+            <article class="videoCard reveal">
+              <div class="videoTop"><span class="no">02 · working walkthrough</span><span class="time">4:17</span></div>
+              <div class="frame">
+                <iframe
+                  src="https://www.youtube.com/embed/E8R9kOI99Rw?rel=0"
+                  title="Ken working walkthrough demo"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowfullscreen
+                ></iframe>
+              </div>
+              <div class="videoFoot">
+                <p>One unedited pass through the working build. If the agent waits, the video waits with it.</p>
+                <a href="https://youtu.be/E8R9kOI99Rw" target="_blank" rel="noreferrer">Open on YouTube</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="screens">
+        <div class="wrap">
+          <div class="kicker reveal">The build, screen by screen</div>
+          <h2 class="reveal">Seven screens from the real build</h2>
+          <p class="lead reveal">
+            Five were captured on 8 November, two on 10 November. All seven come from the testnet demo wallet, so the network label says testnet. The current build defaults to mainnet and keeps testnet behind the switch.
+          </p>
+          <div class="gallery">
+            <figure class="shot full reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/chat.webp" width="1600" height="1001" alt="Ken chat thread on testnet with a balance read, one tool step and a question about planning income" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">01</span><h3>The first question</h3></div>
+                <p>A plain question turns into a balance read and an offer to plan the month. The answer sits above a tool step, not above a guess.</p>
+                <p class="proof"><b>What it proves</b> The reply is grounded in one chain read and the step is visible.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/payment.webp" width="1600" height="962" alt="A settled 0.03 USDC payment to Prakash, with a green check and a transaction digest" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">02</span><h3>A payment that lands</h3></div>
+                <p>0.03 USDC to Prakash. The wallet signed it, the chain settled it, and the digest is a link. The receipt is written only after the transfer is read back.</p>
+                <p class="proof"><b>What it proves</b> The green check is a chain lookup, not a UI state.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/wallet.webp" width="1600" height="926" alt="Wallet card showing Slush on testnet, 19.98 USDC, 4.997 SUI, four memories and the model name" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">03</span><h3>One card for the wallet</h3></div>
+                <p>Ledger switch, both coins, memory count and model in one place. PROVE LIVE asks the wallet to sign a zero-gas message without moving money.</p>
+                <p class="proof"><b>What it proves</b> Every number on the card came from a read. None is typed into the page.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot full reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/call.webp" width="1600" height="1001" alt="A live voice dock under the chat thread, listening, with one voice and an end call button" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">04</span><h3>A live call</h3></div>
+                <p>The same thread with a live voice dock under it. One voice, one way to end the call, and every finished turn written back into the same chat.</p>
+                <p class="proof"><b>What it proves</b> Voice and text share one memory instead of running as two products.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/memory.webp" width="1600" height="1001" alt="Memory page with a semantic search for Prakash, two stored names and the closest memories" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">05</span><h3>What Walrus remembers</h3></div>
+                <p>A semantic search for Prakash, two names it was given, and the closest stored rows with their payments. The slow part is free.</p>
+                <p class="proof"><b>What it proves</b> Memory answers first. The chain is the fallback, not the habit.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/statement.webp" width="1600" height="999" alt="Monthly statement showing 20.02 USDC in, 0.04 USDC out, the newest five moves and four things kept on Walrus" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">06</span><h3>The month, typeset</h3></div>
+                <p>Money in 20.02, money out 0.04, the newest five moves and what it cost to know. The faucet is labelled as a faucet and kept out of the people list.</p>
+                <p class="proof"><b>What it proves</b> The statement is assembled from receipts and reads, not generated prose.</p>
+              </figcaption>
+            </figure>
+
+            <figure class="shot request reveal">
+              <div class="shotImg">
+                <img src="/assets/blog/request.webp" width="900" height="944" alt="A 5 USDC request link for funding with a copy link button, a QR code and a countdown" loading="lazy" />
+              </div>
+              <figcaption class="shotCap">
+                <div class="shotHead"><span class="no">07</span><h3>A link that asks</h3></div>
+                <p>A 5 USDC request for funding with a copy link, a QR and a countdown. The page cannot pay itself. A different wallet has to open it.</p>
+                <p class="proof"><b>What it proves</b> A request link is a signature request, not a transfer.</p>
+              </figcaption>
+            </figure>
+          </div>
+          <p class="note reveal">The people in these screens are invented testnet wallets. The balances, digests and receipts were read from the chain.</p>
+        </div>
+      </section>
+
+      <section id="start">
+        <div class="wrap startGrid">
+          <div class="startCopy">
+            <div class="kicker reveal">How it started</div>
+            <h2 class="reveal">A smaller, stranger bet</h2>
+            <p class="lead reveal">
+              The first commit is dated 3 November 2026 and it is called Total Recall. The idea was narrow. A wallet agent should not read the chain every time you ask the same question. It should remember, and when it does not know, it should buy exactly one fact.
+            </p>
+            <p class="reveal">
+              The first build was voice only. Then the surfaces multiplied: a text chat, a live call, a monthly limit, a request link with a QR, a statement, a paid note sold over x402. They all had to share one wallet and one memory, or the product would be six demos in a trench coat.
+            </p>
+            <p class="reveal">
+              By 10 November it had a mainnet default, a seller process with its own wallet and ledger, 31 test suites and two videos. The name changed from Total Recall to Ken in the middle. The bet did not.
+            </p>
+          </div>
+          <div class="timeline reveal">
+            <div class="tl">
+              <time>3 November</time>
+              <b>Total Recall, first commit</b>
+              <p>Voice, memory, and one paid fact. The loop is already the whole idea.</p>
+            </div>
+            <div class="tl">
+              <time>7 November</time>
+              <b>The widening</b>
+              <p>Chat, live call, caps, reminders, spam marks, the x402 seller and its facilitator.</p>
+            </div>
+            <div class="tl">
+              <time>8 November</time>
+              <b>Both coins, one card</b>
+              <p>USDC and SUI, the wallet card, the statement, request links, the first screenshots.</p>
+            </div>
+            <div class="tl">
+              <time>9 and 10 November</time>
+              <b>The last mile</b>
+              <p>The demos, the mainnet payer path, the gasless USDC shape, and a test gate in front of every deploy.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="walls">
+        <div class="wrap">
+          <div class="kicker reveal">Nine things that broke</div>
+          <h2 class="reveal">The bugs that changed the design</h2>
+          <p class="lead reveal">None of these are hypothetical. Each one is in the git history, and each one changed either a screen or a guard.</p>
+          <div class="wallList">
+            <div class="wallItem reveal">
+              <span class="no">01</span>
+              <h3>USDC with no SUI for gas</h3>
+              <p>The first mainnet transfer assumed the fee came from SUI. A wallet can hold USDC and no SUI at all. Sui can move USDC from the address balance with a zero-fee transfer, so the builder tries the ordinary shape first and rebuilds the gasless shape only when SUI is missing. If neither fits, the page names the missing fee.</p>
+              <span class="tag fixed">fixed</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">02</span>
+              <h3>Invalid input before the popup</h3>
+              <p>An older extension read the newer address balance and answered Invalid input before it opened. The page now catches that exact refusal and says the wallet is too old, that nothing was signed, and that no money moved.</p>
+              <span class="tag fixed">fixed</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">03</span>
+              <h3>The payment that was remembered twice</h3>
+              <p>One settled transfer appeared twice in memory. Walrus has no delete verb, so the write carries an idempotency key and the read collapses duplicates. The store will not forget, so the fix is at both ends.</p>
+              <span class="tag fixed">fixed</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">04</span>
+              <h3>The mainnet key that refused</h3>
+              <p>The agent's own key can sign on testnet. On mainnet it throws. That refusal is the design: the only key allowed to move real money is the one inside the browser wallet.</p>
+              <span class="tag guard">guard</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">05</span>
+              <h3>Render wiped the room</h3>
+              <p>The free instance loses its disk on a cold start. Wallet sessions now come back from a signed cookie and the seat rebuilds. Chat history still sits in a local SQLite file that a redeploy can erase. Walrus is the durable record.</p>
+              <span class="tag part">partly solved</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">06</span>
+              <h3>The network switch left the seat behind</h3>
+              <p>Changing the ledger with a chat open could leave the seat reading the other network. The seat is now scoped to the network, and the transcript reloads when the switch moves.</p>
+              <span class="tag fixed">fixed</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">07</span>
+              <h3>The model picked a different tool</h3>
+              <p>Two identical runs chose different tools. The model is not deterministic. The tests now assert on the numbers in the answer, not the tool name, and the prompts name the exact read window.</p>
+              <span class="tag guard">mitigated</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">08</span>
+              <h3>The generated button turned to soup</h3>
+              <p>Flow made beautiful motion, then turned every small UI label into mush. Product screens in the demo are real captures. Generated footage only carries the story.</p>
+              <span class="tag">worked around</span>
+            </div>
+            <div class="wallItem reveal">
+              <span class="no">09</span>
+              <h3>Inbound money was invisible</h3>
+              <p>Tatum's address history links the signer, so money arriving at your address did not show up. Inbound transfers are now read from the counterparty's side of the history. The MONEY IN column on the statement is the proof.</p>
+              <span class="tag fixed">fixed</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="plates">
+        <div class="wrap">
+          <div class="plateGrid">
+            <div class="plateCopy">
+              <div class="kicker reveal">The drawings</div>
+              <h2 class="reveal">A homemade image generator, in one command</h2>
+              <p class="lead reveal">
+                Every drawing on this site came from a sentence. <code>npm run plate</code> sends that sentence to Cloudflare Workers AI with a locked style preamble, then pushes the paper to white so the drawing sits on the page without a frame.
+              </p>
+              <p class="reveal">The preamble names the palette before the scene: paper, brown-black ink, clay, moss, brick. No blue. No text. The same two people appear in every drawing, so the site reads as one book instead of a pile of stock art.</p>
+              <p class="reveal">Models are listed by shape, not by brand. The flux-2 family wants multipart, the older models want JSON, and the step field changes name. The script sniffs the returned container because half the models answer with JPEG bytes behind a PNG filename.</p>
+              <p class="reveal">The keyer is what makes it a site rather than a gallery. It lifts the paper to white, or keys it to transparency for the plates that move. A transformed parent would bring the white rectangle back, so the static plates never animate.</p>
+              <p class="reveal">The rest of the resources were hunted one at a time. The Tatum Sui GraphQL gateway, the Walrus memory SDK, the x402 v2 spec, the gasless stablecoin shape, and a system font stack so no page waits on a webfont. The vendor marks are the only borrowed images on the site. The other pages draw them in ink, this page keeps their own color, small icons included.</p>
+            </div>
+            <div class="plateCarousel reveal" data-plates role="group" aria-roledescription="carousel" aria-label="Generated drawings">
+              <div class="plateViewport">
+                <figure class="plateSlide" role="group" aria-roledescription="slide" aria-label="1 of 3">
+                  <div class="plateFrame"><img src="/assets/features-board.webp" width="1100" height="628" alt="An ink and wash drawing of a large cabinet with many labeled drawers" loading="lazy" /></div>
+                  <figcaption>The feature cabinet. One prompt, one locked palette, no frame.</figcaption>
+                </figure>
+                <figure class="plateSlide" role="group" aria-roledescription="slide" aria-label="2 of 3">
+                  <div class="plateFrame"><img src="/assets/how-switchboard.webp" width="1100" height="734" alt="An ink and wash drawing of a switchboard operator connecting lines by hand" loading="lazy" /></div>
+                  <figcaption>The switchboard on the How page. The white paper is keyed away so it can sit on the page.</figcaption>
+                </figure>
+                <figure class="plateSlide" role="group" aria-roledescription="slide" aria-label="3 of 3">
+                  <div class="plateFrame"><img src="/assets/memory-vault.webp" width="1100" height="734" alt="An ink and wash drawing of a vault holding paper slips and small objects" loading="lazy" /></div>
+                  <figcaption>The memory vault. The same two people and the same six colours across every plate.</figcaption>
+                </figure>
+              </div>
+              <div class="plateBar">
+                <span class="plateCount" data-plate-count aria-live="polite">01 / 03</span>
+                <div class="plateDots">
+                  <button type="button" class="plateDot" data-plate-dot="0" aria-label="Show drawing 1" aria-current="true"></button>
+                  <button type="button" class="plateDot" data-plate-dot="1" aria-label="Show drawing 2" aria-current="false"></button>
+                  <button type="button" class="plateDot" data-plate-dot="2" aria-label="Show drawing 3" aria-current="false"></button>
+                </div>
+                <div class="plateArrows">
+                  <button type="button" class="plateBtn" data-plate-prev aria-label="Previous drawing" disabled>&larr;</button>
+                  <button type="button" class="plateBtn" data-plate-next aria-label="Next drawing">&rarr;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="film">
+        <div class="wrap">
+          <div class="kicker reveal">The demo</div>
+          <h2 class="reveal">How a 2:06 storyboard became a 1:19 cut</h2>
+          <div class="filmGrid">
+            <div class="filmCopy">
+              <p class="reveal">The storyboard was two minutes and six seconds: 46 seconds of story, 72 seconds of product, 8 seconds of close. The product demo that shipped is 1:19. The walkthrough is 4:17 and has no cuts.</p>
+              <p class="reveal">The first plan was to generate the whole thing. Flow produced short motion shots with a consistent look, but it could not hold a UI. Keyframes morphed into each other instead of cutting, small labels turned into soup, and every attempt at a button looked like a button drawn from a description.</p>
+              <p class="reveal">So the division became simple. Generated shots carry the story. Real captures carry the product. The 1320x960 UI crops in the edit are the same screens in the gallery above, recorded on the real build.</p>
+              <p class="reveal">The second video exists because a polished demo can hide a hesitation. The walkthrough is one pass from end to end, with the waits left in. If the agent thinks for four seconds, you watch it think.</p>
+              <p class="reveal">The brainstorming was mostly about what not to show. Every feature wanted a shot. The cut kept the loop: a question, a memory, a payment, a receipt. Everything else became a page on this site.</p>
+            </div>
+            <div class="board reveal">
+              <div class="boardHead">storyboard · planned 2:06</div>
+              <div class="boardRow">
+                <time>0:00</time>
+                <b>Story</b>
+                <em>46 s</em>
+                <span class="bar"><i style="--w: 36.5%"></i></span>
+              </div>
+              <div class="boardRow">
+                <time>0:46</time>
+                <b>Product</b>
+                <em>72 s</em>
+                <span class="bar"><i style="--w: 57.1%"></i></span>
+              </div>
+              <div class="boardRow">
+                <time>1:58</time>
+                <b>Close</b>
+                <em>8 s</em>
+                <span class="bar"><i style="--w: 6.4%"></i></span>
+              </div>
+              <div class="boardFoot"><span>planned <b>2:06</b></span><span>shipped <b>1:19</b></span><span>walkthrough <b>4:17</b></span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="wrap">
+          <div class="kicker reveal">The stack</div>
+          <h2 class="reveal">What it is built on</h2>
+          <p class="lead reveal">Four marks carry the build. Every other service it actually uses sits below with its own mark. No affiliate links, no badges, no tracking.</p>
+          <div class="marks reveal">
+            <a class="markCard tatum" href="https://tatum.io" target="_blank" rel="noreferrer">
+              <span class="markPlate"><img src="/assets/vendors-color/tatum.svg" width="1026" height="211" alt="Tatum" loading="lazy" /></span>
+              <span class="markMeta"><b>Tatum</b><span>chain reads</span></span>
+            </a>
+            <a class="markCard walrus" href="https://walrus.xyz" target="_blank" rel="noreferrer">
+              <span class="markPlate"><img src="/assets/vendors-color/walrus.webp" width="640" height="336" alt="Walrus" loading="lazy" /></span>
+              <span class="markMeta"><b>Walrus</b><span>memory</span></span>
+            </a>
+            <a class="markCard x402" href="https://x402.org" target="_blank" rel="noreferrer">
+              <span class="markPlate"><img src="/assets/vendors-color/x402-cream.svg" width="486" height="187" alt="x402" loading="lazy" /></span>
+              <span class="markMeta"><b>x402</b><span>paid index</span></span>
+            </a>
+            <a class="markCard gemini" href="https://ai.google.dev/gemini-api/docs" target="_blank" rel="noreferrer">
+              <span class="markPlate"><img src="/assets/vendors-color/gemini.svg" width="288" height="65" alt="Gemini" loading="lazy" /></span>
+              <span class="markMeta"><b>Gemini</b><span>voice and brain</span></span>
+            </a>
+          </div>
+          <p class="resLabel reveal">Also in the build</p>
+          <div class="resGrid reveal">
+            <a class="res" href="https://sui.io" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/sui.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">sui.io</span><b>Sui</b>
+              <span>The chain. Mainnet and testnet behind one switch, USDC and SUI in the same wallet.</span>
+            </a>
+            <a class="res" href="https://sqlite.org" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/sqlite.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">sqlite.org</span><b>SQLite</b>
+              <span>Seats, chats, caps, requests, reminders and marks. Six WAL files through Node's own node:sqlite, with no database server to run.</span>
+            </a>
+            <a class="res" href="https://litestream.io" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/litestream.png" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">litestream.io</span><b>Litestream</b>
+              <span>Streams those six files to R2 every ten seconds, and restores a missing one before the app opens it.</span>
+            </a>
+            <a class="res" href="https://developers.cloudflare.com/r2/" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/cloudflare.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">developers.cloudflare.com</span><b>Cloudflare R2</b>
+              <span>The bucket those streams land in. Object storage on the free tier, because the free host wakes with an empty disk.</span>
+            </a>
+            <a class="res" href="https://developers.cloudflare.com/workers-ai/" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/cloudflare.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">developers.cloudflare.com</span><b>Cloudflare Workers AI</b>
+              <span>The plate generator. A sentence in, a drawing out, then a white key and a WebP encode.</span>
+            </a>
+            <a class="res" href="https://fish.audio" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/fish.png" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">fish.audio</span><b>Fish Audio</b>
+              <span>The voice that speaks first. It measured faster than the other two and is not throttled on my key.</span>
+            </a>
+            <a class="res" href="https://openrouter.ai" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/openrouter.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">openrouter.ai</span><b>OpenRouter</b>
+              <span>The second rung on the voice ladder. It carries a free HeyGen voice, so a Fish failure still speaks. It is a mouth, not the brain.</span>
+            </a>
+            <a class="res" href="https://build.nvidia.com" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/nvidia.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">build.nvidia.com</span><b>NVIDIA NIM</b>
+              <span>The fallback brain. When Gemini refuses or cools down, the same tool calls go to a Nemotron model.</span>
+            </a>
+            <a class="res" href="https://render.com" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/render.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">render.com</span><b>Render</b>
+              <span>Where the live build runs, behind a test gate in GitHub Actions.</span>
+            </a>
+            <a class="res" href="https://gsap.com" target="_blank" rel="noreferrer">
+              <span class="resIcon gsap"><img src="/assets/stack/greensock.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">gsap.com</span><b>GSAP</b>
+              <span>The scroll work on the landing page. Everything else is plain CSS and a small module.</span>
+            </a>
+            <a class="res" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/stack/github.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">github.com/deadmancodess</span><b>Ken on GitHub</b>
+              <span>The source, and the Actions run that has to pass before Render redeploys.</span>
+            </a>
+            <a class="res" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">
+              <span class="resIcon"><img src="/assets/ken-mark.svg" width="24" height="24" alt="" loading="lazy" /></span>
+              <span class="dom">ken-agent.onrender.com</span><b>The live app</b>
+              <span>Open it, connect a Sui wallet, and ask it something. Nothing moves without your signature.</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="end">
+        <div class="wrap end">
+          <div class="endLock reveal">
+            <img src="/assets/ken-mark.svg" width="72" height="72" alt="" />
+            <span class="word">en<i>.</i></span>
+          </div>
+          <h2 class="reveal">The build is live. The log is the honest part.</h2>
+          <p class="lead reveal">Open the app, connect a Sui wallet, and ask it something. The source is public.</p>
+          <div class="cta reveal">
+            <a class="btn" href="https://ken-agent.onrender.com" target="_blank" rel="noreferrer">ken-agent.onrender.com</a>
+            <a class="btn ghost" href="https://github.com/deadmancodess/Ken" target="_blank" rel="noreferrer">github.com/deadmancodess/Ken</a>
+          </div>
+          <p class="note reveal">Built solo for the Tatum x Walrus hackathon, 3 to 10 November 2026. The demo cast is invented. The chain receipts are real.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page">
+      <div class="inner">
+        <a class="mark footMark" href="/" aria-label="Ken, home"><img src="/assets/ken-mark.svg" width="22" height="22" alt="" /><span class="word">en<i>.</i></span></a>
+        <span class="quiet">built for the Tatum and Walrus hackathon</span>
+        <span class="quiet" style="margin-left: auto">nothing moves without your signature</span>
+      </div>
+    </footer>
+
+    <script type="module">
+      import { reveal } from "./shared.js";
+      reveal();
+
+      const carousel = document.querySelector("[data-plates]");
+      if (carousel) {
+        const viewport = carousel.querySelector(".plateViewport");
+        const slides = [...carousel.querySelectorAll(".plateSlide")];
+        const dots = [...carousel.querySelectorAll("[data-plate-dot]")];
+        const count = carousel.querySelector("[data-plate-count]");
+        const prev = carousel.querySelector("[data-plate-prev]");
+        const next = carousel.querySelector("[data-plate-next]");
+        const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const pad = (n) => String(n).padStart(2, "0");
+        let at = 0;
+        const paint = () => {
+          count.textContent = `${pad(at + 1)} / ${pad(slides.length)}`;
+          dots.forEach((dot, n) => dot.setAttribute("aria-current", n === at ? "true" : "false"));
+          prev.disabled = at === 0;
+          next.disabled = at === slides.length - 1;
+        };
+        const go = (n) => {
+          at = Math.max(0, Math.min(slides.length - 1, n));
+          viewport.scrollTo({ left: at * viewport.clientWidth, behavior: calm ? "auto" : "smooth" });
+          paint();
+        };
+        prev.addEventListener("click", () => go(at - 1));
+        next.addEventListener("click", () => go(at + 1));
+        dots.forEach((dot, n) => dot.addEventListener("click", () => go(n)));
+        let queued = false;
+        viewport.addEventListener("scroll", () => {
+          if (queued) return;
+          queued = true;
+          requestAnimationFrame(() => {
+            queued = false;
+            const seen = Math.round(viewport.scrollLeft / viewport.clientWidth);
+            if (seen !== at) {
+              at = seen;
+              paint();
+            }
+          });
+        }, { passive: true });
+        addEventListener("resize", () => viewport.scrollTo({ left: at * viewport.clientWidth, behavior: "auto" }));
+        paint();
+      }
+    </script>
+  </body>
+</html>
