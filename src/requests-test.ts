@@ -1,6 +1,6 @@
 process.env.REQUESTS_DB = ":memory:";
 
-const { makeRequest, findRequest, requestsBy, digestTaken, markRequestPaid, publicRequest, showUsdc } = await import(
+const { makeRequest, findRequest, requestsBy, digestTaken, markRequestPaid, publicRequest, requestExpired, showUsdc } = await import(
   "./requests.js"
 );
 
@@ -67,6 +67,7 @@ expect("another wallet is not the owner", publicRequest(made, { wallet: "0x" + "
 const late = publicRequest({ ...made, expires_at: Date.now() - 1 });
 expect("a link past its deadline is closed", late.expired === true && late.closed === "expired");
 expect("a closed link has no time left", late.expires_in === 0);
+expect("the expiry rule agrees with the public view", requestExpired(made) === false && requestExpired({ ...made, expires_at: Date.now() - 1 }) === true);
 
 expect("a malformed id is not looked up", findRequest("../../etc/passwd") === null);
 expect("a missing id is not invented", findRequest("AbCdEf123") === null);

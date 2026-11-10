@@ -5,7 +5,8 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "node tools/runner.mjs",
-    "test": "export SEATS_DB=:memory:; npm run typecheck && for f in public/*.js; do node --check \"$f\" || exit 1; done && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/x402wire-test.ts && tsx src/history-test.ts && tsx src/cap-test.ts && tsx src/requests-test.ts && tsx src/requests-network-test.ts && tsx src/pay-test.ts && tsx src/pay-guard-test.ts && tsx src/gasless-test.ts && tsx src/coins-test.ts && tsx src/seat-test.ts && tsx src/chats-test.ts && tsx src/sessions-test.ts && tsx src/address-test.ts && tsx src/spam-test.ts && tsx src/reminder-test.ts && tsx src/brief-test.ts && tsx src/report-test.ts && tsx src/note-test.ts && tsx src/earn-test.ts && tsx src/receipt-test.ts && tsx src/route-test.ts && tsx src/chat-actions-test.ts && tsx src/live-test.ts && tsx src/turn-http-test.ts && tsx src/brain-test.ts",
+    "test": "export SEATS_DB=:memory:; npm run typecheck && for f in public/*.js; do node --check \"$f\" || exit 1; done && VOICE_LIVE=0 tsx src/echo-test.ts && VOICE_LIVE=0 tsx src/speech-test.ts && tsx src/x402-test.ts && tsx src/x402wire-test.ts && tsx src/facilitator-test.ts && tsx src/pay-build-test.ts && tsx src/money-display-test.ts && tsx src/history-test.ts && tsx src/cap-test.ts && tsx src/requests-test.ts && tsx src/requests-network-test.ts && tsx src/pay-test.ts && tsx src/pay-guard-test.ts && tsx src/gasless-test.ts && tsx src/coins-test.ts && tsx src/seat-test.ts && tsx src/chats-test.ts && tsx src/sessions-test.ts && tsx src/address-test.ts && tsx src/spam-test.ts && tsx src/reminder-test.ts && tsx src/brief-test.ts && tsx src/report-test.ts && tsx src/note-test.ts && tsx src/earn-test.ts && tsx src/receipt-test.ts && tsx src/route-test.ts && tsx src/chat-actions-test.ts && tsx src/live-test.ts && tsx src/turn-http-test.ts && tsx src/brain-test.ts",
+    "coverage": "c8 --include 'src/**' --exclude 'src/*-test.ts' --reporter=text --reporter=text-summary --reporter=html npm test",
     "plumb": "tsx src/plumbing.ts",
     "plate": "node tools/plate.mjs",
     "agent": "tsx src/agent.ts",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "c8": "^12.0.0",
     "qrcode-generator": "^1.4.4",
     "typescript": "^6.0.3"
   }

@@ -29,11 +29,29 @@ process.env.SELLER_BUSY_TXS = "20";
 process.env.PAID_MAX_USDC = "0.02";
 
 const { createNote } = await import("./notes.js");
-const { sell, salesOf } = await import("./catalog.js");
+const {
+  busyPrice,
+  busyThreshold,
+  indexPayout: catalogIndexPayout,
+  sell,
+  salesOf,
+  sellerPrice,
+  sellerWallet: catalogSellerWallet,
+  tierPrice,
+} = await import("./catalog.js");
 const { addressOf, canonical, noteResourceId, parseResource, receiptResourceId, resourceId } = await import("./resources.js");
-const { overCeiling, priceCeiling, priceUsdc, buy } = await import("./x402.js");
+const {
+  overCeiling,
+  priceCeiling,
+  priceUsdc,
+  buy,
+  indexPayout: buyerIndexPayout,
+  price,
+  sellerWallet: buyerSellerWallet,
+  settleEnvelope,
+} = await import("./x402.js");
 const { coversTerms } = await import("./facilitator.js");
-const { decodeHeader, envelopeFromSigned, requirementsFor } = await import("./x402wire.js");
+const { decodeHeader, encodeHeader, envelopeFromSigned, requirementsFor } = await import("./x402wire.js");
 const { USDC_ASSET } = await import("./wallet.js");
 const { PAY_CHAIN } = await import("./chain.js");
 const { useNetwork } = await import("./session.js");
@@ -92,6 +110,29 @@ expect("the published price is the one the seller quotes", priceUsdc() === 0.01)
 expect("a quote at the ceiling is paid", overCeiling(priceCeiling()) === null);
 expect("a quote above the ceiling is refused", overCeiling(0.03) !== null);
 expect("the refusal says the number and how to raise it", /0\.02/.test(overCeiling(0.05) ?? "") && /PAID_MAX_USDC/.test(overCeiling(0.05) ?? ""));
+
+/* ---------- a price tier is published, not guessed ---------- */
+
+expect("the headline price is the configured one", sellerPrice() === 0.01);
+expect("a busy wallet has its own published price", busyPrice() === 0.03);
+expect("the busy threshold is published with the price", busyThreshold() === 20);
+expect("a wallet at the threshold pays the base price", tierPrice(20) === 0.01);
+expect("one transaction past the threshold pays the busy price", tierPrice(21) === 0.03);
+expect("a quiet wallet pays the base price", tierPrice(0) === 0.01);
+
+// The payout address is the one thing a price cannot be built without, so both the
+// seller and the buyer refuse a missing or half-written one instead of signing to "".
+const savedPayout = process.env.SELLER_WALLET;
+delete process.env.SELLER_WALLET;
+expect("both halves refuse to price with no payout address", throws(() => catalogSellerWallet()) && throws(() => buyerSellerWallet()));
+process.env.SELLER_WALLET = "0xnot-a-real-address";
+expect("a short payout address is refused by both halves", throws(() => catalogSellerWallet()) && throws(() => buyerSellerWallet()));
+expect(
+  "the raw payout still reads for a sentence that never pays it",
+  catalogIndexPayout() === "0xnot-a-real-address" && buyerIndexPayout() === "0xnot-a-real-address",
+);
+process.env.SELLER_WALLET = savedPayout;
+expect("the configured payout is handed back untouched", catalogSellerWallet() === INDEX && buyerSellerWallet() === INDEX);
 
 /* ---------- the facilitator's one money rule, against forged changes ---------- */
 
@@ -273,6 +314,111 @@ const run = async () => {
     crossed.http === 402 && /settlement happened on/.test(String((crossed.body as any).error)),
   );
   expect("a cross-ledger settlement writes nothing to the seller's books", salesOf(crossResource, otherNet).length === 0);
+
+  /* ---------- the buyer refuses a price it cannot verify ---------- */
+
+  const realFetch = globalThis.fetch;
+  let lastAsk = "";
+  const reply = (status: number, header?: string, body: unknown = {}, headerName = "payment-required") => {
+    const headers = new Headers();
+    if (header) headers.set(headerName, header);
+    return new Response(JSON.stringify(body), { status, headers });
+  };
+  const settled = (header: string, body: unknown = {}) => reply(200, header, body, "payment-response");
+  const accepted = requirementsFor({ resource, description: "fixture", payTo: INDEX, baseUnits: units });
+  const pricedAs = (patch: Record<string, unknown> = {}, version: unknown = 2) =>
+    encodeHeader({
+      x402Version: version,
+      error: "payment required",
+      resource: { url: resource, description: "fixture", mimeType: "application/json" },
+      accepts: [{ ...accepted, ...patch }],
+    });
+  const errorText = (p: any): string => String(p?.error ?? "");
+
+  globalThis.fetch = (async (url: unknown) => {
+    lastAsk = String(url);
+    return reply(402, pricedAs());
+  }) as typeof fetch;
+  const quoted = await price(resource, BUYER, payNet);
+  expect("a standard 402 is read into terms and a decimal price", "requirements" in quoted && quoted.usdc === 0.02);
+  expect(
+    "the ask names the resource, the payer and the ledger",
+    lastAsk.includes(encodeURIComponent(resource)) && lastAsk.includes(encodeURIComponent(BUYER)) && lastAsk.includes(`network=${payNet}`),
+  );
+
+  globalThis.fetch = (async () => reply(402)) as typeof fetch;
+  expect("a 402 without a PAYMENT-REQUIRED header is not guessed at", /PAYMENT-REQUIRED/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () => reply(402, pricedAs({}, 3))) as typeof fetch;
+  expect("a version this client does not speak is refused", /x402 version/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () => reply(402, pricedAs({ payTo: "0xabc" }))) as typeof fetch;
+  expect("terms with no full payout address are refused", /payout address/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () => reply(402, pricedAs({ amount: "0" }))) as typeof fetch;
+  expect("a zero amount in the terms is refused", /no amount/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () => reply(402, pricedAs({ amount: "1.5" }))) as typeof fetch;
+  expect("an amount that is not base units is refused", /no amount/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () => reply(402, pricedAs({ asset: "0x2::sui::SUI" }))) as typeof fetch;
+  expect("a price in another coin is refused", /priced the answer in a coin/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () =>
+    reply(402, pricedAs({ network: otherNet === "mainnet" ? "sui:mainnet" : "sui:testnet" }))) as typeof fetch;
+  expect("terms for another ledger are refused", /no exact-scheme price/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () =>
+    reply(200, undefined, {
+      fact: { name: "x", kind: "Note", note: "y" },
+      reason: "already bought on 2026-10-01",
+      tx: "OwnedTx",
+      paid_then: 0.02,
+      paid_on: "2026-10-01",
+    })) as typeof fetch;
+  const ownedAgain = await price(resource, BUYER, payNet);
+  expect("a 200 is read as an owned fact, not a price", "free" in ownedAgain && ownedAgain.tx === "OwnedTx" && ownedAgain.paid === 0.02);
+
+  globalThis.fetch = (async () => reply(500, undefined, { error: "the index is down for a moment" })) as typeof fetch;
+  expect("a seller fault is repeated as its reason", errorText(await price(resource, BUYER, payNet)) === "the index is down for a moment");
+
+  globalThis.fetch = (async () => {
+    throw new Error("connection refused");
+  }) as typeof fetch;
+  expect("an unreachable index is a sentence, not a crash", /not answering/.test(errorText(await price(resource, BUYER, payNet))));
+
+  globalThis.fetch = (async () =>
+    settled(
+      encodeHeader({ success: true, transaction: "SettledElsewhere", network: otherNet === "mainnet" ? "sui:mainnet" : "sui:testnet" }),
+      { fact: { name: "x", kind: "Note", note: "y" } },
+    )) as typeof fetch;
+  const crossedReceipt = await settleEnvelope(resource, BUYER, "envelope-bytes", payNet);
+  expect("a receipt that names the other ledger is not a receipt", "error" in crossedReceipt && /did not settle/.test(crossedReceipt.error));
+
+  globalThis.fetch = (async () =>
+    settled(encodeHeader({ success: false, transaction: "", network: `sui:${payNet}`, errorReason: "not enough money" }))) as typeof fetch;
+  const refusedReceipt = await settleEnvelope(resource, BUYER, "envelope-bytes", payNet);
+  expect("a refused settlement is repeated as its reason", "error" in refusedReceipt && /not enough money/.test(refusedReceipt.error));
+
+  globalThis.fetch = (async () =>
+    settled(encodeHeader({ success: true, transaction: "SettledHere", network: `sui:${payNet}` }), {
+      fact: { name: "x", kind: "Note", note: "y" },
+      charged: 0.01,
+    })) as typeof fetch;
+  const received = await settleEnvelope(resource, BUYER, "envelope-bytes", payNet);
+  expect("a matching receipt releases the fact and its transaction", !("error" in received) && received.tx === "SettledHere" && received.usdc === 0.01);
+
+  globalThis.fetch = (async () => settled("not-json", { fact: { name: "x" } })) as typeof fetch;
+  const garbled = await settleEnvelope(resource, BUYER, "envelope-bytes", payNet);
+  expect("an unreadable receipt fails rather than releasing the fact", "error" in garbled && /could not read/.test(garbled.error));
+
+  globalThis.fetch = (async () => {
+    throw new Error("connection refused");
+  }) as typeof fetch;
+  const unreachable = await settleEnvelope(resource, BUYER, "envelope-bytes", payNet);
+  expect("a payment that never reached the index is kept, not called done", "error" in unreachable && /could not reach/.test(unreachable.error));
+
+  globalThis.fetch = realFetch;
 
   useNetwork(otherNet);
   const wrongLedger = await buy(`receipt:${PHANTOM}`, BUYER);

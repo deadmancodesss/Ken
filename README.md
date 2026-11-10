@@ -138,7 +138,7 @@ Nothing here is a page framework. The hard parts are the wallet, the memory, the
 | Memory | Walrus MemWal, one namespace per wallet. |
 | Payments | x402 v2 wire and a self-hosted facilitator, USDC and SUI on Sui. |
 | AI | Raw HTTP to Gemini and NVIDIA NIM, Gemini Live for calls, Fish and OpenRouter for speech. |
-| Tests | `tsc`, `node --check` and 28 TypeScript test scripts. No test framework. |
+| Tests | `tsc`, `node --check` and 31 TypeScript test scripts. No test framework. `npm run coverage` runs the same chain under c8 and writes `coverage/index.html`. |
 
 ## Run it
 
