@@ -71,8 +71,8 @@ async function roster(): Promise<Person[]> {
   const namespace = scope("people");
   if (cached && cached.namespace === namespace && Date.now() - cached.at < TTL_MS) return cached.rows;
   if (loading && loading.namespace === namespace) return loading.read;
-  const read = client(namespace)
-    .recall({ query: "Person", namespace, limit: 100 })
+  const read = Promise.resolve()
+    .then(() => client(namespace).recall({ query: "Person", namespace, limit: 100 }))
     .then((res: any) => {
       const seen = new Map<string, Person>();
       for (const hit of res.results ?? []) {

@@ -19,6 +19,10 @@ process.env.MODEL_BASE_URL = "https://model.test/openai";
  * anyone anything.
  */
 process.env.NVIDIA_API_KEY = "";
+process.env.TATUM_SUI_GRAPHQL_URL ||= "https://sui-mainnet.test/graphql";
+process.env.TATUM_API_KEY ||= "stub-key";
+process.env.TATUM_SUI_GRAPHQL_URL_TESTNET ||= "https://sui-testnet.test/graphql";
+process.env.TATUM_API_KEY_TESTNET ||= "stub-key";
 
 const real = globalThis.fetch;
 const BASE = process.env.MODEL_BASE_URL.replace(/\/$/, "");

@@ -6,7 +6,7 @@ services:
     region: oregon
     branch: main
     dockerfilePath: Dockerfile
-    autoDeploy: true
+    autoDeploy: false
     envVars:
       - key: NODE_ENV
         value: production
