@@ -182,6 +182,21 @@ export async function preparePayment(
     if (/bad gateway|\b50[234]\b/i.test(msg)) {
       throw new Error(`the Tatum gateway returned a transient ${msg.match(/\b50[234]\b/)?.[0] ?? "502"} while building this payment, so nothing was built and nothing was signed. This is an upstream failure, not a problem with your wallet. Try again in a moment`);
     }
+    if (/no valid gas coins|insufficient SUI balance/i.test(msg)) {
+      // The SDK reaches this when the account holds no SUI the builder can use as gas.
+      // It reads as a builder failure, but the person needs to know the wallet is short
+      // one specific coin, and that nothing was signed.
+      const short = `${sender.slice(0, 8)}…${sender.slice(-6)}`;
+      const fee =
+        asset !== "USDC"
+          ? "A SUI payment pays the fee from the same balance, so leave a little SUI unspent"
+          : net === "mainnet"
+            ? "USDC on Sui does not pay its own network fee. Send a little SUI to that account and press again, or switch the page to testnet"
+            : "USDC on Sui does not pay its own network fee. Get a little testnet SUI into that account and press again";
+      throw new Error(
+        `the connected account ${short} has no SUI available on ${net} for the network fee, so this payment was not built and nothing was signed. ${fee}`,
+      );
+    }
     if (/insufficient balance/i.test(msg)) {
       // The builder reads coins from the chain, so a locked wallet cannot cause this.
       // Name the address it read, or a different account in the same extension is
